@@ -12,18 +12,18 @@ T-shirt sizing: **XS** ≤ 2h · **S** ≤ half day · **M** ≤ 1 day · **L** 
 
 ## Phase 1 — Flight PoC
 
-### WP1: Project skeleton & dev loop
+### WP1: Project skeleton & dev loop — DONE 2026-04-19
 **Description:** Initialize the Vite + TypeScript + Three.js + Rapier project. Empty scene renders, HMR works, Stats.js + lil-gui in place behind `?debug=true`. Establishes module layout from arch.md.
 **Phase:** 1
 **Dependencies:** none
-**Size:** S
+**Size:** S (actual: ~S)
 **Tasks:**
-- [ ] `npm create vite@latest` (TS template), install three, @dimforge/rapier3d-compat, lil-gui, stats.js
-- [ ] Scaffold `src/` module layout (engine/, world/, aircraft/, mission/, hud/ as empty dirs per arch.md D5)
-- [ ] `main.ts` boots: Three.js renderer + canvas, Rapier world init (async await — WASM load), empty render loop
-- [ ] Stats.js FPS counter visible; lil-gui panel visible only with `?debug=true`
-- [ ] README with `npm run dev` / `npm run build` / how to open debug mode
-- [ ] `CONVENTIONS.md` documenting right-handed Y-up coordinates (arch D7)
+- [x] `npm create vite@latest` (TS template), install three, @dimforge/rapier3d-compat, lil-gui, stats.js
+- [x] Scaffold `src/` module layout (engine/, world/, aircraft/, mission/, hud/ as empty dirs per arch.md D5)
+- [x] `main.ts` boots: Three.js renderer + canvas, Rapier world init (async await — WASM load), empty render loop
+- [x] Stats.js FPS counter visible; lil-gui panel visible only with `?debug=true`
+- [x] README with `npm run dev` / `npm run build` / how to open debug mode
+- [x] `CONVENTIONS.md` documenting right-handed Y-up coordinates (arch D7)
 
 ### WP2: Fixed-timestep game loop
 **Description:** Implement the decoupled physics-tick / render-tick loop from arch D1. Accumulator pattern, physics at 60 Hz, render at monitor refresh. No aircraft yet — just prove the loop with a falling cube.

@@ -1,8 +1,9 @@
 ---
 feature: wp1-project-skeleton
-phase: verify-codify
-state: all-phases-complete
+phase: finalize
+state: completed
 updated: 2026-04-19
+completed: 2026-04-19
 source: docs/product/wbs.md (WP1)
 ---
 

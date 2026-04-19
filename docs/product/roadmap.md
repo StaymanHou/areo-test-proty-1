@@ -1,6 +1,6 @@
 ---
 stage: roadmap
-state: complete
+state: in-progress
 updated: 2026-04-19
 ---
 
@@ -10,7 +10,7 @@ updated: 2026-04-19
 **Goal:** Prove the core loop — a plane flies in a browser with plausible physics and responsive controls.
 
 **Milestones:**
-- [ ] Project skeleton: web stack chosen, dev server, deploy path
+- [x] Project skeleton: web stack chosen, dev server, deploy path
 - [ ] 6DOF rigid-body aircraft with plausible lift/drag/thrust/stall
 - [ ] Keyboard + mouse flight controls feel natural on a laptop
 - [ ] Single aircraft rendered in a minimal 3D world (terrain + sky)
