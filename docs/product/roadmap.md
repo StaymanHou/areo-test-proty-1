@@ -11,7 +11,7 @@ updated: 2026-04-19
 
 **Milestones:**
 - [x] Project skeleton: web stack chosen, dev server, deploy path
-- [ ] 6DOF rigid-body aircraft with plausible lift/drag/thrust/stall
+- [ ] 6DOF rigid-body aircraft with plausible lift/drag/thrust/stall (WP2 proves the loop with a cube; WP4–WP6 add aircraft)
 - [ ] Keyboard + mouse flight controls feel natural on a laptop
 - [ ] Single aircraft rendered in a minimal 3D world (terrain + sky)
 - [ ] Runs at 60fps on a mid-range laptop in Chrome/Safari/Firefox

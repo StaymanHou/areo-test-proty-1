@@ -25,15 +25,15 @@ T-shirt sizing: **XS** ≤ 2h · **S** ≤ half day · **M** ≤ 1 day · **L** 
 - [x] README with `npm run dev` / `npm run build` / how to open debug mode
 - [x] `CONVENTIONS.md` documenting right-handed Y-up coordinates (arch D7)
 
-### WP2: Fixed-timestep game loop
+### WP2: Fixed-timestep game loop — DONE 2026-04-19
 **Description:** Implement the decoupled physics-tick / render-tick loop from arch D1. Accumulator pattern, physics at 60 Hz, render at monitor refresh. No aircraft yet — just prove the loop with a falling cube.
 **Phase:** 1
 **Dependencies:** WP1
-**Size:** S
+**Size:** S (actual: ~S)
 **Tasks:**
-- [ ] `engine/loop.ts`: accumulator-pattern tick, configurable physics dt
-- [ ] Falling-cube demo: Rapier rigid body + Three.js mesh, synced each render frame
-- [ ] Verify stable physics under frame drops (tab backgrounding, throttled CPU in devtools)
+- [x] `engine/loop.ts`: accumulator-pattern tick, configurable physics dt, spiral-of-death clamp, pause support. 7 Vitest tests codify behavior.
+- [x] Falling-cube demo: Rapier rigid body + Three.js mesh, synced each render frame (Rapier world gravity, static ground collider, dynamic cube)
+- [x] Verified stable under frame drops (tab backgrounding) and CPU throttling (6×)
 
 ### WP3: Input + camera
 **Description:** Keyboard + mouse input state with rebindable map. Chase camera (follows body at offset) and cockpit camera (rigid to body). Swap with a key.
