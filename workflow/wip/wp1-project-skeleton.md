@@ -1,7 +1,7 @@
 ---
 feature: wp1-project-skeleton
-phase: plan
-state: complete
+phase: verify-codify
+state: all-phases-complete
 updated: 2026-04-19
 source: docs/product/wbs.md (WP1)
 ---
@@ -21,30 +21,30 @@ No new data models or API endpoints. No architectural decisions — all decision
 ## Implementation Phases
 
 ### Phase 1: Vite + TypeScript bootstrap
-- [x] Run `npm create vite@latest . -- --template vanilla-ts` in the project root (DONE: used `--overwrite=ignore`; destructive — required docs rewrite. git init now in place as safety net)
-- [ ] Install runtime deps: `three`, `@dimforge/rapier3d-compat`, `lil-gui`, `stats.js`
-- [ ] Install dev deps: `@types/three`, `@types/stats.js`
-- [ ] Enable TypeScript strict mode in `tsconfig.json` (template default omits it — add manually)
-- [ ] Remove Vite template boilerplate (`counter.ts`, sample CSS, default `src/main.ts` contents, `src/assets/*`, `public/favicon.svg`, `public/icons.svg`)
-- [ ] Verify `npm run dev` starts the dev server and `npm run build` produces `dist/`
+- [x] Run `npm create vite@latest . -- --template vanilla-ts` in the project root (used `--overwrite=ignore`; destructive — required docs rewrite. git init now in place as safety net)
+- [x] Install runtime deps: `three`, `@dimforge/rapier3d-compat`, `lil-gui`, `stats.js`
+- [x] Install dev deps: `@types/three`, `@types/stats.js`
+- [x] Enable TypeScript strict mode in `tsconfig.json` (template default omits it — added manually)
+- [x] Remove Vite template boilerplate (`counter.ts`, sample CSS, default `src/main.ts` contents, `src/assets/*`, `public/favicon.svg`, `public/icons.svg`)
+- [x] Verify `npm run build` produces `dist/` (passed; bundle size warning is Rapier WASM — expected per R1)
 
 ### Phase 2: Scaffold src/ module layout
-- [ ] Create dirs per arch.md: `src/engine/`, `src/world/`, `src/aircraft/`, `src/mission/`, `src/hud/`
-- [ ] Add a `.gitkeep` to `mission/` and `hud/` (explicitly Phase 2, stay empty per arch D5)
-- [ ] Create `public/models/` and `public/config/` dirs (`.gitkeep` each)
-- [ ] `src/main.ts`: minimal entry that imports from `engine/`, sets up a Three.js scene + camera + renderer, mounts canvas to `#app`, runs a no-op render loop (`requestAnimationFrame`). Rapier is initialized (async `await RAPIER.init()`) but not yet used — just prove the WASM loads.
-- [ ] Single placeholder file in each non-empty module dir (`src/engine/loop.ts`, `src/engine/input.ts`, `src/engine/assets.ts`, `src/engine/debug.ts`, `src/world/scene.ts`, `src/world/terrain.ts`, `src/world/camera.ts`, `src/aircraft/rigidbody.ts`, `src/aircraft/aerosurface.ts`, `src/aircraft/flightmodel.ts`, `src/aircraft/controls.ts`) — each exports a TODO stub. This locks in the layout so later WPs edit, not create.
-- [ ] Update `index.html` to have a single `<div id="app">` and clean markup
+- [x] Create dirs per arch.md: `src/engine/`, `src/world/`, `src/aircraft/`, `src/mission/`, `src/hud/`
+- [x] Add a `.gitkeep` to `mission/` and `hud/` (explicitly Phase 2, stay empty per arch D5)
+- [x] Create `public/models/` and `public/config/` dirs (`.gitkeep` each)
+- [x] `src/main.ts`: minimal entry. Sets up Three.js via `world/scene.ts`, mounts canvas to `#app`, awaits `RAPIER.init()` (proves WASM loads), runs a no-op render loop.
+- [x] Placeholder file in each non-empty module dir (engine/loop, engine/input, engine/assets, engine/debug, world/scene, world/terrain, world/camera, aircraft/rigidbody, aircraft/aerosurface, aircraft/flightmodel, aircraft/controls). `scene.ts` and `debug.ts` are real; rest are TODO stubs.
+- [x] Update `index.html` to a single `<div id="app">` with canvas-friendly styles
 
 ### Phase 3: Debug UI (Stats.js + lil-gui behind `?debug=true`)
-- [ ] `src/engine/debug.ts`: exports `initDebug()` that checks `new URLSearchParams(location.search).has('debug')` and, if true, mounts a Stats.js panel (top-left) and a `lil-gui` instance (top-right). Returns handles so future code can add panels/counters.
-- [ ] Wire `initDebug()` into `main.ts` early (before render loop start)
-- [ ] In the render loop, call `stats.begin()` / `stats.end()` if debug is enabled
-- [ ] Verify: `/` shows scene, no debug chrome; `/?debug=true` shows FPS + empty gui panel
+- [x] `src/engine/debug.ts`: exports `isDebugEnabled()` + `initDebug()`. Returns `{ stats, gui }` handles or null.
+- [x] Wire `initDebug()` into `main.ts` before the render loop
+- [x] Render loop calls `stats.begin()` / `stats.end()` via optional chaining
+- [ ] Verify: `/` shows scene, no debug chrome; `/?debug=true` shows FPS + empty gui panel (defer to verify-human)
 
 ### Phase 4: Docs
-- [ ] `README.md`: project blurb (1–2 sentences from CLAUDE.md), setup commands (`npm install`, `npm run dev`), how to open debug mode (`?debug=true`), build command. Link to `docs/product/` for product docs and `CLAUDE.md` for conventions.
-- [ ] `CONVENTIONS.md`: right-handed Y-up coordinates (both Three.js and Rapier), module layout rules (where new code goes), debug UI gating rule (never ship debug UI), TypeScript strict rule. Per arch D7 this is a Phase 1 deliverable.
+- [x] `README.md`: blurb, setup, `?debug=true` note, build command, link to CLAUDE.md and docs/product/
+- [x] `CONVENTIONS.md`: right-handed Y-up coords, TS strict, module layout, debug UI gating, physics rules, phase discipline
 
 ## Testing Strategy
 
