@@ -1,7 +1,7 @@
 ---
 stage: wbs
 state: complete
-updated: 2026-04-19
+updated: 2026-05-04
 ---
 
 # Work Breakdown Structure
@@ -35,16 +35,16 @@ T-shirt sizing: **XS** ≤ 2h · **S** ≤ half day · **M** ≤ 1 day · **L** 
 - [x] Falling-cube demo: Rapier rigid body + Three.js mesh, synced each render frame (Rapier world gravity, static ground collider, dynamic cube)
 - [x] Verified stable under frame drops (tab backgrounding) and CPU throttling (6×)
 
-### WP3: Input + camera
+### WP3: Input + camera — DONE 2026-05-04
 **Description:** Keyboard + mouse input state with rebindable map. Chase camera (follows body at offset) and cockpit camera (rigid to body). Swap with a key.
 **Phase:** 1
 **Dependencies:** WP2
-**Size:** S
+**Size:** S (actual: ~S)
 **Tasks:**
-- [ ] `engine/input.ts`: keyboard + mouse state, frame-stable reads
-- [ ] `world/camera.ts`: chase camera with damped follow, cockpit camera with rigid attach
-- [ ] Key to swap cameras (configurable via lil-gui)
-- [ ] Works on the falling-cube demo (camera follows the cube)
+- [x] `engine/input.ts`: keyboard + mouse state, frame-stable reads, `wasPressed()` single-frame detection, `DEFAULT_KEY_MAP` with 14 logical actions
+- [x] `world/camera.ts`: chase camera with exponential-decay damped follow, cockpit camera with rigid attach (position + quaternion copy)
+- [x] `V` key swaps cameras; lil-gui "Camera" label shows active mode
+- [x] Works on the falling-cube demo (camera follows the cube); 22 Vitest tests
 
 ### WP4: Aerosurface primitive
 **Description:** The core of the flight model. Single `AeroSurface` class: given local-frame position, orientation, area, and piecewise-linear CL/CD curves, computes force + application point from incoming airflow velocity. Unit-tested.
