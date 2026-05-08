@@ -1,0 +1,39 @@
+{
+  "mass": 1000,
+  "inertia": { "x": 1500, "y": 3000, "z": 1500 },
+  "thrust": { "maxN": 6000 },
+  "surfaces": [
+    {
+      "name": "wing-left",
+      "position": { "x": -2, "y": 0, "z": 0 },
+      "normal":   { "x":  0, "y": 1, "z": 0 },
+      "chord":    { "x":  0, "y": 0, "z": -1 },
+      "area": 6,
+      "curve": "symmetric-flat-plate"
+    },
+    {
+      "name": "wing-right",
+      "position": { "x": 2, "y": 0, "z": 0 },
+      "normal":   { "x": 0, "y": 1, "z": 0 },
+      "chord":    { "x": 0, "y": 0, "z": -1 },
+      "area": 6,
+      "curve": "symmetric-flat-plate"
+    },
+    {
+      "name": "h-stab",
+      "position": { "x": 0, "y": 0,   "z": 3 },
+      "normal":   { "x": 0, "y": 1,   "z": 0 },
+      "chord":    { "x": 0, "y": 0,   "z": -1 },
+      "area": 1.5,
+      "curve": "symmetric-flat-plate"
+    },
+    {
+      "name": "v-stab",
+      "position": { "x": 0, "y": 0.5, "z": 3 },
+      "normal":   { "x": 1, "y": 0,   "z": 0 },
+      "chord":    { "x": 0, "y": 0,   "z": -1 },
+      "area": 1,
+      "curve": "symmetric-flat-plate"
+    }
+  ]
+}

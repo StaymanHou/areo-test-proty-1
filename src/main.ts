@@ -1,16 +1,20 @@
 import RAPIER from '@dimforge/rapier3d-compat';
-import { BoxGeometry, Mesh, MeshStandardMaterial, DirectionalLight } from 'three';
+import { DirectionalLight, Vector3 } from 'three';
 import { createRenderContext } from './world/scene';
 import { initDebug } from './engine/debug';
 import { GameLoop } from './engine/loop';
 import { InputManager, DEFAULT_KEY_MAP } from './engine/input';
 import { CameraController, CameraMode } from './world/camera';
+import { loadAircraftConfig } from './aircraft/config';
+import { Aircraft } from './aircraft/rigidbody';
+import { FlightModel } from './aircraft/flightmodel';
 
 async function bootstrap() {
   const mount = document.querySelector<HTMLDivElement>('#app');
   if (!mount) throw new Error('#app mount not found');
 
   const rapierReady = RAPIER.init();
+  const configReady = loadAircraftConfig('/config/aircraft.json');
 
   const { scene, camera, renderer } = createRenderContext(mount);
   const debug = initDebug();
@@ -22,34 +26,31 @@ async function bootstrap() {
   scene.add(sun);
 
   await rapierReady;
+  const config = await configReady;
 
   const world = new RAPIER.World({ x: 0, y: -9.81, z: 0 });
 
+  // Ground collider — kept from WP2 for crash detection.
   const groundDesc = RAPIER.ColliderDesc.cuboid(50, 0.5, 50).setTranslation(0, -0.5, 0);
   world.createCollider(groundDesc);
 
-  const cubeBodyDesc = RAPIER.RigidBodyDesc.dynamic().setTranslation(0, 5, 0);
-  const cubeBody = world.createRigidBody(cubeBodyDesc);
-  const cubeColliderDesc = RAPIER.ColliderDesc.cuboid(0.5, 0.5, 0.5).setRestitution(0.4);
-  world.createCollider(cubeColliderDesc, cubeBody);
+  const aircraft = new Aircraft(world, config, {
+    position: new Vector3(0, 50, 0),
+    linvel: new Vector3(0, 0, -30),
+  });
+  scene.add(aircraft.mesh);
 
-  const cubeMesh = new Mesh(
-    new BoxGeometry(1, 1, 1),
-    new MeshStandardMaterial({ color: 0xff6633 }),
-  );
-  scene.add(cubeMesh);
+  const flightModel = new FlightModel(aircraft);
 
   const loop = new GameLoop(
     {
       onPhysics: (dt) => {
+        flightModel.applyForces(0.6); // fixed 60% throttle until WP6 wires controls
         world.timestep = dt;
         world.step();
       },
       onRender: () => {
-        const t = cubeBody.translation();
-        const r = cubeBody.rotation();
-        cubeMesh.position.set(t.x, t.y, t.z);
-        cubeMesh.quaternion.set(r.x, r.y, r.z, r.w);
+        aircraft.syncMesh();
 
         if (input.wasActionPressed('swapCamera', DEFAULT_KEY_MAP)) {
           cameraController.setMode(
@@ -59,8 +60,7 @@ async function bootstrap() {
           );
         }
 
-        // Use physics dt as the render delta — good enough for camera damping at 60 Hz
-        cameraController.update(cubeMesh.position, cubeMesh.quaternion, 1 / 60);
+        cameraController.update(aircraft.mesh.position, aircraft.mesh.quaternion, 1 / 60);
 
         debug?.stats.begin();
         renderer.render(scene, camera);
