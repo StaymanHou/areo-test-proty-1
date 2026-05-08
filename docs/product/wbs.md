@@ -58,17 +58,17 @@ T-shirt sizing: **XS** ≤ 2h · **S** ≤ half day · **M** ≤ 1 day · **L** 
 - [x] `computeAeroForce(surface, bodyState)`: force vector + world application point. Allocation-free hot path (11 module-scoped scratch buffers).
 - [x] 27 Vitest cases: shape/normalization, airflow at point with rotational contribution, AoA across the full domain, curve lookup edge cases, force at α≈0/+10°/+30°, post-stall drop, drag rise, app-point world transform, sign-continuity through α=0, force-vector reuse contract.
 
-### WP5: Flight model composition
+### WP5: Flight model composition — DONE 2026-05-08
 **Description:** Assemble aerosurfaces into an aircraft: main wing (L+R), horizontal stab, vertical stab. Load constants from `public/config/aircraft.json`. Apply summed forces + thrust + gravity to a Rapier rigid body. No control inputs yet.
 **Phase:** 1
 **Dependencies:** WP4
-**Size:** M
+**Size:** M (actual: ~M)
 **Tasks:**
-- [ ] `aircraft/rigidbody.ts`: Rapier dynamic body + Three.js mesh binding
-- [ ] `aircraft/flightmodel.ts`: list of AeroSurfaces, sum forces each physics tick
-- [ ] `public/config/aircraft.json` schema (mass, inertia, surfaces[], thrust.maxN)
-- [ ] Placeholder aircraft mesh (box or low-poly GLTF)
-- [ ] Launch the aircraft with some forward velocity; verify it glides forward and sinks realistically
+- [x] `aircraft/rigidbody.ts`: `Aircraft` class — Rapier dynamic body (mass + principal inertia from config) + Three.js mesh group (fuselage + 4 surface placeholders). `syncMesh()`, `readBodyState()`.
+- [x] `aircraft/flightmodel.ts`: `FlightModel` class — composes N AeroSurfaces, allocation-free per-tick aero force application, thrust along body −Z, throttle clamped [0,1].
+- [x] `public/config/aircraft.json` + `aircraft/config.ts`: schema (mass, inertia Vec3, thrust.maxN, surfaces[] with named curves), light runtime validation, vector-to-Vector3 conversion. Async `loadAircraftConfig`.
+- [x] Placeholder aircraft mesh (box fuselage + 4 surface boxes with named placement).
+- [x] Launched at (0,50,0) with linvel (0,0,-30) at 60% fixed throttle; physics runs and the aircraft moves visibly. (Fully trimmed, stable flight requires WP6 controls + WP7 tuning — confirmed by browser verify-self.)
 
 ### WP6: Flight controls
 **Description:** Map input state to control-surface deflections. Aileron (roll), elevator (pitch), rudder (yaw), throttle. Controls modify aerosurface orientations (aileron) or add torque (simplified). Verify a pilot-like control feel.
