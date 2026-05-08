@@ -4,6 +4,16 @@ Surface-notes from workflow runs. Consumed and resolved by higher-level workflow
 
 ## Open
 
+### SURFACE-2026-05-08-01 — AoA sign convention requires "chord = into the wind"
+- **Source:** feature:build (WP4 Phase 2)
+- **Target level:** product:arch or CONVENTIONS.md
+- **Type:** lesson / docs
+- **Summary:** WP4 Phase 1 implemented `computeAngleOfAttack` with `along = +projected.dot(chord)`. Tests passed because they used abstract flow vectors — but for the convention "chord points in the surface's forward/nose direction" (per CONVENTIONS.md "nose along −Z"), level-flight relative wind flows *opposite* chord. The correct formula is `along = -projected.dot(chord)`. Caught when Phase 2 wrote *physical* tests (body moves forward → airflow opposite chord → expected AoA=0). Six Phase 1 tests rewritten to physical setups during the fix.
+- **Context:** Sign-convention bugs in physics math are easy to hide behind tests written from the implementation rather than the physics. Future WPs (WP5 flight-model composition, WP6 controls) need to pin "chord = nose-into-wind" explicitly.
+- **Suggested action:** Add a short paragraph to `CONVENTIONS.md` under §Coordinates: "Aerosurface chord vectors point in the surface's leading-edge-into-wind direction; for a wing on a forward-flying plane (nose at −Z), chord = (0, 0, −1)." This makes the convention discoverable for WP5+ work.
+- **Priority:** medium (not blocking; should be documented before WP5 to avoid the same surprise)
+- **Status:** pending
+
 ### SURFACE-2026-04-19-01 — Bundle size: Rapier WASM dominates build
 - **Source:** feature:build (WP1 verify-auto)
 - **Target level:** product:arch or feature (Phase 3 polish)
