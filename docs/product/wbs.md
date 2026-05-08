@@ -1,7 +1,7 @@
 ---
 stage: wbs
 state: complete
-updated: 2026-05-04
+updated: 2026-05-08
 ---
 
 # Work Breakdown Structure
@@ -46,17 +46,17 @@ T-shirt sizing: **XS** ≤ 2h · **S** ≤ half day · **M** ≤ 1 day · **L** 
 - [x] `V` key swaps cameras; lil-gui "Camera" label shows active mode
 - [x] Works on the falling-cube demo (camera follows the cube); 22 Vitest tests
 
-### WP4: Aerosurface primitive
+### WP4: Aerosurface primitive — DONE 2026-05-08
 **Description:** The core of the flight model. Single `AeroSurface` class: given local-frame position, orientation, area, and piecewise-linear CL/CD curves, computes force + application point from incoming airflow velocity. Unit-tested.
 **Phase:** 1
 **Dependencies:** WP1 (project skeleton)
-**Size:** M
+**Size:** M (actual: ~M)
 **Tasks:**
-- [ ] `aircraft/aerosurface.ts`: data model (position, normal, area, CL/CD curve)
-- [ ] Airflow → angle-of-attack math (project velocity onto surface plane, measure angle to chord)
-- [ ] Piecewise-linear CL/CD lookup (Gazebo-style two-line model: pre-stall slope, post-stall slope)
-- [ ] Apply-to-body: compute force vector in world frame, return force + world application point
-- [ ] Unit tests: at α=0 lift≈0 for symmetric surface; at α near stall lift drops; drag increases with α²-ish
+- [x] `aircraft/aerosurface.ts`: data model (position, normal, chord, area, CL/CD curve)
+- [x] Airflow → angle-of-attack math (project velocity onto plane defined by `normal × chord`, measure signed angle from `−chord` direction; sign convention: flow along `−normal` → +AoA → +lift)
+- [x] Piecewise-linear CL/CD lookup (`lookupLiftDragCurve`) + Gazebo-style symmetric flat-plate helper (`createSymmetricFlatPlateCurves`)
+- [x] `computeAeroForce(surface, bodyState)`: force vector + world application point. Allocation-free hot path (11 module-scoped scratch buffers).
+- [x] 27 Vitest cases: shape/normalization, airflow at point with rotational contribution, AoA across the full domain, curve lookup edge cases, force at α≈0/+10°/+30°, post-stall drop, drag rise, app-point world transform, sign-continuity through α=0, force-vector reuse contract.
 
 ### WP5: Flight model composition
 **Description:** Assemble aerosurfaces into an aircraft: main wing (L+R), horizontal stab, vertical stab. Load constants from `public/config/aircraft.json`. Apply summed forces + thrust + gravity to a Rapier rigid body. No control inputs yet.
@@ -285,3 +285,4 @@ WP7 (flight-feel tuning) and WP16 (combat) are the two heaviest items and sit on
 None that require a back-loop. WP10 is a *planned* arch revision at the Phase 1→2 boundary — arch.md explicitly deferred those decisions, so this is on-plan work, not a P8 regression.
 
 Recommend `/product-context` next (transition P9).
+

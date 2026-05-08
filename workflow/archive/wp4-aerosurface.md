@@ -1,7 +1,9 @@
 ---
 workflow: feature
-state: build
+state: complete
 created: 2026-05-08
+completed: 2026-05-08
+shipped_commit: 3a531c1
 entry: spec
 work_package: WP4
 drive_mode: full-autopilot
@@ -80,13 +82,17 @@ Composing into an aircraft (WP5), control deflection (WP6), `aircraft.json` load
   - [SURFACED-2026-05-08] Phase 2 P2.2 — AoA sign convention required revision. Original Phase 1 impl used `along = +projected.dot(chord)`, but for a chord pointing in nose direction (per CONVENTIONS.md), level-flight airflow flows opposite chord, so the correct formula is `along = -projected.dot(chord)`. Phase 1 tests passed only because they used abstract flow vectors, not physical setups. Fixed in this phase; six Phase 1 AoA tests rewritten to physical flow patterns. Logged to backlog as a process note.
 
 ## Current Node
-- **Path:** Feature > ship
-- **Active scope:** All phases complete. 27 aerosurface tests + 22 prior = 49/49. Ready to ship.
+- **Path:** Feature > complete (shipped 3a531c1, finalized 2026-05-08)
+- **Active scope:** none — feature done.
 - **Blocked:** none
-- **Unvisited:** Phase 2
+- **Unvisited:** none
 - **Open discoveries:** none
 
 ## Discoveries
-<!-- [SURFACED-<date>] <node> — <summary> (also logged to workflow/backlog.md) -->
+- [SURFACED-2026-05-08] Phase 2 P2.2 — AoA sign convention. Logged to backlog as SURFACE-2026-05-08-01; resolved during finalize by adding a paragraph to `CONVENTIONS.md` clarifying chord direction.
 
-TRANSITION: F8
+## Retrospect
+- **What changed in our understanding:** The "chord direction" convention isn't fully constrained by "nose along −Z" alone. Aerosurface chord must point *into the relative wind*, which for a forward-flying plane equals nose direction (= −Z). But that's a physical correspondence, not a coordinate rule — easy to miss.
+- **Assumptions that held:** Khan & Nahon per-surface model is a clean primitive; Three.js Vector3/Quaternion math is sufficient (no extra deps); pure-math separation from Rapier kept tests trivial and fast (full suite 49 tests in ~140 ms). Phase split was right: data + AoA before curves + force kept each phase reviewable.
+- **Assumptions that were wrong:** The Phase 1 AoA tests passed but were not *physical* — they constructed flow vectors abstractly. The bug surfaced only when Phase 2 wrote tests where a body actually moves through air. Lesson: physics-math primitives need at least one "realistic body in motion" test from the start.
+- **Approach delta:** Implementation matched the plan structurally (two phases, scoped tasks, allocation-free hot path). One mid-phase fix: the AoA formula needed a sign flip discovered during Phase 2; six Phase 1 tests were rewritten in-place. No re-plan needed — the spec held.

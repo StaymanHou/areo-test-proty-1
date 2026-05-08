@@ -12,6 +12,8 @@ Project-wide rules. Keep this short. Deeper context lives in `docs/product/arch.
 
 Aircraft local frame follows the same convention: nose along −Z, right wing along +X, top of the plane toward +Y. All `AeroSurface` positions, normals, and chord directions are expressed in this local frame.
 
+`AeroSurface.chord` points in the surface's **leading-edge-into-wind** direction — i.e., toward where the relative wind comes from in steady flight. For a wing on a forward-flying plane (nose at −Z), `chord = (0, 0, −1)`. The AoA convention follows from this: positive AoA means the relative wind has a component along `−normal` (wind hitting the underside of the surface), which produces positive lift on a flat-plate symmetric airfoil.
+
 ## TypeScript
 
 Strict mode is on (`"strict": true` in `tsconfig.json`). Do not use `any` without a one-line comment explaining why. Prefer narrow types over broad ones; let inference do the work when it can.
