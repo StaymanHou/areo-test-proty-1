@@ -430,3 +430,12 @@ TRANSITION: F7
 
 ## Session Pause — 2026-05-09 14:01
 Paused at Phase F ESCALATE (casual-player feel-check nomination). See `workflow/.session.md` to resume.
+
+## Session Pause — 2026-05-09 (resume → pivot to WP8)
+Decision on the Phase F three-options menu: **option 1 — run WP8 first, then resume WP7 Phase F** with horizon/terrain/landmarks in place so a casual-player feel-check is meaningful. Rationale: SURFACE-2026-05-09-02 (no-horizon viewport) makes external feel-check unproductive against the current build; WP8 is the planned mitigation and is sized S.
+
+- **Active drive mode:** full-autopilot (preserved across the pivot).
+- **Candidate preset:** stays in `## Tuning preset (candidate)` block, NOT applied to `public/config/aircraft.json`. Will be re-evaluated in light of the WP8 build (horizon may change perceived feel).
+- **WP7 Current Node:** unchanged — Feature > Phase F > PF.1, ESCALATE pause pending.
+- **Resume action:** after WP8 finalize, run `/session-resume` against this file's pause marker; Phase F restarts with PF.1 (casual-player nomination) now actually viable.
+- **Working tree at pivot time:** uncommitted across WP7 source + tests + new `src/engine/tuning.ts`. Acceptable — the WP7 work is end-to-end-tested (144/144 pass, tsc clean) and `feature-ship` is downstream of Phase F. WP8 will start without committing WP7 first; if the WP8 work touches the same files (unlikely — WP8 is `world/`-scoped) we'll revisit.

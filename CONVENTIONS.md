@@ -52,6 +52,10 @@ Check with `isDebugEnabled()` before mounting anything developer-facing.
 
 Default key bindings (US-QWERTY): `A/D` roll, arrows pitch (`↑` = nose up), `Q/E` yaw, `Shift/Ctrl` throttle up/down, `V` swap camera. Override per-instance via `new Controls(input, { keyMap })` or live in dev via the lil-gui Controls > Bindings folder (`?debug=true` only).
 
+## World
+
+The Phase 1 world is a flat 4000 m × 4000 m textured plane with a procedural cubemap skybox, a runway centered at the origin running along world Z, and a control tower at `(40, 0, 250)`. See `src/world/terrain.ts`, `src/world/skybox.ts`, and `src/world/landmarks.ts`. The chase camera's far plane is 5000 m to keep the horizon visible from any cruise altitude inside the terrain extent — adjust if you grow the terrain or need to see beyond it.
+
 ## Phase discipline
 
 WP1 code should not implement WP2+ behavior. Stubs in `src/aircraft/` and `src/engine/` are intentional — later WPs edit them. If you're tempted to pre-build something, resist; it usually means the next WP's plan is the place to have that conversation.

@@ -10,6 +10,9 @@ import { Aircraft } from './aircraft/rigidbody';
 import { FlightModel } from './aircraft/flightmodel';
 import { Controls } from './aircraft/controls';
 import { attachFlightModelTuning } from './engine/tuning';
+import { FlatTerrain } from './world/terrain';
+import { createProceduralSkybox } from './world/skybox';
+import { createRunway, createTower } from './world/landmarks';
 
 async function bootstrap() {
   const mount = document.querySelector<HTMLDivElement>('#app');
@@ -32,9 +35,18 @@ async function bootstrap() {
 
   const world = new RAPIER.World({ x: 0, y: -9.81, z: 0 });
 
-  // Ground collider — kept from WP2 for crash detection.
-  const groundDesc = RAPIER.ColliderDesc.cuboid(50, 0.5, 50).setTranslation(0, -0.5, 0);
-  world.createCollider(groundDesc);
+  const terrain = new FlatTerrain({ size: 4000, height: 0, textureRepeat: 100 });
+  scene.add(terrain.getMesh());
+  world.createCollider(terrain.getColliderDesc());
+
+  scene.background = createProceduralSkybox().cubeTexture;
+
+  const runway = createRunway();
+  scene.add(runway.mesh);
+
+  const tower = createTower();
+  scene.add(tower.mesh);
+  world.createCollider(tower.colliderDesc);
 
   const aircraft = new Aircraft(world, config, {
     position: new Vector3(0, 50, 0),

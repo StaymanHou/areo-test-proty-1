@@ -3,7 +3,6 @@ import {
   PerspectiveCamera,
   WebGLRenderer,
   HemisphereLight,
-  Color,
 } from 'three';
 
 export interface RenderContext {
@@ -15,13 +14,12 @@ export interface RenderContext {
 
 export function createRenderContext(mount: HTMLElement): RenderContext {
   const scene = new Scene();
-  scene.background = new Color(0x87ceeb);
 
   const camera = new PerspectiveCamera(
     60,
     mount.clientWidth / mount.clientHeight,
     0.1,
-    2000,
+    5000,
   );
   camera.position.set(0, 2, 6);
   camera.lookAt(0, 0, 0);
