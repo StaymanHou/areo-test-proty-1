@@ -372,3 +372,142 @@ describe('AeroSurface — Phase 2: createSymmetricFlatPlateCurves', () => {
     }
   });
 });
+
+describe('AeroSurface — WP6: deflection support', () => {
+  function makeStandardSurface(maxDeflectionRad?: number): AeroSurface {
+    return createAeroSurface({
+      position: new Vector3(0, 0, 0),
+      normal: new Vector3(0, 1, 0),
+      chord: new Vector3(0, 0, -1),
+      area: 1,
+      clCurve: FLAT_CL,
+      cdCurve: FLAT_CD,
+      maxDeflectionRad,
+    });
+  }
+
+  it('throws when normal and chord are parallel (degenerate span)', () => {
+    expect(() =>
+      createAeroSurface({
+        position: new Vector3(),
+        normal: new Vector3(0, 0, -1),
+        chord: new Vector3(0, 0, -1),
+        area: 1,
+        clCurve: FLAT_CL,
+        cdCurve: FLAT_CD,
+      }),
+    ).toThrow(/parallel/);
+  });
+
+  it('default maxDeflectionRad is ~25°', () => {
+    const s = makeStandardSurface();
+    expect(s.maxDeflectionRad).toBeCloseTo((25 * Math.PI) / 180, 6);
+  });
+
+  it('honors a custom maxDeflectionRad', () => {
+    const s = makeStandardSurface(0.2);
+    expect(s.maxDeflectionRad).toBe(0.2);
+  });
+
+  it('captures rest snapshots and pre-bakes spanAxis', () => {
+    const s = makeStandardSurface();
+    expect(s.restNormal.equals(new Vector3(0, 1, 0))).toBe(true);
+    expect(s.restChord.equals(new Vector3(0, 0, -1))).toBe(true);
+    // span = normal × chord = (0,1,0) × (0,0,-1) = (-1, 0, 0)
+    expect(s.spanAxis.x).toBeCloseTo(-1, 6);
+    expect(s.spanAxis.y).toBeCloseTo(0, 6);
+    expect(s.spanAxis.z).toBeCloseTo(0, 6);
+  });
+
+  it('setDeflection(0) is identity — chord and normal exactly equal rest', () => {
+    const s = makeStandardSurface();
+    s.setDeflection(0.3);
+    s.setDeflection(0);
+    expect(s.chord.x).toBe(s.restChord.x);
+    expect(s.chord.y).toBe(s.restChord.y);
+    expect(s.chord.z).toBe(s.restChord.z);
+    expect(s.normal.x).toBe(s.restNormal.x);
+    expect(s.normal.y).toBe(s.restNormal.y);
+    expect(s.normal.z).toBe(s.restNormal.z);
+    expect(s.deflection).toBe(0);
+  });
+
+  it('setDeflection clamps to ±maxDeflectionRad', () => {
+    const s = makeStandardSurface(0.2);
+    s.setDeflection(0.5);
+    expect(s.deflection).toBe(0.2);
+    s.setDeflection(-0.5);
+    expect(s.deflection).toBe(-0.2);
+  });
+
+  it('rotates chord by ~+0.3 rad about spanAxis (h-stab geometry)', () => {
+    // standard surface: normal=+Y, chord=−Z, spanAxis = normal × chord = −X.
+    // Rotating chord (0,0,-1) about unit axis (-1,0,0) by +0.3 rad (Rodrigues):
+    //   chord' = (0, −sin(0.3), −cos(0.3))
+    const s = makeStandardSurface();
+    s.setDeflection(0.3);
+    expect(s.chord.x).toBeCloseTo(0, 6);
+    expect(s.chord.y).toBeCloseTo(-Math.sin(0.3), 6);
+    expect(s.chord.z).toBeCloseTo(-Math.cos(0.3), 6);
+    // Normal also rotates; remains perpendicular to chord.
+    expect(s.normal.dot(s.chord)).toBeCloseTo(0, 6);
+  });
+
+  it('chord and normal stay perpendicular through deflection at multiple angles', () => {
+    const s = makeStandardSurface(Math.PI / 3); // wide so we can sweep
+    for (const angle of [-0.4, -0.1, 0, 0.1, 0.3, 0.6]) {
+      s.setDeflection(angle);
+      expect(s.normal.dot(s.chord)).toBeCloseTo(0, 6);
+      // Both stay unit length.
+      expect(s.normal.length()).toBeCloseTo(1, 6);
+      expect(s.chord.length()).toBeCloseTo(1, 6);
+    }
+  });
+
+  it('computeAeroForce with zero deflection equals pre-deflection reference', () => {
+    // Regression guard: rest snapshot must reproduce original behavior bit-for-bit.
+    const s = makeStandardSurface();
+    const body: BodyState = {
+      position: new Vector3(),
+      quaternion: new Quaternion(),
+      linvel: new Vector3(0, 0, -10), // forward flight
+      angvel: new Vector3(),
+    };
+    const r0 = computeAeroForce(s, body);
+    const fxRef = r0.force.x, fyRef = r0.force.y, fzRef = r0.force.z;
+    // Apply and revert deflection — should not perturb the rest force.
+    s.setDeflection(0.4);
+    s.setDeflection(0);
+    const r1 = computeAeroForce(s, body);
+    expect(r1.force.x).toBe(fxRef);
+    expect(r1.force.y).toBe(fyRef);
+    expect(r1.force.z).toBe(fzRef);
+  });
+
+  it('deflecting an h-stab in level airflow changes its produced force', () => {
+    // Sanity check that deflection actually changes aerodynamic output.
+    // Surface with curves that produce nonzero lift — use the symmetric flat-plate.
+    const { cl, cd } = createSymmetricFlatPlateCurves();
+    const s = createAeroSurface({
+      position: new Vector3(0, 0, 3),
+      normal: new Vector3(0, 1, 0),
+      chord: new Vector3(0, 0, -1),
+      area: 1,
+      clCurve: cl,
+      cdCurve: cd,
+    });
+    const body: BodyState = {
+      position: new Vector3(),
+      quaternion: new Quaternion(),
+      linvel: new Vector3(0, 0, -30),
+      angvel: new Vector3(),
+    };
+    const f0 = { x: 0, y: 0, z: 0 };
+    const r0 = computeAeroForce(s, body);
+    f0.x = r0.force.x; f0.y = r0.force.y; f0.z = r0.force.z;
+    s.setDeflection(0.2);
+    const r1 = computeAeroForce(s, body);
+    // Lift component (Y) should differ — deflection changes effective AoA.
+    expect(Math.abs(r1.force.y - f0.y)).toBeGreaterThan(0.1);
+  });
+});

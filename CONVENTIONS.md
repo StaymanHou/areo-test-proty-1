@@ -39,6 +39,19 @@ Check with `isDebugEnabled()` before mounting anything developer-facing.
 - Flight-model constants live in `public/config/aircraft.json`, not code. Tune via the lil-gui panel; export the preset back to JSON when it feels right (arch D3).
 - Aerosurface is the primitive. Don't scatter ad-hoc lift/drag formulas through the codebase — extend the `AeroSurface` model.
 
+## Control sign conventions
+
+`Controls` produces four normalized values:
+
+- `aileron ∈ [-1, +1]` — `+1` rolls right (right wing dips)
+- `elevator ∈ [-1, +1]` — `+1` pitches nose up
+- `rudder ∈ [-1, +1]` — `+1` yaws nose right
+- `throttle ∈ [0, 1]` — `+1` is full forward thrust
+
+`FlightModel.applyControls` translates these into per-surface deflections via a routing table (wing-left/right ← aileron, h-stab ← elevator, v-stab ← rudder). Deflection is applied by rotating both `chord` and `normal` together about a pre-baked `spanAxis = restNormal × restChord`, which preserves their perpendicularity by construction. The routing-table sign multipliers were determined empirically by the per-axis torque tests in `flightmodel.test.ts` — flipping a sign there is the right fix if `+control` produces the wrong body motion.
+
+Default key bindings (US-QWERTY): `A/D` roll, arrows pitch (`↑` = nose up), `Q/E` yaw, `Shift/Ctrl` throttle up/down, `V` swap camera. Override per-instance via `new Controls(input, { keyMap })` or live in dev via the lil-gui Controls > Bindings folder (`?debug=true` only).
+
 ## Phase discipline
 
 WP1 code should not implement WP2+ behavior. Stubs in `src/aircraft/` and `src/engine/` are intentional — later WPs edit them. If you're tempted to pre-build something, resist; it usually means the next WP's plan is the place to have that conversation.

@@ -146,6 +146,128 @@ describe('FlightModel', () => {
     expect(Math.abs(lv.z)).toBeLessThan(1e-3);
   });
 
+  it('applyControls(0,0,0) leaves all surfaces at zero deflection', () => {
+    const world = new RAPIER.World({ x: 0, y: 0, z: 0 });
+    const aircraft = new Aircraft(world, config);
+    const fm = new FlightModel(aircraft);
+    // Apply a non-zero deflection first, then reset.
+    fm.applyControls({ aileron: 0.5, elevator: 0.5, rudder: 0.5 });
+    expect(fm.surfaces.some((s) => s.deflection !== 0)).toBe(true);
+    fm.applyControls({ aileron: 0, elevator: 0, rudder: 0 });
+    for (const s of fm.surfaces) {
+      expect(s.deflection).toBe(0);
+    }
+  });
+
+  it('aileron routes to opposite signs on wing-left and wing-right', () => {
+    const world = new RAPIER.World({ x: 0, y: 0, z: 0 });
+    const aircraft = new Aircraft(world, config);
+    const fm = new FlightModel(aircraft);
+    fm.applyControls({ aileron: 1, elevator: 0, rudder: 0 });
+    const wingLeft = fm.surfaces[0]!;  // 'wing-left'
+    const wingRight = fm.surfaces[1]!; // 'wing-right'
+    // Both must be deflected, with opposite signs
+    expect(wingLeft.deflection).not.toBe(0);
+    expect(wingRight.deflection).not.toBe(0);
+    expect(Math.sign(wingLeft.deflection)).toBe(-Math.sign(wingRight.deflection));
+    // h-stab and v-stab should remain neutral
+    expect(fm.surfaces[2]!.deflection).toBe(0);
+    expect(fm.surfaces[3]!.deflection).toBe(0);
+  });
+
+  it('elevator routes only to h-stab', () => {
+    const world = new RAPIER.World({ x: 0, y: 0, z: 0 });
+    const aircraft = new Aircraft(world, config);
+    const fm = new FlightModel(aircraft);
+    fm.applyControls({ aileron: 0, elevator: 1, rudder: 0 });
+    expect(fm.surfaces[0]!.deflection).toBe(0); // wing-left
+    expect(fm.surfaces[1]!.deflection).toBe(0); // wing-right
+    expect(fm.surfaces[2]!.deflection).not.toBe(0); // h-stab
+    expect(fm.surfaces[3]!.deflection).toBe(0); // v-stab
+  });
+
+  it('rudder routes only to v-stab', () => {
+    const world = new RAPIER.World({ x: 0, y: 0, z: 0 });
+    const aircraft = new Aircraft(world, config);
+    const fm = new FlightModel(aircraft);
+    fm.applyControls({ aileron: 0, elevator: 0, rudder: 1 });
+    expect(fm.surfaces[0]!.deflection).toBe(0); // wing-left
+    expect(fm.surfaces[1]!.deflection).toBe(0); // wing-right
+    expect(fm.surfaces[2]!.deflection).toBe(0); // h-stab
+    expect(fm.surfaces[3]!.deflection).not.toBe(0); // v-stab
+  });
+
+  it('+aileron produces a roll-right torque (angvel z component is negative)', () => {
+    // World frame at identity orientation: roll axis = body Z.
+    // Right-hand rule: roll right (right wing +X going to −Y) means ω points along −Z.
+    const world = new RAPIER.World({ x: 0, y: 0, z: 0 });
+    world.timestep = 1 / 60;
+    const aircraft = new Aircraft(world, config, {
+      linvel: new Vector3(0, 0, -30), // forward flight
+    });
+    const fm = new FlightModel(aircraft);
+    fm.applyControls({ aileron: 1, elevator: 0, rudder: 0 });
+    fm.applyForces(0); // pure aero — isolate roll torque from other axes
+    world.step();
+    const av = aircraft.body.angvel();
+    expect(av.z).toBeLessThan(-1e-3);
+  });
+
+  it('+elevator produces a pitch-up torque (angvel x component is positive)', () => {
+    // Pitch up: nose (−Z) rotates toward +Y; right-hand rule → ω along +X.
+    const world = new RAPIER.World({ x: 0, y: 0, z: 0 });
+    world.timestep = 1 / 60;
+    const aircraft = new Aircraft(world, config, {
+      linvel: new Vector3(0, 0, -30),
+    });
+    const fm = new FlightModel(aircraft);
+    fm.applyControls({ aileron: 0, elevator: 1, rudder: 0 });
+    fm.applyForces(0);
+    world.step();
+    const av = aircraft.body.angvel();
+    expect(av.x).toBeGreaterThan(1e-3);
+  });
+
+  it('+rudder produces a yaw-right torque (angvel y component is negative)', () => {
+    // Yaw right: nose (−Z) rotates toward +X; right-hand rule → ω along −Y.
+    const world = new RAPIER.World({ x: 0, y: 0, z: 0 });
+    world.timestep = 1 / 60;
+    const aircraft = new Aircraft(world, config, {
+      linvel: new Vector3(0, 0, -30),
+    });
+    const fm = new FlightModel(aircraft);
+    fm.applyControls({ aileron: 0, elevator: 0, rudder: 1 });
+    fm.applyForces(0);
+    world.step();
+    const av = aircraft.body.angvel();
+    expect(av.y).toBeLessThan(-1e-3);
+  });
+
+  it('zero controls + level airflow produces same per-surface forces as before WP6', () => {
+    // Regression guard: with neutral controls, the flight model behaves identically
+    // to the WP5 implementation. The pre-deflection reference is a matching FM with
+    // applyControls never called (deflection stays 0).
+    const world = new RAPIER.World({ x: 0, y: 0, z: 0 });
+    const aircraftRef = new Aircraft(world, config, { linvel: new Vector3(0, 0, -30) });
+    const fmRef = new FlightModel(aircraftRef);
+    aircraftRef.readBodyState();
+    const refForces = fmRef.surfaces.map((s) => {
+      const f = computeAeroForce(s, aircraftRef.bodyState);
+      return { x: f.force.x, y: f.force.y, z: f.force.z };
+    });
+
+    const aircraft = new Aircraft(world, config, { linvel: new Vector3(0, 0, -30) });
+    const fm = new FlightModel(aircraft);
+    fm.applyControls({ aileron: 0, elevator: 0, rudder: 0 });
+    aircraft.readBodyState();
+    for (let i = 0; i < fm.surfaces.length; i++) {
+      const r = computeAeroForce(fm.surfaces[i]!, aircraft.bodyState);
+      expect(r.force.x).toBeCloseTo(refForces[i]!.x, 6);
+      expect(r.force.y).toBeCloseTo(refForces[i]!.y, 6);
+      expect(r.force.z).toBeCloseTo(refForces[i]!.z, 6);
+    }
+  });
+
   it('1000 calls to applyForces complete in under 50 ms (allocation-free perf proxy)', () => {
     const world = new RAPIER.World({ x: 0, y: -9.81, z: 0 });
     const aircraft = new Aircraft(world, config, {

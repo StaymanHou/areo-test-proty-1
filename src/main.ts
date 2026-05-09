@@ -8,6 +8,7 @@ import { CameraController, CameraMode } from './world/camera';
 import { loadAircraftConfig } from './aircraft/config';
 import { Aircraft } from './aircraft/rigidbody';
 import { FlightModel } from './aircraft/flightmodel';
+import { Controls } from './aircraft/controls';
 
 async function bootstrap() {
   const mount = document.querySelector<HTMLDivElement>('#app');
@@ -41,11 +42,14 @@ async function bootstrap() {
   scene.add(aircraft.mesh);
 
   const flightModel = new FlightModel(aircraft);
+  const controls = new Controls(input);
 
   const loop = new GameLoop(
     {
       onPhysics: (dt) => {
-        flightModel.applyForces(0.6); // fixed 60% throttle until WP6 wires controls
+        controls.update(dt);
+        flightModel.applyControls(controls);
+        flightModel.applyForces(controls.throttle);
         world.timestep = dt;
         world.step();
       },
@@ -82,9 +86,32 @@ async function bootstrap() {
     keysController.disable();
     const camController = debug.gui.add(inputDisplay, 'camera').name('Camera').listen();
     camController.disable();
+
+    const controlsFolder = debug.gui.addFolder('Controls');
+    const liveValues = { aileron: 0, elevator: 0, rudder: 0, throttle: 0 };
+    controlsFolder.add(liveValues, 'aileron').listen().disable();
+    controlsFolder.add(liveValues, 'elevator').listen().disable();
+    controlsFolder.add(liveValues, 'rudder').listen().disable();
+    controlsFolder.add(liveValues, 'throttle').listen().disable();
+
+    const bindingsFolder = controlsFolder.addFolder('Bindings');
+    bindingsFolder.add(controls.keyMap, 'rollLeft').name('rollLeft (KeyboardEvent.code)');
+    bindingsFolder.add(controls.keyMap, 'rollRight').name('rollRight');
+    bindingsFolder.add(controls.keyMap, 'pitchUp').name('pitchUp');
+    bindingsFolder.add(controls.keyMap, 'pitchDown').name('pitchDown');
+    bindingsFolder.add(controls.keyMap, 'yawLeft').name('yawLeft');
+    bindingsFolder.add(controls.keyMap, 'yawRight').name('yawRight');
+    bindingsFolder.add(controls.keyMap, 'throttleUp').name('throttleUp');
+    bindingsFolder.add(controls.keyMap, 'throttleDown').name('throttleDown');
+    bindingsFolder.close();
+
     const updateDebugDisplay = () => {
       inputDisplay.keysHeld = [...input.state.keys].join(', ');
       inputDisplay.camera = cameraController.activeMode;
+      liveValues.aileron = controls.aileron;
+      liveValues.elevator = controls.elevator;
+      liveValues.rudder = controls.rudder;
+      liveValues.throttle = controls.throttle;
       requestAnimationFrame(updateDebugDisplay);
     };
     updateDebugDisplay();

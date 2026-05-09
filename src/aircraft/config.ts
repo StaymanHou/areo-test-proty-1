@@ -14,6 +14,7 @@ export interface AircraftSurfaceConfig {
   area: number;
   clCurve: LiftDragCurve;
   cdCurve: LiftDragCurve;
+  maxDeflectionRad?: number;
 }
 
 export interface AircraftConfig {
@@ -80,6 +81,15 @@ export function parseAircraftConfig(raw: unknown): AircraftConfig {
       );
     }
     const { cl, cd } = CURVE_LIBRARY[s.curve]!();
+    let maxDeflectionRad: number | undefined;
+    if (s.maxDeflectionRad !== undefined) {
+      if (typeof s.maxDeflectionRad !== 'number' || s.maxDeflectionRad <= 0) {
+        throw new Error(
+          `aircraft config: surfaces[${i}].maxDeflectionRad must be a positive number`,
+        );
+      }
+      maxDeflectionRad = s.maxDeflectionRad;
+    }
     return {
       name: s.name,
       position: asVec3(s.position, `surfaces[${i}].position`),
@@ -88,6 +98,7 @@ export function parseAircraftConfig(raw: unknown): AircraftConfig {
       area: s.area,
       clCurve: cl,
       cdCurve: cd,
+      maxDeflectionRad,
     };
   });
 

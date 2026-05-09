@@ -6,7 +6,6 @@ export interface InputState {
 }
 
 export type ActionName =
-  | 'forward' | 'backward' | 'strafeLeft' | 'strafeRight'
   | 'pitchUp' | 'pitchDown' | 'rollLeft' | 'rollRight'
   | 'yawLeft' | 'yawRight' | 'throttleUp' | 'throttleDown'
   | 'swapCamera' | 'pause';
@@ -14,14 +13,10 @@ export type ActionName =
 export type KeyMap = Record<ActionName, string>;
 
 export const DEFAULT_KEY_MAP: KeyMap = {
-  forward:      'KeyW',
-  backward:     'KeyS',
-  strafeLeft:   'KeyA',
-  strafeRight:  'KeyD',
   pitchUp:      'ArrowUp',
   pitchDown:    'ArrowDown',
-  rollLeft:     'ArrowLeft',
-  rollRight:    'ArrowRight',
+  rollLeft:     'KeyA',
+  rollRight:    'KeyD',
   yawLeft:      'KeyQ',
   yawRight:     'KeyE',
   throttleUp:   'ShiftLeft',

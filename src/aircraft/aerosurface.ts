@@ -19,7 +19,11 @@ export interface AeroSurfaceConfig {
   area: number;      // m²
   clCurve: LiftDragCurve;
   cdCurve: LiftDragCurve;
+  /** Maximum deflection magnitude in radians. Default ~25° (0.436 rad). */
+  maxDeflectionRad?: number;
 }
+
+export const DEFAULT_MAX_DEFLECTION_RAD = (25 * Math.PI) / 180;
 
 export interface BodyState {
   position: Vector3;
@@ -41,6 +45,7 @@ const _scratchInvQ = new Quaternion();
 const _scratchLocalFlow = new Vector3();
 const _scratchLiftDir = new Vector3();
 const _scratchDragDir = new Vector3();
+const _scratchDeflectQ = new Quaternion();
 
 export class AeroSurface {
   readonly position: Vector3;
@@ -50,6 +55,16 @@ export class AeroSurface {
   readonly clCurve: LiftDragCurve;
   readonly cdCurve: LiftDragCurve;
 
+  /** Rest (un-deflected) chord, snapshot at construction. */
+  readonly restChord: Vector3;
+  /** Rest (un-deflected) normal, snapshot at construction. */
+  readonly restNormal: Vector3;
+  /** Pre-baked rotation axis for deflections — `restNormal × restChord`, unit length. */
+  readonly spanAxis: Vector3;
+  readonly maxDeflectionRad: number;
+  /** Current deflection angle in radians; signed. Mutated via setDeflection. */
+  deflection = 0;
+
   constructor(config: AeroSurfaceConfig) {
     this.position = config.position.clone();
     this.normal = config.normal.clone().normalize();
@@ -57,6 +72,42 @@ export class AeroSurface {
     this.area = config.area;
     this.clCurve = config.clCurve;
     this.cdCurve = config.cdCurve;
+    this.maxDeflectionRad = config.maxDeflectionRad ?? DEFAULT_MAX_DEFLECTION_RAD;
+
+    this.restNormal = this.normal.clone();
+    this.restChord = this.chord.clone();
+    // Span axis = normal × chord. If parallel, surface geometry is degenerate.
+    const span = new Vector3().crossVectors(this.restNormal, this.restChord);
+    if (span.lengthSq() < 1e-9) {
+      throw new Error('AeroSurface: normal and chord must not be parallel');
+    }
+    this.spanAxis = span.normalize();
+  }
+
+  /**
+   * Set the current deflection angle (radians) and update `chord`/`normal` in
+   * place from the rest snapshot rotated about `spanAxis` by the clamped angle.
+   *
+   * Allocation-free: uses a module-scoped scratch quaternion.
+   */
+  setDeflection(rad: number): void {
+    let clamped = rad < -this.maxDeflectionRad
+      ? -this.maxDeflectionRad
+      : rad > this.maxDeflectionRad
+        ? this.maxDeflectionRad
+        : rad;
+    if (clamped === 0) {
+      // Normalize signed-zero to +0 so deflection comparisons are sign-stable.
+      clamped = 0;
+      this.deflection = 0;
+      this.chord.copy(this.restChord);
+      this.normal.copy(this.restNormal);
+      return;
+    }
+    this.deflection = clamped;
+    _scratchDeflectQ.setFromAxisAngle(this.spanAxis, clamped);
+    this.chord.copy(this.restChord).applyQuaternion(_scratchDeflectQ);
+    this.normal.copy(this.restNormal).applyQuaternion(_scratchDeflectQ);
   }
 }
 

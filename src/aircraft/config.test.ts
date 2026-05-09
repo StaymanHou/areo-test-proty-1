@@ -80,4 +80,31 @@ describe('parseAircraftConfig', () => {
     expect(() => parseAircraftConfig(null)).toThrow();
     expect(() => parseAircraftConfig('hi')).toThrow();
   });
+
+  it('maxDeflectionRad is undefined when absent (downstream defaults take over)', () => {
+    const cfg = parseAircraftConfig(validBaseline());
+    expect(cfg.surfaces[0]!.maxDeflectionRad).toBeUndefined();
+  });
+
+  it('parses an explicit maxDeflectionRad', () => {
+    const raw = validBaseline();
+    (raw.surfaces[0] as unknown as { maxDeflectionRad: number }).maxDeflectionRad = 0.4;
+    const cfg = parseAircraftConfig(raw);
+    expect(cfg.surfaces[0]!.maxDeflectionRad).toBe(0.4);
+  });
+
+  it('rejects non-positive maxDeflectionRad', () => {
+    const bad = validBaseline();
+    (bad.surfaces[0] as unknown as { maxDeflectionRad: number }).maxDeflectionRad = 0;
+    expect(() => parseAircraftConfig(bad)).toThrow(/maxDeflectionRad/);
+    const bad2 = validBaseline();
+    (bad2.surfaces[0] as unknown as { maxDeflectionRad: number }).maxDeflectionRad = -0.1;
+    expect(() => parseAircraftConfig(bad2)).toThrow(/maxDeflectionRad/);
+  });
+
+  it('rejects non-numeric maxDeflectionRad', () => {
+    const bad = validBaseline();
+    (bad.surfaces[0] as unknown as { maxDeflectionRad: unknown }).maxDeflectionRad = '0.4';
+    expect(() => parseAircraftConfig(bad)).toThrow(/maxDeflectionRad/);
+  });
 });

@@ -15,10 +15,40 @@ const _forceBuf = { x: 0, y: 0, z: 0 };
 const _pointBuf = { x: 0, y: 0, z: 0 };
 const _thrustWorld = new Vector3();
 
+export interface ControlInput {
+  /** [-1, +1]; +1 commands roll right. */
+  aileron: number;
+  /** [-1, +1]; +1 commands nose up. */
+  elevator: number;
+  /** [-1, +1]; +1 commands nose right. */
+  rudder: number;
+}
+
+interface ControlRoute {
+  surface: AeroSurface;
+  /** Sign multiplier applied to the control value. */
+  sign: number;
+  /** Which control axis drives this surface. */
+  axis: 'aileron' | 'elevator' | 'rudder';
+}
+
+// Sign conventions (see CONVENTIONS.md). Signs determined empirically by the
+// flight-model torque tests: a +control input must produce the documented body
+// motion (+aileron → roll right; +elevator → nose up; +rudder → nose right).
+// Geometry (standard surfaces: wing/h-stab normal=+Y, v-stab normal=+X, chord=−Z)
+// fixes the spanAxis for each surface; the sign multiplier here decides which
+// way the surface rotates about that axis to produce the commanded body motion.
+const _aileronRightSign = -1;
+const _aileronLeftSign = +1;
+const _elevatorSign = -1;
+const _rudderSign = -1;
+
 export class FlightModel {
   readonly surfaces: AeroSurface[];
   readonly aircraft: Aircraft;
   readonly maxThrustN: number;
+
+  private readonly routes: ControlRoute[];
 
   constructor(aircraft: Aircraft) {
     this.aircraft = aircraft;
@@ -31,8 +61,37 @@ export class FlightModel {
         area: s.area,
         clCurve: s.clCurve,
         cdCurve: s.cdCurve,
+        maxDeflectionRad: s.maxDeflectionRad,
       }),
     );
+
+    this.routes = [];
+    for (let i = 0; i < aircraft.config.surfaces.length; i++) {
+      const name = aircraft.config.surfaces[i]!.name;
+      const surface = this.surfaces[i]!;
+      if (name === 'wing-left') {
+        this.routes.push({ surface, sign: _aileronLeftSign, axis: 'aileron' });
+      } else if (name === 'wing-right') {
+        this.routes.push({ surface, sign: _aileronRightSign, axis: 'aileron' });
+      } else if (name === 'h-stab') {
+        this.routes.push({ surface, sign: _elevatorSign, axis: 'elevator' });
+      } else if (name === 'v-stab') {
+        this.routes.push({ surface, sign: _rudderSign, axis: 'rudder' });
+      }
+    }
+  }
+
+  /**
+   * Translate normalized control inputs into per-surface deflections.
+   * Each routed surface receives `controls[axis] * sign * surface.maxDeflectionRad`.
+   * Surfaces not in any route are left at deflection 0.
+   */
+  applyControls(controls: ControlInput): void {
+    for (let i = 0; i < this.routes.length; i++) {
+      const r = this.routes[i]!;
+      const value = controls[r.axis];
+      r.surface.setDeflection(value * r.sign * r.surface.maxDeflectionRad);
+    }
   }
 
   /**
