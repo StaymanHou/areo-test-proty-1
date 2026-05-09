@@ -1,7 +1,7 @@
 ---
 stage: roadmap
 state: in-progress
-updated: 2026-05-09
+updated: 2026-05-09 (WP8)
 ---
 
 # Roadmap
@@ -13,8 +13,8 @@ updated: 2026-05-09
 - [x] Project skeleton: web stack chosen, dev server, deploy path
 - [x] 6DOF rigid-body aircraft with plausible lift/drag/thrust/stall (WP2 loop, WP4 aerosurface, WP5 composition)
 - [x] Keyboard flight controls (WP6 — keyboard only; mouse deferred to WP7/Phase 3 polish; "feel natural" finalized in WP7)
-- [ ] Single aircraft rendered in a minimal 3D world (terrain + sky)
-- [ ] Runs at 60fps on a mid-range laptop in Chrome/Safari/Firefox
+- [x] Single aircraft rendered in a minimal 3D world (terrain + sky) (WP8 — flat 4000m terrain, procedural skybox, runway, control tower)
+- [ ] Runs at 60fps on a mid-range laptop in Chrome/Safari/Firefox (WP8 evidences 60fps for the world-rendering layer; full Phase 1 perf check is WP9 with cross-browser sweep)
 - [x] Camera follows the aircraft (chase + cockpit view)
 
 **Exit Criteria:** A developer can open the dev URL, take off, fly around, and crash — and it feels right. No missions, no UI chrome required.

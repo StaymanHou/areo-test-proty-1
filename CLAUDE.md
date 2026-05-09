@@ -84,7 +84,7 @@ No Docker. No backend.
 
 **Exit criteria:** A developer can open the dev URL, take off, fly around, and crash — and it feels right. 60fps on a mid-range laptop in Chrome / Safari / Firefox.
 
-**First work package:** WP1 (Project skeleton & dev loop) — see `docs/product/wbs.md`. Sized S.
+**Status (2026-05-09):** WP1–WP6 + WP8 shipped; WP7 (flight-feel tuning) paused at Phase F (external feel-check) pending WP8's horizon to land — now unblocked. WP9 (Phase 1 verification) is the final Phase 1 work package after WP7 completes. See `docs/product/wbs.md` for tasks.
 
 ## Key Decisions
 

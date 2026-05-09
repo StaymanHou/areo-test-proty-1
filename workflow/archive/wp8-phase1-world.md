@@ -1,10 +1,12 @@
 ---
 workflow: feature
-state: plan (complete)
+state: finalize (complete)
 created: 2026-05-09
+completed: 2026-05-09
 entry: spec
 drive_mode: full-autopilot
 wbs_ref: WP8
+ship_commit: f2946d2
 ---
 
 # Feature: WP8 — Phase 1 world (flat terrain + skybox + landmarks)
@@ -219,11 +221,11 @@ Spec was clear; planning resolved the four questions above. **Proceeding to Work
   - [x] verify-codify  <!-- status: COMPLETE — no new tests needed. Full suite 225/225 pass. fps-regression risk is in future WPs (WP20 visual polish); codifying browser-perf testing now is premature and aligns with SURFACE-2026-05-09-01's deferral to WP9. -->
 
 ## Current Node
-- **Path:** Feature > all phases COMPLETE → /feature-ship
-- **Active scope:** All 5 phases of WP8 complete. Suite 225/225 pass, tsc clean, vite build clean (987 KB gzipped, +9 KB from WP1 baseline). 60fps verified at the world-rendering layer. SURFACE-2026-05-09-02 (no-horizon viewport) RESOLVED. Two new SURFACE entries logged (SURFACE-04: Three.js cubemap contract lesson; SURFACE-05: WP7-trim observability dependency). Ready for /feature-ship.
+- **Path:** Feature > SHIPPED (commit f2946d2) → /feature-finalize
+- **Active scope:** WP8 shipped. All source + tests + workflow bookkeeping committed in one `feat(wp8): ...` commit per the WP7 precedent. Working tree clean. Awaiting `/feature-finalize` for archival.
 - **Blocked:** none
 - **Unvisited:** none
-- **Open discoveries:** none new — both surfaces from this WP already logged.
+- **Open discoveries:** none.
 
 ## Discoveries
 <!-- Format: [SURFACED-<date>] <target node> — <summary>
@@ -237,3 +239,26 @@ Spec was clear; planning resolved the four questions above. **Proceeding to Work
 - **Phases 2 + 3 are siblings** of each other (both depend only on Phase 1) but are sequenced linearly to keep verify-auto runs cheap and the build incremental. Either could be reordered without affecting Phase 4.
 - **Phase 4** is the user-visible wiring step. It's deliberately separate from the module phases so the spec's "Browser" outcomes have one phase to live under instead of being scattered across three.
 - **Phase 5** is a perf-only phase. Splitting it from Phase 4 makes the verify-self at Phase 4 about *correctness* (does it look right?) and Phase 5 about *budget* (does it run fast enough?) — different verification techniques, cleaner reasoning when one fails.
+
+## Retrospect
+
+- **What changed in our understanding:**
+  - **Three.js's CubeTexture API is two-faced.** Same constructor accepts either HTML-image-like objects OR `DataTexture` instances, with the upload-path branch chosen by inspecting `image[0].isDataTexture` deep inside `WebGLState.uploadCubeTexture`. The unit-test layer in vitest cannot detect a misuse of this contract because it has no GPU upload path — the failure mode is "JS happily constructs the object; WebGL then throws on first frame." The fix was a one-line edit; the *insight* was that "the unit test asserts shape but not contract" deserves a regression test that asserts the contract directly (`cubeTexture.images[i].isDataTexture === true`).
+  - **`scene-composition.test.ts` is a pattern worth keeping.** It mirrors `main.ts` wiring at the JS level (no canvas, no GPU). Both back-loop bugs would have been caught by it pre-Phase-4. Phase 1 / Phase 2 / Phase 3 had module-level tests but no integration test until Phase 4 surfaced the gap. Future WPs that wire new modules into `main.ts` should extend this file.
+  - **Plan-time geometry assumptions deserve a unit test.** The tower at `+Z 250` was a planning oversight — caught only by browser screenshot, not by tests. Codified as `landmarks.test.ts: default tower is in front of the default spawn` (`colliderDesc.translation.z < 0`). Any future "place X relative to spawn" needs a similar relational test.
+
+- **Assumptions that held:**
+  - `DataTexture` works in pure Node — vitest didn't need jsdom or happy-dom to exercise the procedural-pixel modules. The P1.6 build-time refinement (CanvasTexture → DataTexture) was the right call and saved a dev-deps headache.
+  - Tree-shaking proves module isolation: Phases 1-3 added no bundle weight until Phase 4 imported them; the dist hash literally didn't change through three phases of new code. Useful signal that "is this module wired up?" is checkable cheaply.
+  - Procedural CC0 textures (zero asset-fetch, ~100 KB total) were the right Phase 1 choice. Real art is WP20's job.
+  - The arch-D4 `terrain.ts` interface is a clean swap point. The `Terrain` interface I shipped is exactly the shape arch.md described; a Phase 3 heightmap is a drop-in.
+
+- **Assumptions that were wrong:**
+  - **"Phase 4 verify-self will be a 5-minute Playwright run."** Reality: it found 3 BLOCKING failures + a planning-time geometry bug. The back-loop took longer than any single phase's initial build. Lesson: when a phase first crosses an integration boundary, budget back-loop time explicitly.
+  - **"Spec said 2-3 landmarks; ship 2."** I shipped 2 (runway + tower). In hindsight, a third landmark (a marker at the runway's far end, or a hill-equivalent at the terrain edge) would have helped the verify-self subagent identify "the tower is approaching" — having only one vertical landmark made parallax hard to read. Filed mentally as input to WP20.
+  - **"Stats.js shows 60 FPS so headless will too."** It did, but I'd assumed maybe a 5-10fps headless penalty. Headless ran at 60.19 fps — the budget was overkill. Could have set a tighter AC.
+
+- **Approach delta:**
+  - **Build-time refinement P1.6** (DataTexture instead of CanvasTexture) wasn't in the original plan but made vitest-Node testing trivial. Documented inline; observable outcomes unchanged so it stayed within the build state, didn't trip a plan back-loop.
+  - **Camera far-plane bump** (P4.4) was planned as a *conditional* (only if needed for visibility) but ended up just being part of the Phase 4 wiring. Documented in CONVENTIONS.md.
+  - **Two phases of test-coverage codification** — the first cycle of codify tests (P1, P2, P3) tested module shape. Post-back-loop, I added `scene-composition.test.ts` which tests the *integration* shape. Future feature plans should pre-budget for both layers.

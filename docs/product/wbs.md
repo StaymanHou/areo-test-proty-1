@@ -1,7 +1,7 @@
 ---
 stage: wbs
 state: complete
-updated: 2026-05-09
+updated: 2026-05-09 (WP8)
 ---
 
 # Work Breakdown Structure
@@ -96,17 +96,17 @@ T-shirt sizing: **XS** ≤ 2h · **S** ≤ half day · **M** ≤ 1 day · **L** 
 - [ ] Cross-check feel with casual player (one external pair of eyes)
 - [ ] Commit tuned preset as the default `aircraft.json`
 
-### WP8: Phase 1 world (flat terrain + skybox + landmarks)
+### WP8: Phase 1 world (flat terrain + skybox + landmarks) — DONE 2026-05-09
 **Description:** Per arch D4, flat textured ground plane + skybox + 2–3 placed landmarks (runway, control tower) for spatial reference. Rapier ground collider. Runs at 60fps.
 **Phase:** 1
 **Dependencies:** WP1
-**Size:** S
+**Size:** S (actual: ~M — the back-loop fix for the cubemap upload-path contract added a half-day)
 **Tasks:**
-- [ ] `world/terrain.ts` with the arch-defined interface (`getHeight`, `getMesh`, `getCollider`)
-- [ ] Flat textured plane + static Rapier collider
-- [ ] Skybox (cubemap)
-- [ ] Placed runway (textured quad) + a single landmark tower
-- [ ] Sanity-check 60fps budget with the aircraft flying
+- [x] `world/terrain.ts` with the arch-defined interface (`getHeight`, `getMesh`, `getColliderDesc` — descriptor-not-collider, slight rename from arch.md's `getCollider`)
+- [x] Flat textured plane + static Rapier collider (4000m × 4000m, procedural checker DataTexture)
+- [x] Skybox (procedural CubeTexture, 6 faces × 256², gradient sky + sun on +X)
+- [x] Placed runway (30m × 600m along world Z, painted on terrain — no separate collider) + a single landmark tower (8m × 30m at world (40, 0, -250) with static cuboid collider)
+- [x] Sanity-check 60fps budget with the aircraft flying (60fps Chrome + 60.19fps Playwright headless)
 
 ### WP9: Phase 1 verification
 **Description:** Meets Phase 1 exit criteria. Deployable dev build; a developer can open the URL, take off, fly around, and crash; 60fps on a mid-range laptop in Chrome/Safari/Firefox.
