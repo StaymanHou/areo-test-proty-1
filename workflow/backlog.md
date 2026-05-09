@@ -4,6 +4,26 @@ Surface-notes from workflow runs. Consumed and resolved by higher-level workflow
 
 ## Open
 
+### SURFACE-2026-05-09-02 — No-horizon viewport blocks visual confirmation of attitude
+- **Source:** feature:build (WP7 Phase E tuning session)
+- **Target level:** product:wbs
+- **Type:** dependency / observability gap
+- **Summary:** During the WP7 Phase E tuning session, bank and pitch attitudes were not visually confirmable because the chase-cam renders a uniform sky-blue viewport with no horizon, terrain, or landmark in frame. Tuning relied on the weak signal of "doesn't crash" + lil-gui Controls readouts.
+- **Context:** Affects WP7 Phase F (external casual-player feel-check) — without spatial reference a non-developer cannot evaluate flight feel. Per the user's session-pause note before this run, WP8 first then WP7 was a viable order; this surfaces post-hoc evidence supporting that order.
+- **Suggested action:** Either (a) merge WP8 (Phase 1 world: terrain + skybox + landmarks) before Phase F runs, OR (b) defer the WP7 Phase F feel-check until after WP8 lands. Phase F is primed to ESCALATE-pause for casual-player nomination — that's the natural decision point.
+- **Priority:** medium (blocks WP7 Phase F's external feel-check from producing a useful verdict; not blocking the rest of WP7)
+- **Status:** pending
+
+### SURFACE-2026-05-09-03 — `window.__aircraft` debug telemetry hook not implemented
+- **Source:** feature:build (WP7 Phase E tuning session)
+- **Target level:** product:wbs (likely WP9 Phase 1 verification, paired with SURFACE-2026-05-09-01)
+- **Type:** observability gap / tooling
+- **Summary:** WP7 Phase E tuning had no programmatic way to read aircraft pitch/altitude/airspeed/bank-angle. The only readouts were the existing lil-gui Controls panel and screenshots (uninformative without a horizon). Future tuning passes (and the proposed Playwright e2e infra in SURFACE-2026-05-09-01) would benefit from a debug-only `window.__aircraft` hook exposing live numeric state.
+- **Context:** Mentioned in passing in WP6 retro and SURFACE-2026-05-09-01's "Suggested action" — WP9 already targets this. Phase E surfaces it again as a real (rather than hypothetical) gap.
+- **Suggested action:** At WP9 (Phase 1 verification), add a debug-only `window.__aircraft = { body, flightModel, getState: () => ({...}) }` hook in `src/main.ts`'s `if (debug) {...}` block. Use it both for Playwright assertions and for a future tuning-readouts panel in lil-gui.
+- **Priority:** low–medium (tracked alongside SURFACE-2026-05-09-01; both wait for WP9 timing)
+- **Status:** pending
+
 ### SURFACE-2026-05-09-01 — End-to-end browser test infrastructure not configured
 - **Source:** feature:verify-codify (WP6 Phase 4)
 - **Target level:** product:wbs (likely WP9 Phase 1 verification, or a dedicated tooling WP)

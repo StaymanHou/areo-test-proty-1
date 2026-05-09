@@ -22,3 +22,7 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Playwright MCP scratch (console logs, screenshots) from verify-self runs
+.playwright-mcp/
+/*.png

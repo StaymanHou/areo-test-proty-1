@@ -111,4 +111,55 @@ describe('Aircraft (rigidbody)', () => {
     // Expected: F·dt/m = 10000 * (1/60) / 1000 = 0.16667 m/s
     expect(lv.x).toBeCloseTo(10000 / 60 / 1000, 3);
   });
+
+  it('setMassProperties updates body mass observed via body.mass() (after step)', () => {
+    // Note: body.mass() reflects total mass after the next physics step (per
+    // Rapier docs). We step once to settle, then change, step again, and read.
+    const world = new RAPIER.World({ x: 0, y: 0, z: 0 });
+    world.timestep = 1 / 60;
+    const aircraft = new Aircraft(world, config);
+    world.step();
+    // Rapier stores mass as f32 — relative precision ≈ 1e-6, absolute slack
+    // around 1e-3 at mass~1000, ~3e-3 at mass~2500.
+    expect(aircraft.body.mass()).toBeCloseTo(1000, 2);
+    aircraft.setMassProperties(2500, new Vector3(4000, 8000, 4000));
+    world.step();
+    expect(aircraft.body.mass()).toBeCloseTo(2500, 2);
+  });
+
+  it('setMassProperties is idempotent', () => {
+    const world = new RAPIER.World({ x: 0, y: 0, z: 0 });
+    world.timestep = 1 / 60;
+    const aircraft = new Aircraft(world, config);
+    aircraft.setMassProperties(1500, new Vector3(2000, 4000, 2000));
+    world.step();
+    const m1 = aircraft.body.mass();
+    aircraft.setMassProperties(1500, new Vector3(2000, 4000, 2000));
+    world.step();
+    const m2 = aircraft.body.mass();
+    expect(m1).toBeCloseTo(1500, 2);
+    expect(m2).toBe(m1);
+  });
+
+  it('setMassProperties affects observed acceleration under a fixed force', () => {
+    // F = m·a — doubling mass should halve the acceleration.
+    const world = new RAPIER.World({ x: 0, y: 0, z: 0 });
+    world.timestep = 1 / 60;
+    const aircraft = new Aircraft(world, config);
+    aircraft.setMassProperties(2000, new Vector3(3000, 6000, 3000));
+    aircraft.body.addForce({ x: 10000, y: 0, z: 0 }, true);
+    world.step();
+    const lv = aircraft.body.linvel();
+    // Expected: F·dt/m = 10000 * (1/60) / 2000 = 0.0833 m/s
+    expect(lv.x).toBeCloseTo(10000 / 60 / 2000, 3);
+  });
+
+  it('setMassProperties wakes a sleeping body', () => {
+    const world = new RAPIER.World({ x: 0, y: 0, z: 0 });
+    const aircraft = new Aircraft(world, config);
+    aircraft.body.sleep();
+    expect(aircraft.body.isSleeping()).toBe(true);
+    aircraft.setMassProperties(1500, new Vector3(2000, 4000, 2000));
+    expect(aircraft.body.isSleeping()).toBe(false);
+  });
 });

@@ -287,3 +287,6 @@ None that require a back-loop. WP10 is a *planned* arch revision at the Phase 1â
 
 Recommend `/product-context` next (transition P9).
 
+## Session Pause â€” 2026-05-09 09:05
+Paused after WP6 finalize. See `workflow/.session.md` to resume.
+

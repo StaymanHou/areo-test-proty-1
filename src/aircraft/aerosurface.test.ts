@@ -4,11 +4,13 @@ import {
   AeroSurface,
   AIR_DENSITY,
   type BodyState,
+  buildSymmetricFlatPlateCurves,
   computeAeroForce,
   computeAirflowAtPoint,
   computeAngleOfAttack,
   createAeroSurface,
   createSymmetricFlatPlateCurves,
+  DEFAULT_FLAT_PLATE_PARAMS,
   type LiftDragCurve,
   lookupLiftDragCurve,
 } from './aerosurface';
@@ -509,5 +511,179 @@ describe('AeroSurface — WP6: deflection support', () => {
     const r1 = computeAeroForce(s, body);
     // Lift component (Y) should differ — deflection changes effective AoA.
     expect(Math.abs(r1.force.y - f0.y)).toBeGreaterThan(0.1);
+  });
+});
+
+describe('buildSymmetricFlatPlateCurves', () => {
+  it('emits 7 CL knots and 5 CD knots', () => {
+    const { cl, cd } = buildSymmetricFlatPlateCurves(DEFAULT_FLAT_PLATE_PARAMS);
+    expect(cl).toHaveLength(7);
+    expect(cd).toHaveLength(5);
+  });
+
+  it('with default params, evaluates identically to createSymmetricFlatPlateCurves', () => {
+    const a = createSymmetricFlatPlateCurves();
+    const b = buildSymmetricFlatPlateCurves(DEFAULT_FLAT_PLATE_PARAMS);
+    // Sample CL/CD at a representative alpha grid and compare via lookup.
+    const alphas = [-1.4, -0.5, -0.2, -0.05, 0, 0.05, 0.2, 0.5, 1.4];
+    for (const α of alphas) {
+      expect(lookupLiftDragCurve(b.cl, α)).toBe(lookupLiftDragCurve(a.cl, α));
+      expect(lookupLiftDragCurve(b.cd, α)).toBe(lookupLiftDragCurve(a.cd, α));
+    }
+  });
+
+  it('CL_max is derived as clSlope · stallAlpha', () => {
+    const params = { ...DEFAULT_FLAT_PLATE_PARAMS, clSlope: 8, stallAlpha: 0.3 };
+    const { cl } = buildSymmetricFlatPlateCurves(params);
+    // The α=stallAlpha knot is index 4 in the 7-knot layout (after −π/2, −2α, −α, 0).
+    expect(cl[4]!.alpha).toBeCloseTo(0.3, 12);
+    expect(cl[4]!.value).toBeCloseTo(8 * 0.3, 12);
+  });
+
+  it('raising clSlope monotonically raises pre-stall CL at a fixed sub-stall alpha', () => {
+    const lo = buildSymmetricFlatPlateCurves({ ...DEFAULT_FLAT_PLATE_PARAMS, clSlope: 4 });
+    const hi = buildSymmetricFlatPlateCurves({ ...DEFAULT_FLAT_PLATE_PARAMS, clSlope: 9 });
+    const α = 0.1; // ~5.7°, well pre-stall
+    expect(lookupLiftDragCurve(hi.cl, α)).toBeGreaterThan(lookupLiftDragCurve(lo.cl, α));
+  });
+
+  it('raising cdMin raises drag at α = 0', () => {
+    const lo = buildSymmetricFlatPlateCurves({ ...DEFAULT_FLAT_PLATE_PARAMS, cdMin: 0.02 });
+    const hi = buildSymmetricFlatPlateCurves({ ...DEFAULT_FLAT_PLATE_PARAMS, cdMin: 0.10 });
+    expect(lookupLiftDragCurve(hi.cd, 0)).toBeGreaterThan(lookupLiftDragCurve(lo.cd, 0));
+  });
+
+  it('CD knot endpoints reflect cdMax and stall knots reflect cdStall', () => {
+    const { cd } = buildSymmetricFlatPlateCurves({
+      ...DEFAULT_FLAT_PLATE_PARAMS,
+      cdStall: 0.07,
+      cdMax: 1.5,
+    });
+    expect(cd[0]!.value).toBeCloseTo(1.5, 12);
+    expect(cd[cd.length - 1]!.value).toBeCloseTo(1.5, 12);
+    expect(cd[1]!.value).toBeCloseTo(0.07, 12);
+    expect(cd[3]!.value).toBeCloseTo(0.07, 12);
+  });
+});
+
+describe('AeroSurface.setGeometry', () => {
+  it('partial update of area only leaves geometry untouched', () => {
+    const s = makeFlatPlateSurface();
+    const restNormal0 = s.restNormal.clone();
+    const restChord0 = s.restChord.clone();
+    const spanAxis0 = s.spanAxis.clone();
+    s.setGeometry({ area: 9 });
+    expect(s.area).toBe(9);
+    expect(s.restNormal).toEqual(restNormal0);
+    expect(s.restChord).toEqual(restChord0);
+    expect(s.spanAxis).toEqual(spanAxis0);
+  });
+
+  it('partial update of position only leaves geometry untouched', () => {
+    const s = makeFlatPlateSurface();
+    const spanAxis0 = s.spanAxis.clone();
+    s.setGeometry({ position: new Vector3(5, 6, 7) });
+    expect(s.position.x).toBe(5);
+    expect(s.position.y).toBe(6);
+    expect(s.position.z).toBe(7);
+    expect(s.spanAxis).toEqual(spanAxis0);
+  });
+
+  it('updating normal+chord re-bakes restNormal/restChord/spanAxis', () => {
+    const s = makeFlatPlateSurface();
+    // Original: normal=(0,1,0), chord=(0,0,-1), spanAxis=normal×chord=(1,0,0).
+    // Switch to v-stab geometry: normal=(1,0,0), chord=(0,0,-1) → spanAxis=(0,1,0).
+    s.setGeometry({ normal: new Vector3(1, 0, 0), chord: new Vector3(0, 0, -1) });
+    expect(s.restNormal.x).toBeCloseTo(1, 12);
+    expect(s.restNormal.y).toBeCloseTo(0, 12);
+    expect(s.restNormal.z).toBeCloseTo(0, 12);
+    expect(s.restChord.x).toBeCloseTo(0, 12);
+    expect(s.restChord.z).toBeCloseTo(-1, 12);
+    expect(s.spanAxis.x).toBeCloseTo(0, 9);
+    expect(s.spanAxis.y).toBeCloseTo(1, 9);
+    expect(s.spanAxis.z).toBeCloseTo(0, 9);
+  });
+
+  it('renormalizes non-unit normal and chord', () => {
+    const s = makeFlatPlateSurface();
+    s.setGeometry({ normal: new Vector3(0, 5, 0), chord: new Vector3(0, 0, -3) });
+    expect(s.normal.length()).toBeCloseTo(1, 12);
+    expect(s.chord.length()).toBeCloseTo(1, 12);
+  });
+
+  it('resets deflection to 0 after geometry change', () => {
+    const s = makeFlatPlateSurface();
+    s.setDeflection(0.2);
+    expect(s.deflection).toBeCloseTo(0.2, 12);
+    s.setGeometry({ normal: new Vector3(1, 0, 0), chord: new Vector3(0, 0, -1) });
+    expect(s.deflection).toBe(0);
+    // chord/normal should match the new rest snapshots (no residual rotation).
+    expect(s.normal.x).toBeCloseTo(1, 12);
+    expect(s.chord.z).toBeCloseTo(-1, 12);
+  });
+
+  it('throws on degenerate geometry (parallel normal and chord)', () => {
+    const s = makeFlatPlateSurface();
+    expect(() =>
+      s.setGeometry({ normal: new Vector3(1, 0, 0), chord: new Vector3(2, 0, 0) }),
+    ).toThrow(/parallel/);
+  });
+
+  it('does not retain references to caller Vector3s', () => {
+    const s = makeFlatPlateSurface();
+    const callerPos = new Vector3(1, 2, 3);
+    s.setGeometry({ position: callerPos });
+    callerPos.set(99, 99, 99);
+    expect(s.position.x).toBe(1);
+    expect(s.position.y).toBe(2);
+    expect(s.position.z).toBe(3);
+  });
+});
+
+describe('AeroSurface.setCurves', () => {
+  it('replaces clCurve/cdCurve and a subsequent computeAeroForce uses the new curves', () => {
+    // Start with a zero-CL curve so lift is zero, then swap to a high-CL curve.
+    const ZERO_CL: LiftDragCurve = [
+      { alpha: -Math.PI / 2, value: 0 },
+      { alpha: 0, value: 0 },
+      { alpha: Math.PI / 2, value: 0 },
+    ];
+    const HIGH_CL: LiftDragCurve = [
+      { alpha: -Math.PI / 2, value: 0 },
+      { alpha: 0, value: 0 },
+      { alpha: 0.2, value: 5 }, // very high CL at 0.2 rad
+      { alpha: Math.PI / 2, value: 0 },
+    ];
+    const ZERO_CD: LiftDragCurve = [
+      { alpha: -Math.PI / 2, value: 0 },
+      { alpha: 0, value: 0 },
+      { alpha: Math.PI / 2, value: 0 },
+    ];
+    const s = createAeroSurface({
+      position: new Vector3(0, 0, 0),
+      normal: new Vector3(0, 1, 0),
+      chord: new Vector3(0, 0, -1),
+      area: 1,
+      clCurve: ZERO_CL,
+      cdCurve: ZERO_CD,
+    });
+    // α=10° flow.
+    const angle = (10 * Math.PI) / 180;
+    const speed = 10;
+    const linvel = new Vector3(0, Math.sin(angle) * speed, -Math.cos(angle) * speed);
+    const body: BodyState = {
+      position: new Vector3(),
+      quaternion: new Quaternion(),
+      linvel,
+      angvel: new Vector3(),
+    };
+    const liftBefore = computeAeroForce(s, body).force.y;
+    expect(liftBefore).toBeCloseTo(0, 9);
+
+    s.setCurves(HIGH_CL, ZERO_CD);
+    const liftAfter = computeAeroForce(s, body).force.y;
+    expect(liftAfter).toBeGreaterThan(0);
+    // Sanity: 0.5·ρ·v²·A·CL with CL ~ interp at α=10° ≈ 2.5 should be ~150 N.
+    expect(liftAfter).toBeGreaterThan(50);
   });
 });

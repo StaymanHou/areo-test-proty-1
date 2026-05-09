@@ -46,7 +46,8 @@ const _rudderSign = -1;
 export class FlightModel {
   readonly surfaces: AeroSurface[];
   readonly aircraft: Aircraft;
-  readonly maxThrustN: number;
+  /** Mutable for WP7 live tuning; do not mutate during the per-tick hot path. */
+  maxThrustN: number;
 
   private readonly routes: ControlRoute[];
 

@@ -9,6 +9,7 @@ import { loadAircraftConfig } from './aircraft/config';
 import { Aircraft } from './aircraft/rigidbody';
 import { FlightModel } from './aircraft/flightmodel';
 import { Controls } from './aircraft/controls';
+import { attachFlightModelTuning } from './engine/tuning';
 
 async function bootstrap() {
   const mount = document.querySelector<HTMLDivElement>('#app');
@@ -115,6 +116,8 @@ async function bootstrap() {
       requestAnimationFrame(updateDebugDisplay);
     };
     updateDebugDisplay();
+
+    attachFlightModelTuning(debug.gui, aircraft, flightModel);
   }
 
   loop.start();

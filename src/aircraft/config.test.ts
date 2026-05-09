@@ -1,6 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import { Vector3 } from 'three';
+import { DEFAULT_FLAT_PLATE_PARAMS } from './aerosurface';
 import { parseAircraftConfig } from './config';
+
+// Vite-resolved JSON import — no Node types needed. ?import-style works in tests.
+import canonicalAircraftConfig from '../../public/config/aircraft.json' with { type: 'json' };
 
 const validBaseline = () => ({
   mass: 1000,
@@ -106,5 +110,114 @@ describe('parseAircraftConfig', () => {
     const bad = validBaseline();
     (bad.surfaces[0] as unknown as { maxDeflectionRad: unknown }).maxDeflectionRad = '0.4';
     expect(() => parseAircraftConfig(bad)).toThrow(/maxDeflectionRad/);
+  });
+
+  // --- Parametric curve schema (WP7 Phase A) ---
+
+  const validParametricCurve = () => ({
+    type: 'symmetric-flat-plate',
+    clSlope: 6.5,
+    stallAlpha: 0.27,
+    clPostStall: 0.5,
+    cdMin: 0.025,
+    cdStall: 0.06,
+    cdMax: 1.1,
+  });
+
+  it('bare-string curve resolves to default params and exposes them on the surface', () => {
+    const cfg = parseAircraftConfig(validBaseline());
+    const s = cfg.surfaces[0]!;
+    expect(s.curveType).toBe('symmetric-flat-plate');
+    expect(s.curveParams.clSlope).toBeCloseTo(2 * Math.PI, 12);
+    expect(s.curveParams.stallAlpha).toBeCloseTo((15 * Math.PI) / 180, 12);
+    expect(s.curveParams.clPostStall).toBe(0.6);
+    expect(s.curveParams.cdMin).toBe(0.02);
+    expect(s.curveParams.cdStall).toBe(0.05);
+    expect(s.curveParams.cdMax).toBe(1.2);
+  });
+
+  it('object-form curve parses with all 6 knobs', () => {
+    const raw = validBaseline();
+    raw.surfaces[0]!.curve = validParametricCurve() as unknown as string;
+    const cfg = parseAircraftConfig(raw);
+    const p = cfg.surfaces[0]!.curveParams;
+    expect(p.clSlope).toBe(6.5);
+    expect(p.stallAlpha).toBe(0.27);
+    expect(p.clPostStall).toBe(0.5);
+    expect(p.cdMin).toBe(0.025);
+    expect(p.cdStall).toBe(0.06);
+    expect(p.cdMax).toBe(1.1);
+  });
+
+  it('rejects partial object form (every knob required)', () => {
+    const raw = validBaseline();
+    const partial = { type: 'symmetric-flat-plate', clSlope: 7 };
+    raw.surfaces[0]!.curve = partial as unknown as string;
+    expect(() => parseAircraftConfig(raw)).toThrow(/stallAlpha|number/);
+  });
+
+  it('rejects unknown curve.type', () => {
+    const raw = validBaseline();
+    const bad = { ...validParametricCurve(), type: 'totally-fake' };
+    raw.surfaces[0]!.curve = bad as unknown as string;
+    expect(() => parseAircraftConfig(raw)).toThrow(/type/);
+  });
+
+  it('rejects clSlope ≤ 0', () => {
+    const raw = validBaseline();
+    const bad = { ...validParametricCurve(), clSlope: 0 };
+    raw.surfaces[0]!.curve = bad as unknown as string;
+    expect(() => parseAircraftConfig(raw)).toThrow(/clSlope/);
+  });
+
+  it('rejects stallAlpha out of (0, π/2)', () => {
+    const raw = validBaseline();
+    raw.surfaces[0]!.curve = { ...validParametricCurve(), stallAlpha: 0 } as unknown as string;
+    expect(() => parseAircraftConfig(raw)).toThrow(/stallAlpha/);
+    raw.surfaces[0]!.curve = { ...validParametricCurve(), stallAlpha: Math.PI / 2 } as unknown as string;
+    expect(() => parseAircraftConfig(raw)).toThrow(/stallAlpha/);
+  });
+
+  it('rejects clPostStall < 0', () => {
+    const raw = validBaseline();
+    raw.surfaces[0]!.curve = { ...validParametricCurve(), clPostStall: -0.01 } as unknown as string;
+    expect(() => parseAircraftConfig(raw)).toThrow(/clPostStall/);
+  });
+
+  it('rejects cdMin < 0', () => {
+    const raw = validBaseline();
+    raw.surfaces[0]!.curve = { ...validParametricCurve(), cdMin: -0.01 } as unknown as string;
+    expect(() => parseAircraftConfig(raw)).toThrow(/cdMin/);
+  });
+
+  it('rejects cdStall < cdMin', () => {
+    const raw = validBaseline();
+    raw.surfaces[0]!.curve = {
+      ...validParametricCurve(),
+      cdMin: 0.1,
+      cdStall: 0.05,
+    } as unknown as string;
+    expect(() => parseAircraftConfig(raw)).toThrow(/cdStall/);
+  });
+
+  it('rejects cdMax < cdStall', () => {
+    const raw = validBaseline();
+    raw.surfaces[0]!.curve = {
+      ...validParametricCurve(),
+      cdStall: 0.5,
+      cdMax: 0.4,
+    } as unknown as string;
+    expect(() => parseAircraftConfig(raw)).toThrow(/cdMax/);
+  });
+
+  it('canonical public/config/aircraft.json on disk parses with the new schema', () => {
+    // Codifies the integration-boundary invariant verified live in WP7 Phase A
+    // verify-self: the shipped aircraft.json must keep parsing as the schema evolves.
+    const cfg = parseAircraftConfig(canonicalAircraftConfig);
+    expect(cfg.surfaces).toHaveLength(4);
+    for (const s of cfg.surfaces) {
+      expect(s.curveType).toBe('symmetric-flat-plate');
+      expect(s.curveParams).toEqual(DEFAULT_FLAT_PLATE_PARAMS);
+    }
   });
 });

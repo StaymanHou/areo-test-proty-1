@@ -114,6 +114,22 @@ export class Aircraft {
   get bodyState(): BodyState {
     return this._state;
   }
+
+  /**
+   * Live-tuning entry point: replace the body's additional mass + principal
+   * inertia. Wakes the body if it was sleeping.
+   *
+   * Call from GUI-event handlers, never the per-tick hot path.
+   */
+  setMassProperties(mass: number, inertia: Vector3): void {
+    this.body.setAdditionalMassProperties(
+      mass,
+      { x: 0, y: 0, z: 0 },
+      { x: inertia.x, y: inertia.y, z: inertia.z },
+      _identityRot,
+      true,
+    );
+  }
 }
 
 export function attachAircraftToScene(aircraft: Aircraft, scene: Scene): void {

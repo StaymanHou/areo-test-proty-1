@@ -46,22 +46,27 @@ const _scratchLocalFlow = new Vector3();
 const _scratchLiftDir = new Vector3();
 const _scratchDragDir = new Vector3();
 const _scratchDeflectQ = new Quaternion();
+const _scratchSpan = new Vector3();
 
 export class AeroSurface {
-  readonly position: Vector3;
-  readonly normal: Vector3;
-  readonly chord: Vector3;
-  readonly area: number;
-  readonly clCurve: LiftDragCurve;
-  readonly cdCurve: LiftDragCurve;
+  // Geometry + curves are mutable via setGeometry / setCurves (WP7 live tuning).
+  // Do not mutate these fields directly — re-baking restNormal/restChord/spanAxis
+  // is required after geometry changes; setGeometry handles that atomically.
+  position: Vector3;
+  normal: Vector3;
+  chord: Vector3;
+  area: number;
+  clCurve: LiftDragCurve;
+  cdCurve: LiftDragCurve;
 
-  /** Rest (un-deflected) chord, snapshot at construction. */
-  readonly restChord: Vector3;
-  /** Rest (un-deflected) normal, snapshot at construction. */
-  readonly restNormal: Vector3;
+  /** Rest (un-deflected) chord, refreshed by setGeometry. */
+  restChord: Vector3;
+  /** Rest (un-deflected) normal, refreshed by setGeometry. */
+  restNormal: Vector3;
   /** Pre-baked rotation axis for deflections — `restNormal × restChord`, unit length. */
-  readonly spanAxis: Vector3;
-  readonly maxDeflectionRad: number;
+  spanAxis: Vector3;
+  /** Mutable for WP7 live tuning; do not mutate during the per-tick hot path. */
+  maxDeflectionRad: number;
   /** Current deflection angle in radians; signed. Mutated via setDeflection. */
   deflection = 0;
 
@@ -108,6 +113,53 @@ export class AeroSurface {
     _scratchDeflectQ.setFromAxisAngle(this.spanAxis, clamped);
     this.chord.copy(this.restChord).applyQuaternion(_scratchDeflectQ);
     this.normal.copy(this.restNormal).applyQuaternion(_scratchDeflectQ);
+  }
+
+  /**
+   * Live-tuning entry point: update one or more geometric fields and re-bake
+   * the rest snapshots + spanAxis. Resets deflection to 0 because the prior
+   * deflection angle is meaningless against new rest snapshots.
+   *
+   * Call from GUI-event handlers, never the per-tick hot path.
+   */
+  setGeometry(opts: {
+    position?: Vector3;
+    normal?: Vector3;
+    chord?: Vector3;
+    area?: number;
+  }): void {
+    if (opts.position !== undefined) {
+      this.position.copy(opts.position);
+    }
+    if (opts.area !== undefined) {
+      this.area = opts.area;
+    }
+    if (opts.normal !== undefined) {
+      this.normal.copy(opts.normal).normalize();
+    }
+    if (opts.chord !== undefined) {
+      this.chord.copy(opts.chord).normalize();
+    }
+    if (opts.normal !== undefined || opts.chord !== undefined) {
+      // Re-bake rest snapshots and spanAxis from the (now-current) normal+chord.
+      _scratchSpan.crossVectors(this.normal, this.chord);
+      if (_scratchSpan.lengthSq() < 1e-9) {
+        throw new Error('AeroSurface.setGeometry: normal and chord must not be parallel');
+      }
+      this.restNormal.copy(this.normal);
+      this.restChord.copy(this.chord);
+      this.spanAxis.copy(_scratchSpan).normalize();
+      this.deflection = 0;
+    }
+  }
+
+  /**
+   * Live-tuning entry point: replace the CL/CD curve references.
+   * Allocation-free (just two reference assignments).
+   */
+  setCurves(cl: LiftDragCurve, cd: LiftDragCurve): void {
+    this.clCurve = cl;
+    this.cdCurve = cd;
   }
 }
 
@@ -190,32 +242,73 @@ export function lookupLiftDragCurve(curve: LiftDragCurve, alpha: number): number
 }
 
 /**
- * Build a Gazebo-style symmetric flat-plate CL/CD curve pair.
- * Pre-stall: linear CL slope 2π·α (thin-airfoil theory) up to stall_alpha.
- * Post-stall: drops toward flat-plate region near ±π/2.
- * CD: small at α=0, rises with |α|, peaks near ±π/2.
- *
- * These are sane defaults for tests and a WP5 starting point — WP7 tunes for feel.
+ * Tunable knobs for the symmetric-flat-plate CL/CD curve family.
+ * CL_max is derived as `clSlope · stallAlpha` — exposing both invites contradictory inputs.
+ * Validation lives in `parseAircraftConfig`.
  */
-export function createSymmetricFlatPlateCurves(): { cl: LiftDragCurve; cd: LiftDragCurve } {
-  const stall = (15 * Math.PI) / 180; // ~15° stall
+export interface SymmetricFlatPlateParams {
+  /** Pre-stall CL slope in rad⁻¹. Thin-airfoil theory gives 2π. */
+  clSlope: number;
+  /** Stall angle of attack in radians (where CL peaks). */
+  stallAlpha: number;
+  /** CL value at 2·stallAlpha (post-stall plateau). */
+  clPostStall: number;
+  /** CD at α = 0 (parasite drag floor). */
+  cdMin: number;
+  /** CD at ±stallAlpha. */
+  cdStall: number;
+  /** CD at ±π/2 (broadside drag peak). */
+  cdMax: number;
+}
+
+/** Defaults reproduce the original `createSymmetricFlatPlateCurves` output exactly. */
+export const DEFAULT_FLAT_PLATE_PARAMS: SymmetricFlatPlateParams = {
+  clSlope: 2 * Math.PI,
+  stallAlpha: (15 * Math.PI) / 180,
+  clPostStall: 0.6,
+  cdMin: 0.02,
+  cdStall: 0.05,
+  cdMax: 1.2,
+};
+
+/**
+ * Build a Gazebo-style symmetric flat-plate CL/CD curve pair from 6 knobs.
+ * Pre-stall: linear CL slope `clSlope·α` (thin-airfoil theory) up to `stallAlpha`.
+ * Post-stall: drops toward flat-plate region near ±π/2.
+ * CD: `cdMin` at α=0, rising through `cdStall` to `cdMax` at ±π/2.
+ *
+ * Always emits 7 CL knots and 5 CD knots in the same shape as the legacy default.
+ */
+export function buildSymmetricFlatPlateCurves(
+  params: SymmetricFlatPlateParams,
+): { cl: LiftDragCurve; cd: LiftDragCurve } {
+  const { clSlope, stallAlpha, clPostStall, cdMin, cdStall, cdMax } = params;
+  const clMax = clSlope * stallAlpha;
   const cl: CurvePoint[] = [
     { alpha: -Math.PI / 2, value: 0 },
-    { alpha: -stall * 2, value: -0.6 },     // post-stall
-    { alpha: -stall, value: -2 * Math.PI * stall }, // stall peak (negative)
+    { alpha: -stallAlpha * 2, value: -clPostStall },
+    { alpha: -stallAlpha, value: -clMax },
     { alpha: 0, value: 0 },
-    { alpha: stall, value: 2 * Math.PI * stall },   // stall peak (positive)
-    { alpha: stall * 2, value: 0.6 },       // post-stall
+    { alpha: stallAlpha, value: clMax },
+    { alpha: stallAlpha * 2, value: clPostStall },
     { alpha: Math.PI / 2, value: 0 },
   ];
   const cd: CurvePoint[] = [
-    { alpha: -Math.PI / 2, value: 1.2 },
-    { alpha: -stall, value: 0.05 },
-    { alpha: 0, value: 0.02 },
-    { alpha: stall, value: 0.05 },
-    { alpha: Math.PI / 2, value: 1.2 },
+    { alpha: -Math.PI / 2, value: cdMax },
+    { alpha: -stallAlpha, value: cdStall },
+    { alpha: 0, value: cdMin },
+    { alpha: stallAlpha, value: cdStall },
+    { alpha: Math.PI / 2, value: cdMax },
   ];
   return { cl, cd };
+}
+
+/**
+ * Sane defaults for tests and a WP5 starting point. Thin wrapper around
+ * `buildSymmetricFlatPlateCurves(DEFAULT_FLAT_PLATE_PARAMS)`.
+ */
+export function createSymmetricFlatPlateCurves(): { cl: LiftDragCurve; cd: LiftDragCurve } {
+  return buildSymmetricFlatPlateCurves(DEFAULT_FLAT_PLATE_PARAMS);
 }
 
 export interface AeroForceResult {
