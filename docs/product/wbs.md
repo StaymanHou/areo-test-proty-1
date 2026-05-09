@@ -1,7 +1,7 @@
 ---
 stage: wbs
 state: complete
-updated: 2026-05-08
+updated: 2026-05-09
 ---
 
 # Work Breakdown Structure
@@ -70,18 +70,19 @@ T-shirt sizing: **XS** ≤ 2h · **S** ≤ half day · **M** ≤ 1 day · **L** 
 - [x] Placeholder aircraft mesh (box fuselage + 4 surface boxes with named placement).
 - [x] Launched at (0,50,0) with linvel (0,0,-30) at 60% fixed throttle; physics runs and the aircraft moves visibly. (Fully trimmed, stable flight requires WP6 controls + WP7 tuning — confirmed by browser verify-self.)
 
-### WP6: Flight controls
+### WP6: Flight controls — DONE 2026-05-09
 **Description:** Map input state to control-surface deflections. Aileron (roll), elevator (pitch), rudder (yaw), throttle. Controls modify aerosurface orientations (aileron) or add torque (simplified). Verify a pilot-like control feel.
 **Phase:** 1
 **Dependencies:** WP3, WP5
-**Size:** M
+**Size:** M (actual: ~M)
 **Tasks:**
-- [ ] `aircraft/controls.ts`: keyboard/mouse → normalized control values (–1..1)
-- [ ] Ailerons deflect the L/R wing aerosurfaces by ±α
-- [ ] Elevator deflects the horizontal stab
-- [ ] Rudder deflects the vertical stab
-- [ ] Throttle modulates thrust (0..max)
-- [ ] Control mapping exposed in lil-gui for rebinding during dev
+- [x] `aircraft/controls.ts`: keyboard → normalized control values (−1..1) with stick-rate ramping; throttle stateful with rate ramping
+- [x] Ailerons deflect L/R wings (opposite signs) via `setDeflection` rotating chord+normal about pre-baked spanAxis
+- [x] Elevator deflects the horizontal stab; rudder deflects the v-stab; signs determined empirically by per-axis body-torque tests
+- [x] Throttle modulates thrust [0..1] (replaces the WP5 hard-coded 0.6)
+- [x] Lil-gui Controls folder with live readouts + rebindable key fields (gated on `?debug=true`)
+- [x] CONVENTIONS.md documents +aileron→roll right, +elevator→nose up, +rudder→nose right, deflection-via-spanAxis model
+- [x] 37 new tests; 106/106 pass; verified end-to-end at localhost:5173
 
 ### WP7: Flight-feel tuning pass
 **Description:** The decisive feel task per R2. Iterate on flight model constants (CL slopes, stall α, mass, inertia, thrust, control authority, damping) until flying feels right. Capture the working preset.

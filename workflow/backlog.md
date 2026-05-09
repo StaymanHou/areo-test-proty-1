@@ -4,6 +4,16 @@ Surface-notes from workflow runs. Consumed and resolved by higher-level workflow
 
 ## Open
 
+### SURFACE-2026-05-09-01 — End-to-end browser test infrastructure not configured
+- **Source:** feature:verify-codify (WP6 Phase 4)
+- **Target level:** product:wbs (likely WP9 Phase 1 verification, or a dedicated tooling WP)
+- **Type:** gap / tech-debt
+- **Summary:** The project tests via Vitest (unit/integration only). Browser-driven end-to-end verification is performed ad-hoc via Playwright MCP during workflow `verify-self` runs but is not codified into a runnable test suite. The `.playwright-mcp/` directory in the working tree is MCP scratch state, not a configured Playwright test runner.
+- **Context:** Phase 4 of WP6 wired flight controls into the dev page. The integration-boundary check at verify-codify wanted to write a "consuming-surface" test, but the codebase has no harness to host it. Live Playwright via MCP served the codification role this iteration. As phases multiply (mission, HUD, combat), one-shot MCP runs won't scale — eventually we want CI-runnable browser tests for at least the critical input-→-motion path.
+- **Suggested action:** At WP9 (Phase 1 verification), evaluate adding `@playwright/test` as a dev dep with one CI smoke: load page, dispatch a roll keypress, assert the aircraft body's yaw/pitch/roll changed via a debug-only `window.__aircraft` hook. Keep the suite tiny — single happy-path test per critical input — to avoid the "Playwright tests are flaky" trap.
+- **Priority:** low (live verification is sufficient for now; the gap becomes real at Phase 2+)
+- **Status:** pending
+
 ### SURFACE-2026-04-19-01 — Bundle size: Rapier WASM dominates build
 - **Source:** feature:build (WP1 verify-auto)
 - **Target level:** product:arch or feature (Phase 3 polish)
