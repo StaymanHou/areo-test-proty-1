@@ -18,24 +18,6 @@ Surface-notes from workflow runs. Consumed and resolved by higher-level workflow
 - **Priority:** HIGH — still blocks WP7 Phase E re-tune (the candidate preset cannot be evaluated for "feel" if the airframe diverges in 3 s, even if the divergence is slower than before). Resolving SURFACE-2026-05-10-01 is necessary but not sufficient to unblock WP7.
 - **Status:** pending — discovered 2026-05-10
 
-### SURFACE-2026-05-10-01 — AoA sign-convention bug in `computeAngleOfAttack` causes divergent pitch instability — escalates beyond WP7
-- **Source:** feature:build (WP7 Phase F → Phase E back-loop → code investigation, 2026-05-10)
-- **Target level:** product:arch (F26 pause-and-escalate). Likely needs a dedicated bug-fix WP between current Phase 1 work and WP9 verification.
-- **Type:** bug / convention error
-- **Summary:** Phase F feel-check exposed a divergent pitch oscillation (~5 Hz, ±2000–4000°/s pitch rate) from spawn with no input. Reverting the WP7 candidate preset in steps did not fix it; even reverting all four surfaces to the WP6 placeholders produced near-identical instability. A standalone diagnostic (gravity off, level body, level airflow, no controls) showed the body developing pitch rate from rest — angvel.x grows from 0 → 1.31 rad/s over 10 physics steps with identity quaternion throughout.
-- **Root cause:** the AoA convention in `src/aircraft/aerosurface.ts` `computeAngleOfAttack` (line 217-219) computes `perp = -projected · normal`, which is **sign-inverted** vs. the physics. With this convention, an h-stab moving downward through still air (i.e., body pitching nose-up) sees airflow with +Y component in body frame and is computed to have NEGATIVE AoA → NEGATIVE lift → DOWNWARD force at +z (behind CG) → NOSE-UP moment → positive feedback. Probe confirms: body pitching at +1 rad/s produces a +1561 N·m nose-up moment (should be NEGATIVE/restoring for a stable aircraft). The h-stab is *amplifying* pitch rate rather than damping it. The same bug applies to wings but wing-y position = 0 means the asymmetry is invisible at level flight; the v-stab's small mounting offset (y=+0.5) *triggers* the instability via drag-couple at α=0.
-- **Why it wasn't caught:** every existing AoA test passes the buggy convention (e.g. `flightmodel.test.ts:93` "positive-AoA velocity vector produces positive lift" sets `linvel=(0,+5,-30)` — body climbing with level wing — which by physics should produce *negative* lift on a level wing, not positive; the test asserts positive lift, so the test itself is wrong in the same direction as the code). The convention is also documented this way in `CONVENTIONS.md` line 15. Single-step torque tests pass because they only check the sign of the *response to control input*, not the absolute force direction at α=0+.
-- **Why it surfaces now:** the divergent oscillation is invisible without a horizon (SURFACE-2026-05-09-02, resolved by WP8) — Phase E "noted but unconfirmable" attitude items in the candidate preset's tuning notes were exactly the failure mode hiding from view.
-- **Suggested action:** open a dedicated bug-fix WP (e.g. `WP7.5 — fix AoA sign convention`):
-  1. Flip the sign of `perp` in `computeAngleOfAttack` (or equivalently, invert the input-normal convention).
-  2. Update CONVENTIONS.md §Coordinates to match.
-  3. Audit and update tests in `aerosurface.test.ts` and `flightmodel.test.ts` whose expected values depend on the convention. Specifically `flightmodel.test.ts:93` "positive-AoA velocity vector produces positive lift on the wings" needs both physics and assertion fixed (a level wing climbing should produce NEGATIVE lift, or alternatively use `linvel=(0,-5,-30)` for a descending-flightpath setup which gives genuine positive AoA → positive lift).
-  4. Verify the four control-axis torque tests still produce correct sign body motion; flip routing-table signs in `flightmodel.ts` if necessary.
-  5. Re-run the gravity-on flight scenario: trim should be a damped pitch oscillation that converges, not divergent.
-  6. After the fix lands, return to WP7 Phase E (the candidate preset and notes need re-evaluation against a stable airframe — most of the Phase E "feel survived" assertions were collected against the buggy model).
-- **Priority:** HIGH — blocks WP7 Phase F completion and WP9 (Phase 1 verification exit criteria require "the developer flies, crashes, and it feels right"; with this bug the airframe is unflyable and all WP7 tuning was against bad signal).
-- **Status:** pending — escalated 2026-05-10
-
 ### SURFACE-2026-05-09-05 — Phase 4 verify-self required WP7 trim to fully validate; need a verify-self-friendly trim
 - **Source:** feature:build (WP8 Phase 4 verify-self back-loop)
 - **Target level:** product:wbs (process; relates to WP9 verification approach)
@@ -77,6 +59,11 @@ Surface-notes from workflow runs. Consumed and resolved by higher-level workflow
 - **Status:** pending
 
 ## Resolved
+
+### SURFACE-2026-05-10-01 — AoA sign-convention bug in `computeAngleOfAttack` causes divergent pitch instability
+- **Source:** feature:build (WP7 Phase F → Phase E back-loop → code investigation, 2026-05-10)
+- **Resolution:** Resolved-with-test by commit `2bd5119` (`fix(aero): correct AoA sign convention`). Phase 1 flipped the sign of `perp` in `src/aircraft/aerosurface.ts` `computeAngleOfAttack` and updated `CONVENTIONS.md`. Phase 2 flipped the four routing-table sign multipliers in `flightmodel.ts` (aileron L/R, elevator, rudder) so `+control` still produces the documented body motion under the corrected physics, and corrected 13 test setups whose physics embedded the same sign error. Phase 3 added `src/aircraft/stability.test.ts` with two regression-anchor tests that would have failed under the buggy convention (rest-state |angvel.x| < 0.7 rad/s after 10 steps, was 1.31; perturbation Mx < −100 N·m restoring, was +1561 amplifying). Final 227/227 tests green. **Note:** SURFACE-2026-05-08-01 (resolved 2026-05-08) had documented the *chord-direction* convention but baked the sign-flip in question into the test fixtures it produced — a reminder that conventions need an independent physical check, not just internal consistency. Lesson captured in archived plan retrospect.
+- **Status:** resolved 2026-05-10
 
 ### SURFACE-2026-05-09-04 — Three.js CubeTexture data-upload contract is non-obvious
 - **Source:** feature:build (WP8 Phase 4 verify-self back-loop)

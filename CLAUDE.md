@@ -84,7 +84,7 @@ No Docker. No backend.
 
 **Exit criteria:** A developer can open the dev URL, take off, fly around, and crash — and it feels right. 60fps on a mid-range laptop in Chrome / Safari / Firefox.
 
-**Status (2026-05-09):** WP1–WP6 + WP8 shipped; WP7 (flight-feel tuning) paused at Phase F (external feel-check) pending WP8's horizon to land — now unblocked. WP9 (Phase 1 verification) is the final Phase 1 work package after WP7 completes. See `docs/product/wbs.md` for tasks.
+**Status (2026-05-10):** WP1–WP6 + WP8 shipped; AoA sign-convention bug-fix shipped (between-WP discovery; commit `2bd5119`) — closes SURFACE-2026-05-10-01; airframe is now stable in early flight but secondary phugoid-like instability surfaced as SURFACE-2026-05-10-02 (HIGH, blocks WP7 re-tune). WP7 (flight-feel tuning) paused at Phase F PF.1 pending SURFACE-2026-05-10-02 fix; on resume, WP7 re-enters Phase E to retune against corrected physics. WP9 (Phase 1 verification) is the final Phase 1 work package after WP7 completes. See `docs/product/wbs.md` for tasks.
 
 ## Key Decisions
 
