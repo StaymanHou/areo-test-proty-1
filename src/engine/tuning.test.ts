@@ -134,10 +134,10 @@ describe('attachFlightModelTuning', () => {
   it('surface clSlope slider onChange swaps curves so subsequent computeAeroForce returns different lift', () => {
     const { flightModel, gui } = buildHarness();
     const surface = flightModel.surfaces[0]!; // wing-left
-    // α = 5° pre-stall flow.
+    // α = +5° pre-stall flow (body descending with level wing → wind from below).
     const angle = (5 * Math.PI) / 180;
     const speed = 10;
-    const linvel = new Vector3(0, Math.sin(angle) * speed, -Math.cos(angle) * speed);
+    const linvel = new Vector3(0, -Math.sin(angle) * speed, -Math.cos(angle) * speed);
     const body: BodyState = {
       position: new Vector3(),
       quaternion: new Quaternion(),

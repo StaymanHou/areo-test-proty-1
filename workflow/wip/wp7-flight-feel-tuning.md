@@ -412,13 +412,14 @@ Research has answered all four open questions; this plan applies those decisions
   - [ ] verify-codify  <!-- status: NOT-STARTED -->
 
 ## Current Node
-- **Path:** Feature > Phase F > PF.1
-- **Active scope:** Phase F build (External feel-check + commit defaults) — first action is the ESCALATE pause for casual-player nomination
+- **Path:** Feature > Phase E > retune (back-loop from Phase F)
+- **Active scope:** Phase E retune to fix divergent pitch oscillation observed in Phase F feel-check (operator-flown). h-stab over-tuned per telemetry.
 - **Blocked:** none
-- **Unvisited:** (none after Phase F)
+- **Unvisited:** Phase F PF.2–PF.4 (waiting for retuned preset)
 - **Open discoveries:**
-  - SURFACE-2026-05-09-02 (no-horizon viewport blocks visual confirmation of attitude — directly affects Phase F feel-check feasibility)
-  - SURFACE-2026-05-09-03 (no `window.__aircraft` debug telemetry — limits future tuning iterations)
+  - SURFACE-2026-05-09-02 (no-horizon viewport blocks visual confirmation of attitude — RESOLVED by WP8)
+  - SURFACE-2026-05-09-03 (no `window.__aircraft` debug telemetry — IMPLEMENTED in this session, see Phase F back-loop notes)
+  - SURFACE-2026-05-10-01 (Phase E candidate preset failed Phase F feel-check — divergent pitch oscillation; see Feel-check section)
 
 ## Discoveries
 <!-- Format: [SURFACED-<date>] <target node> — <summary>
@@ -439,3 +440,70 @@ Decision on the Phase F three-options menu: **option 1 — run WP8 first, then r
 - **WP7 Current Node:** unchanged — Feature > Phase F > PF.1, ESCALATE pause pending.
 - **Resume action:** after WP8 finalize, run `/session-resume` against this file's pause marker; Phase F restarts with PF.1 (casual-player nomination) now actually viable.
 - **Working tree at pivot time:** uncommitted across WP7 source + tests + new `src/engine/tuning.ts`. Acceptable — the WP7 work is end-to-end-tested (144/144 pass, tsc clean) and `feature-ship` is downstream of Phase F. WP8 will start without committing WP7 first; if the WP8 work touches the same files (unlikely — WP8 is `world/`-scoped) we'll revisit.
+
+## Feel-check (2026-05-10)
+
+**Verdict: thumbs-down.** Tester: project operator (resumed from WP8 ship). Method: live solo flight against the post-WP8 build with horizon and terrain visible. Bar: "could fly this for fun for 2 minutes without fighting it."
+
+**Observation:** uncommanded divergent pitch oscillation from spawn — no input required. Plane "constantly does backflips/frontflips" at ~5 Hz from rest. Visual estimate confirmed by telemetry once a debug readout was wired in.
+
+**Telemetry capture (post-spawn, no input, candidate preset live in `public/config/aircraft.json`):**
+- Frame 0: pitch=0°, all rates 0 (matches initial conditions)
+- Frame 1 (100 ms): pRate=+36°/s
+- Frame 2 (200 ms): pRate=+156°/s
+- Frame 3 (300 ms): pRate=+319°/s
+- Frame 16 (1.6 s): pRate=−2299°/s
+- Steady state (≥2 s): pRate oscillates between ±2000°/s and ±3600°/s
+- Roll rate and yaw rate remain identically 0.0°/s throughout — pure pitch instability, not coupled
+
+**Diagnosis: divergent short-period mode.** Phase E moved three knobs in the same direction, all increasing pitch authority:
+- h-stab area 1.5 → 2 (+33%)
+- h-stab clSlope 6.28 → 8 (+27%)
+- main wing clSlope 6.28 → 7.5 (+19%) — also pumps pitch authority via main-wing lift moment about CG
+With pitch inertia (Iy=3000) untouched, the airframe's restoring couple is faster than its aerodynamic damping at trim airspeed → instability builds instead of damping.
+
+**Root cause why Phase E missed this:** SURFACE-2026-05-09-02 (no-horizon viewport) made attitude visually unverifiable. The "stall + recovery survived" observable was actually the plane bouncing through pitch inversions invisibly. Tuning notes recorded "noted but unconfirmable" for bank/pitch — the unconfirmable parts were where the failure lived.
+
+**Tooling added during this back-loop diagnosis:**
+- `Telemetry` lil-gui folder with read-only displays for altitude, airspeed, vertical speed, pitch/roll/yaw (deg), and pitch/roll/yaw rate (deg/s).
+- `window.__aircraft` debug hook (closes SURFACE-2026-05-09-03) exposing `body`, `flightModel`, and `getState()` returning a snapshot.
+- 100 ms `[tel f=N]` console-log line with all kinematic state, for Playwright/MCP-driven observation.
+Both gated on `?debug=true`. Implementation in `src/main.ts` inside the existing `if (debug)` block. Observability-only — no behaviour changes.
+
+## Phase E retune (back-loop from Phase F, 2026-05-10) — ABANDONED
+
+**Outcome: F26 pause-and-escalate.** Retuning was attempted in two steps:
+- Step 1: revert h-stab fully (area 1.5, clSlope 6.28). Early-frame telemetry near-identical to candidate (pRate frame 1: +33°/s vs +36°/s). NOT FIXED.
+- Step 2: revert all four surfaces to WP6 placeholders, keep only mass=900 thrust=8000. Telemetry STILL near-identical (pRate frame 1: +29°/s). Plane still spins.
+
+**Reframe:** the divergent oscillation persists across the entire WP7 tuning space, including the WP6 baseline. **The bug is in the aerodynamic model itself, not in the tuned values.** Tuning cannot solve this.
+
+**Diagnostic probe (gravity off, identity body, level airflow, no controls):**
+- Body develops pitch rate from rest: angvel.x grows 0 → 1.307 rad/s over 10 physics steps, identity quaternion throughout. Phantom pitching torque at α=0.
+- Per-surface breakdown at trim shows exactly ONE non-zero moment: the v-stab produces a +5.5 N·m nose-up moment from drag × y-offset (mounted at y=+0.5 above CG). Wings cancel each other (Mx=0); h-stab Mx=0.
+- Probe with angvel.x=+1: h-stab returns Mx=+1561 N·m (should be NEGATIVE for stability). The h-stab is **amplifying** pitch rate, not damping it.
+
+**Root cause located:** `src/aircraft/aerosurface.ts` `computeAngleOfAttack` at line 217-219 has a sign-inverted convention:
+```ts
+const along = -_scratchProjected.dot(chord);
+const perp = -_scratchProjected.dot(normal);  // ← wrong sign
+return Math.atan2(perp, along);
+```
+With this formula, an h-stab pivoting downward through still air sees airflow in +Y body-frame, which yields *negative* AoA → *negative* lift → *downward* lift force *behind* CG → *nose-up* moment → positive feedback. Physics says the opposite: wind from below into the underside = positive AoA = upward lift = nose-down restoring moment.
+
+**Why the existing 225-test green suite missed it:** the test `flightmodel.test.ts:93` "positive-AoA velocity vector produces positive lift on the wings" sets `linvel=(0,+5,-30)` (body climbing with level wing) and asserts positive lift. By the buggy convention this passes. By correct physics it should produce negative lift on a level wing climbing through still air. The test embeds the same sign error as the code.
+
+**This is a WP4/WP5 architectural bug, not a WP7 tuning issue.** Continuing WP7 against the buggy model would be wasted effort — the candidate preset's "feel survived" assertions in Phase E were collected against an unflyable airframe.
+
+**Surface logged:** SURFACE-2026-05-10-01 in `workflow/backlog.md`. Tagged HIGH priority. Suggested action: dedicated bug-fix WP (call it WP7.5 or similar) that flips the sign convention, updates CONVENTIONS.md, and re-audits the affected tests. After it lands, re-enter WP7 Phase E to re-tune against the corrected model.
+
+**State of `public/config/aircraft.json` after this session:** restored to a near-WP6 baseline (mass=900 + thrust=8000 from Phase E retained, all surfaces fully reverted to placeholder values). Reverting to the EXACT pre-session aircraft.json (mass=1000, thrust=6000) restores history but loses Phase E learnings. Recommendation: leave it as-is for now; the bug-fix WP will overwrite it anyway.
+
+**Tooling left in `src/main.ts`:** the Telemetry lil-gui folder, `window.__aircraft` hook, and 100 ms console-log line are observability infrastructure that remains useful for the bug-fix WP and beyond. Closes SURFACE-2026-05-09-03. Gated on `?debug=true`. No tests written for it (it's a debug helper).
+
+## Current Node (revised after F26 escalation)
+- **Path:** Feature > F26 pause-and-escalate
+- **Active scope:** WP7 paused awaiting the AoA sign-convention bug fix (SURFACE-2026-05-10-01).
+- **Blocked:** Phase F PF.2–PF.4 (gates on a flyable airframe). Phase E candidate preset's "feel" assertions are invalidated and will need to be re-collected after the fix.
+- **Resume condition:** SURFACE-2026-05-10-01 resolved (bug fix WP shipped, model produces a damped pitch oscillation under gravity from level trim).
+- **Resume action:** re-enter Phase E to re-tune against the corrected model; the original Phase E plan (12 knob deltas) is invalidated and Phase E will need a fresh Playwright-MCP-driven tuning pass against the new physics.

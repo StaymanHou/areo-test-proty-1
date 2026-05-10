@@ -4,6 +4,38 @@ Surface-notes from workflow runs. Consumed and resolved by higher-level workflow
 
 ## Open
 
+### SURFACE-2026-05-10-02 — Secondary pitch instability after AoA fix: divergent oscillation builds at ~1 s mark (likely phugoid / weak static stability)
+- **Source:** feature:build (AoA sign-convention fix Phase 2 verify-self, 2026-05-10)
+- **Target level:** product:arch — phase-1 flight model needs a stability mechanism (static margin or pitch damping)
+- **Type:** bug — second-order
+- **Summary:** With the AoA convention corrected (SURFACE-2026-05-10-01 fixed), the airframe is stable for the first ~1 s of flight (frames 0-15 max |pRate| ≈ 94°/s; previously 1284°/s by frame 9 under the bug). However, a secondary divergent oscillation emerges around frame 16-30 (1.6-3.0 s after spawn) with |pRate| growing back to ±1000-3000°/s by frame 30+. Captured Playwright telemetry shows altitude oscillates 50→61→50→62 m as airspeed cycles 30→14→25→16 m/s — classic phugoid coupling between speed and altitude, with pitch attitude doing the work. Each cycle pumps a bit more pitch rate, eventually saturating into the same kind of divergence the AoA bug produced (but reached more slowly).
+- **Diagnosis (preliminary):** the pitch dynamics are now correct in *direction* but lack adequate damping at the trim airspeed. Real aircraft handle this with: (a) positive static margin — CG positioned ahead of the neutral point so AoA perturbations produce restoring couples; or (b) explicit pitch-rate damping derivative (CL_q on the h-stab). The current model has neither tuned: surfaces are placed at z=0 (wings) and z=+3 (h-stab), CG is at body origin, and there's no separate damping coefficient. The phugoid mode is presumably nearly-undamped or weakly-divergent at the 30 m/s trim point.
+- **Why it surfaces only now:** under the AoA-sign bug the early-frame divergence was so steep (|pRate| > 1000°/s by frame 9) that nothing got far enough into a flight regime to exercise phugoid behavior. With early-frame stability restored, the slower instability becomes observable.
+- **Suggested action:** open a new bug-fix WP. Two viable directions:
+  1. **Geometry tweak (cheap test):** move `wing-left/wing-right` slightly forward (z<0 in body frame) so they sit ahead of CG, while keeping h-stab at z=+3. This creates a restoring pitching couple at non-zero AoA. May resolve the issue without architectural change. Quick to try.
+  2. **Add explicit pitch damping (more invasive):** extend the AeroSurface model with a `cl_q` term that adds lift proportional to local pitch rate at the surface. This is the textbook fix for short-period damping but requires extending the curve schema in `aircraft.json`.
+- **Alternatively** — could be SURFACE-resolved by accepting that "Phase 1 PoC flight" is a tuned-near-trim experience and the phugoid is acceptable if amplitudes stay bounded for the casual-player scenario. Investigate stability margin first; if marginally stable in tuned conditions, defer the architectural fix.
+- **Priority:** HIGH — still blocks WP7 Phase E re-tune (the candidate preset cannot be evaluated for "feel" if the airframe diverges in 3 s, even if the divergence is slower than before). Resolving SURFACE-2026-05-10-01 is necessary but not sufficient to unblock WP7.
+- **Status:** pending — discovered 2026-05-10
+
+### SURFACE-2026-05-10-01 — AoA sign-convention bug in `computeAngleOfAttack` causes divergent pitch instability — escalates beyond WP7
+- **Source:** feature:build (WP7 Phase F → Phase E back-loop → code investigation, 2026-05-10)
+- **Target level:** product:arch (F26 pause-and-escalate). Likely needs a dedicated bug-fix WP between current Phase 1 work and WP9 verification.
+- **Type:** bug / convention error
+- **Summary:** Phase F feel-check exposed a divergent pitch oscillation (~5 Hz, ±2000–4000°/s pitch rate) from spawn with no input. Reverting the WP7 candidate preset in steps did not fix it; even reverting all four surfaces to the WP6 placeholders produced near-identical instability. A standalone diagnostic (gravity off, level body, level airflow, no controls) showed the body developing pitch rate from rest — angvel.x grows from 0 → 1.31 rad/s over 10 physics steps with identity quaternion throughout.
+- **Root cause:** the AoA convention in `src/aircraft/aerosurface.ts` `computeAngleOfAttack` (line 217-219) computes `perp = -projected · normal`, which is **sign-inverted** vs. the physics. With this convention, an h-stab moving downward through still air (i.e., body pitching nose-up) sees airflow with +Y component in body frame and is computed to have NEGATIVE AoA → NEGATIVE lift → DOWNWARD force at +z (behind CG) → NOSE-UP moment → positive feedback. Probe confirms: body pitching at +1 rad/s produces a +1561 N·m nose-up moment (should be NEGATIVE/restoring for a stable aircraft). The h-stab is *amplifying* pitch rate rather than damping it. The same bug applies to wings but wing-y position = 0 means the asymmetry is invisible at level flight; the v-stab's small mounting offset (y=+0.5) *triggers* the instability via drag-couple at α=0.
+- **Why it wasn't caught:** every existing AoA test passes the buggy convention (e.g. `flightmodel.test.ts:93` "positive-AoA velocity vector produces positive lift" sets `linvel=(0,+5,-30)` — body climbing with level wing — which by physics should produce *negative* lift on a level wing, not positive; the test asserts positive lift, so the test itself is wrong in the same direction as the code). The convention is also documented this way in `CONVENTIONS.md` line 15. Single-step torque tests pass because they only check the sign of the *response to control input*, not the absolute force direction at α=0+.
+- **Why it surfaces now:** the divergent oscillation is invisible without a horizon (SURFACE-2026-05-09-02, resolved by WP8) — Phase E "noted but unconfirmable" attitude items in the candidate preset's tuning notes were exactly the failure mode hiding from view.
+- **Suggested action:** open a dedicated bug-fix WP (e.g. `WP7.5 — fix AoA sign convention`):
+  1. Flip the sign of `perp` in `computeAngleOfAttack` (or equivalently, invert the input-normal convention).
+  2. Update CONVENTIONS.md §Coordinates to match.
+  3. Audit and update tests in `aerosurface.test.ts` and `flightmodel.test.ts` whose expected values depend on the convention. Specifically `flightmodel.test.ts:93` "positive-AoA velocity vector produces positive lift on the wings" needs both physics and assertion fixed (a level wing climbing should produce NEGATIVE lift, or alternatively use `linvel=(0,-5,-30)` for a descending-flightpath setup which gives genuine positive AoA → positive lift).
+  4. Verify the four control-axis torque tests still produce correct sign body motion; flip routing-table signs in `flightmodel.ts` if necessary.
+  5. Re-run the gravity-on flight scenario: trim should be a damped pitch oscillation that converges, not divergent.
+  6. After the fix lands, return to WP7 Phase E (the candidate preset and notes need re-evaluation against a stable airframe — most of the Phase E "feel survived" assertions were collected against the buggy model).
+- **Priority:** HIGH — blocks WP7 Phase F completion and WP9 (Phase 1 verification exit criteria require "the developer flies, crashes, and it feels right"; with this bug the airframe is unflyable and all WP7 tuning was against bad signal).
+- **Status:** pending — escalated 2026-05-10
+
 ### SURFACE-2026-05-09-05 — Phase 4 verify-self required WP7 trim to fully validate; need a verify-self-friendly trim
 - **Source:** feature:build (WP8 Phase 4 verify-self back-loop)
 - **Target level:** product:wbs (process; relates to WP9 verification approach)

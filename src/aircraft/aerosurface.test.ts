@@ -130,32 +130,33 @@ describe('AeroSurface — Phase 1: angle of attack', () => {
     expect(Math.abs(aoa)).toBeCloseTo(Math.PI, 9);
   });
 
-  it('flow purely along −normal direction → AoA = +π/2 (wind hitting underside)', () => {
-    // Flow purely −Y means wind blowing straight down into the top face. perp = −flow·normal
-    // = −(−1) = 1 > 0 → +π/2.
-    const aoa = computeAngleOfAttack(new Vector3(0, -1, 0), normal, chord);
+  it('flow purely along +normal direction → AoA = +π/2 (wind hitting underside)', () => {
+    // Flow purely +Y means wind blowing straight up from below into the underside
+    // of the wing. perp = flow·normal = (+1) → atan2(+1, 0) = +π/2.
+    const aoa = computeAngleOfAttack(new Vector3(0, 1, 0), normal, chord);
     expect(aoa).toBeCloseTo(Math.PI / 2, 9);
   });
 
-  it('flow purely along +normal → AoA = −π/2', () => {
-    const aoa = computeAngleOfAttack(new Vector3(0, 1, 0), normal, chord);
+  it('flow purely along −normal → AoA = −π/2 (wind on top face)', () => {
+    const aoa = computeAngleOfAttack(new Vector3(0, -1, 0), normal, chord);
     expect(aoa).toBeCloseTo(-Math.PI / 2, 9);
   });
 
-  it('flow at +10° AoA (level forward flight + slight upward pitch)', () => {
-    // Plane flies forward (−Z) at 10 m/s, pitched slightly up. Relative airflow at the wing
-    // is roughly toward +Z with a small −Y component (wind pushes up under the wing).
-    // Construct: airflow with `along = cos(α)` along −chord (= +Z), `perp = sin(α)` along −normal (= −Y).
+  it('flow at +10° AoA (descent with level wing → wind from below)', () => {
+    // Plane descends with a level wing (linvel.y < 0). Relative airflow at the wing
+    // is roughly toward +Z (opposite to chord) with a small +Y component (wind pushes
+    // up under the wing from below). Construct: along = cos(α) along −chord (= +Z),
+    // perp = sin(α) along +normal (= +Y).
     const angle = (10 * Math.PI) / 180;
-    const flow = new Vector3(0, -Math.sin(angle), Math.cos(angle));
+    const flow = new Vector3(0, Math.sin(angle), Math.cos(angle));
     const aoa = computeAngleOfAttack(flow, normal, chord);
     expect(aoa).toBeCloseTo(angle, 6);
   });
 
   it('flow at −10° AoA is symmetric to +10° (sign convention regression test)', () => {
-    // Mirror the +10° flow across the chord plane: flip the −normal component.
+    // Mirror the +10° flow across the chord plane: flip the +normal component.
     const angle = (10 * Math.PI) / 180;
-    const flow = new Vector3(0, Math.sin(angle), Math.cos(angle));
+    const flow = new Vector3(0, -Math.sin(angle), Math.cos(angle));
     const aoa = computeAngleOfAttack(flow, normal, chord);
     expect(aoa).toBeCloseTo(-angle, 6);
   });
@@ -240,11 +241,13 @@ describe('AeroSurface — Phase 2: computeAeroForce', () => {
   });
 
   it('pre-stall positive AoA produces positive lift along normal', () => {
-    // Construct linvel that yields airflow at +10° AoA: airflow has +Z and −Y components.
-    // linvel = −airflow → (0, +sin10°, −cos10°) * 10.
+    // Construct linvel that yields airflow at +10° AoA. With the corrected convention,
+    // positive AoA means flow has +normal component (wind from below into underside).
+    // Body descending with level wing: linvel = (0, −sin·v, −cos·v) → airflow at the wing
+    // is (0, +sin·v, +cos·v), which has +Y (= +normal) component → positive AoA.
     const angle = (10 * Math.PI) / 180;
     const speed = 10;
-    const linvel = new Vector3(0, Math.sin(angle) * speed, -Math.cos(angle) * speed);
+    const linvel = new Vector3(0, -Math.sin(angle) * speed, -Math.cos(angle) * speed);
     const s = makeFlatPlateAtOrigin();
     const body = makeBody(linvel);
     const result = computeAeroForce(s, body);
@@ -264,15 +267,16 @@ describe('AeroSurface — Phase 2: computeAeroForce', () => {
 
   it('post-stall lift drops below pre-stall peak', () => {
     // Compare lift at α=15° (stall peak) vs α=30° (deep post-stall).
+    // Body descending with level wing for both samples → positive AoA.
     const speed = 10;
     const s = makeFlatPlateAtOrigin();
 
     const a1 = (15 * Math.PI) / 180;
-    const body1 = makeBody(new Vector3(0, Math.sin(a1) * speed, -Math.cos(a1) * speed));
+    const body1 = makeBody(new Vector3(0, -Math.sin(a1) * speed, -Math.cos(a1) * speed));
     const lift1 = computeAeroForce(s, body1).force.y;
 
     const a2 = (30 * Math.PI) / 180;
-    const body2 = makeBody(new Vector3(0, Math.sin(a2) * speed, -Math.cos(a2) * speed));
+    const body2 = makeBody(new Vector3(0, -Math.sin(a2) * speed, -Math.cos(a2) * speed));
     // Snapshot before second call (force vector is reused — must capture).
     const lift2 = computeAeroForce(s, body2).force.y;
 
@@ -323,15 +327,18 @@ describe('AeroSurface — Phase 2: computeAeroForce', () => {
   });
 
   it('lift varies smoothly through α=0 (sign-continuity regression test)', () => {
-    // Sweep α from −10° to +10° in 5° steps. Lift along +Y should be:
+    // Sweep AoA from −10° to +10° in 5° steps. Lift along +Y should be:
     //   negative at negative α, ≈0 at α=0, positive at positive α.
     // Catches a class of bugs where the AoA convention flips sign and produces
     // discontinuous lift across the chord direction.
+    // Per corrected convention: positive AoA = wind from below into underside.
+    // Body with linvel.y = −sin·v (descending) gives airflow with +Y component
+    // at the wing = positive AoA = positive lift.
     const speed = 10;
     const s = makeFlatPlateAtOrigin();
     const liftAt = (deg: number) => {
       const a = (deg * Math.PI) / 180;
-      const body = makeBody(new Vector3(0, Math.sin(a) * speed, -Math.cos(a) * speed));
+      const body = makeBody(new Vector3(0, -Math.sin(a) * speed, -Math.cos(a) * speed));
       return computeAeroForce(s, body).force.y;
     };
     const samples = [-10, -5, -1, 0, 1, 5, 10].map(liftAt);
@@ -667,10 +674,10 @@ describe('AeroSurface.setCurves', () => {
       clCurve: ZERO_CL,
       cdCurve: ZERO_CD,
     });
-    // α=10° flow.
+    // α=+10° flow (body descending with level wing → wind from below into underside).
     const angle = (10 * Math.PI) / 180;
     const speed = 10;
-    const linvel = new Vector3(0, Math.sin(angle) * speed, -Math.cos(angle) * speed);
+    const linvel = new Vector3(0, -Math.sin(angle) * speed, -Math.cos(angle) * speed);
     const body: BodyState = {
       position: new Vector3(),
       quaternion: new Quaternion(),

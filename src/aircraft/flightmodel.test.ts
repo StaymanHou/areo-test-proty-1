@@ -91,17 +91,15 @@ describe('FlightModel', () => {
   });
 
   it('positive-AoA velocity vector produces positive lift on the wings', () => {
-    // Per WP4's convention (CONVENTIONS.md), positive AoA arises when the relative wind
-    // hits the underside of the wing — physically this happens when the body's velocity
-    // vector has a component along −Y in body frame (descending-flightpath scenario for a
-    // level-attitude wing, which is equivalent to a climbing flightpath with nose pitched
-    // up by the same angle). We set linvel = (0, +5, -30) — a body moving forward AND
-    // climbing. With identity body orientation, body-local airflow has −Y component,
-    // which is positive AoA → positive lift along world +Y.
+    // Per CONVENTIONS.md, positive AoA arises when the relative wind hits the underside
+    // of the wing — wind has a +normal component in body frame. Physically this happens
+    // when the body descends with a level wing: linvel.y < 0 → airflow at the wing has
+    // +Y component → positive AoA → positive lift along world +Y. (Equivalent in body
+    // frame to a level-flightpath plane with nose pitched up by the same angle.)
     const world = new RAPIER.World({ x: 0, y: 0, z: 0 }); // disable gravity; isolate aero
     world.timestep = 1 / 60;
     const aircraft = new Aircraft(world, config, {
-      linvel: new Vector3(0, 5, -30), // ~9.5° flight-path-angle climb
+      linvel: new Vector3(0, -5, -30), // ~9.5° descent flight path with level wing
     });
     const fm = new FlightModel(aircraft);
     fm.applyForces(0); // zero throttle — pure aero

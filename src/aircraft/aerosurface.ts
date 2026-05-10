@@ -193,9 +193,9 @@ export function computeAirflowAtPoint(
  * i.e., for a wing on a plane moving in −Z, chord = (0,0,−1). In level flight the
  * relative airflow at the wing flows toward +Z, which is opposite to chord, so
  * `airflow · chord` is negative. We measure AoA as the angle between airflow and
- * `−chord`. Positive AoA means flow has a component along `−normal` (wind hitting
- * the underside of the wing), which produces positive lift on a flat-plate
- * symmetric surface.
+ * `−chord`. Positive AoA means flow has a component along `+normal` (wind from
+ * below pushing up into the underside of the wing), which produces positive lift
+ * on a flat-plate symmetric surface.
  *
  * Returns radians in (−π, π].
  */
@@ -213,9 +213,11 @@ export function computeAngleOfAttack(
   if (projLen < 1e-9) return 0;
 
   // AoA = signed angle between projected flow and `−chord`.
-  // along = projected · (−chord);  perp = −projected · normal.
+  // along = projected · (−chord);  perp = projected · normal.
+  // Positive perp = flow has a +normal component = wind from below pushing up
+  // into the underside of a top-up wing = positive AoA = positive lift.
   const along = -_scratchProjected.dot(chord);
-  const perp = -_scratchProjected.dot(normal);
+  const perp = _scratchProjected.dot(normal);
   return Math.atan2(perp, along);
 }
 

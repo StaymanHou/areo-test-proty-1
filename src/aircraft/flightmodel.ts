@@ -38,10 +38,10 @@ interface ControlRoute {
 // Geometry (standard surfaces: wing/h-stab normal=+Y, v-stab normal=+X, chord=−Z)
 // fixes the spanAxis for each surface; the sign multiplier here decides which
 // way the surface rotates about that axis to produce the commanded body motion.
-const _aileronRightSign = -1;
-const _aileronLeftSign = +1;
-const _elevatorSign = -1;
-const _rudderSign = -1;
+const _aileronRightSign = +1;
+const _aileronLeftSign = -1;
+const _elevatorSign = +1;
+const _rudderSign = +1;
 
 export class FlightModel {
   readonly surfaces: AeroSurface[];
