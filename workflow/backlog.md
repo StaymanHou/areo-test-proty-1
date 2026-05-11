@@ -4,20 +4,6 @@ Surface-notes from workflow runs. Consumed and resolved by higher-level workflow
 
 ## Open
 
-### SURFACE-2026-05-10-02 — Secondary pitch instability after AoA fix: divergent oscillation builds at ~1 s mark (likely phugoid / weak static stability)
-- **Source:** feature:build (AoA sign-convention fix Phase 2 verify-self, 2026-05-10)
-- **Target level:** product:arch — phase-1 flight model needs a stability mechanism (static margin or pitch damping)
-- **Type:** bug — second-order
-- **Summary:** With the AoA convention corrected (SURFACE-2026-05-10-01 fixed), the airframe is stable for the first ~1 s of flight (frames 0-15 max |pRate| ≈ 94°/s; previously 1284°/s by frame 9 under the bug). However, a secondary divergent oscillation emerges around frame 16-30 (1.6-3.0 s after spawn) with |pRate| growing back to ±1000-3000°/s by frame 30+. Captured Playwright telemetry shows altitude oscillates 50→61→50→62 m as airspeed cycles 30→14→25→16 m/s — classic phugoid coupling between speed and altitude, with pitch attitude doing the work. Each cycle pumps a bit more pitch rate, eventually saturating into the same kind of divergence the AoA bug produced (but reached more slowly).
-- **Diagnosis (preliminary):** the pitch dynamics are now correct in *direction* but lack adequate damping at the trim airspeed. Real aircraft handle this with: (a) positive static margin — CG positioned ahead of the neutral point so AoA perturbations produce restoring couples; or (b) explicit pitch-rate damping derivative (CL_q on the h-stab). The current model has neither tuned: surfaces are placed at z=0 (wings) and z=+3 (h-stab), CG is at body origin, and there's no separate damping coefficient. The phugoid mode is presumably nearly-undamped or weakly-divergent at the 30 m/s trim point.
-- **Why it surfaces only now:** under the AoA-sign bug the early-frame divergence was so steep (|pRate| > 1000°/s by frame 9) that nothing got far enough into a flight regime to exercise phugoid behavior. With early-frame stability restored, the slower instability becomes observable.
-- **Suggested action:** open a new bug-fix WP. Two viable directions:
-  1. **Geometry tweak (cheap test):** move `wing-left/wing-right` slightly forward (z<0 in body frame) so they sit ahead of CG, while keeping h-stab at z=+3. This creates a restoring pitching couple at non-zero AoA. May resolve the issue without architectural change. Quick to try.
-  2. **Add explicit pitch damping (more invasive):** extend the AeroSurface model with a `cl_q` term that adds lift proportional to local pitch rate at the surface. This is the textbook fix for short-period damping but requires extending the curve schema in `aircraft.json`.
-- **Alternatively** — could be SURFACE-resolved by accepting that "Phase 1 PoC flight" is a tuned-near-trim experience and the phugoid is acceptable if amplitudes stay bounded for the casual-player scenario. Investigate stability margin first; if marginally stable in tuned conditions, defer the architectural fix.
-- **Priority:** HIGH — still blocks WP7 Phase E re-tune (the candidate preset cannot be evaluated for "feel" if the airframe diverges in 3 s, even if the divergence is slower than before). Resolving SURFACE-2026-05-10-01 is necessary but not sufficient to unblock WP7.
-- **Status:** pending — discovered 2026-05-10
-
 ### SURFACE-2026-05-09-05 — Phase 4 verify-self required WP7 trim to fully validate; need a verify-self-friendly trim
 - **Source:** feature:build (WP8 Phase 4 verify-self back-loop)
 - **Target level:** product:wbs (process; relates to WP9 verification approach)
@@ -59,6 +45,21 @@ Surface-notes from workflow runs. Consumed and resolved by higher-level workflow
 - **Status:** pending
 
 ## Resolved
+
+### SURFACE-2026-05-10-02 — Phase 1 airframe has no level-trim equilibrium (architectural) + SURFACE-2026-05-11-01 — β1 alone is dynamically unstable
+- **Source:** feature:build (AoA sign-convention fix Phase 2 verify-self, 2026-05-10; deepened in static-margin geometry fix attempt, 2026-05-10; β1-alone divergence finding 2026-05-11)
+- **Resolution:** Resolved-with-test by WP6.5 (2026-05-11). Two-phase implementation:
+  - **β1 (`incidenceRad`)** per arch.md Revision 2026-05-11 / D10 — per-surface mount angle gives the airframe a level-trim equilibrium. Wings +2°, h-stab −1°, v-stab 0.
+  - **β4 (`clQ`)** per arch.md "Fallback path" hedge — per-surface pitch-rate damping amplifies the natural ω×r damping mechanism by `(1 + clQ)`. Wings clQ=3, h-stab clQ=8, v-stab clQ=0. No 1/V singularity (a key correction over the prior abandoned attempt's standard `cl_q · c̄ / (2V)` form, which NaN'd at low airspeed).
+  - **Verification:** live telemetry 6s window at `http://localhost:5174/?debug=true` showed max|pRate|=149.10°/s (target <360, pass by 2.4×), no gimbal flips, no JS errors. β1 alone produced 8401°/s divergence; β1+β4 brings it to 149 — full stability achieved.
+  - **Test coverage:** 7 unit tests in `src/aircraft/aerosurface.test.ts` (default-zero parity for both incidence and clQ, positive-incidence positive-lift, surface-property invariance, sign-convention regression anchors, amplification ratio) + 6 unit tests in `src/aircraft/config.test.ts` (absent / explicit numeric / non-finite-throws for both fields) + 2 integration-boundary tests in `src/aircraft/flightmodel.test.ts` (asserts `incidenceRad` and `clQ` thread through `parseAircraftConfig → FlightModel.surfaces` and produce real-physics behavior). Total 242/242 tests green, tsc clean.
+  - **Caveat (deferred to WP7 Phase E retune):** the verified-stable state is a descending glide, not level flight — airspeed bleeds from 30 to ~2 m/s and altitude trends down 50→33m within bounds. The cause is parametric (mass=1000 too high for spawn airspeed v=30 to produce lift=weight without thrust; lift~mg balance only at v≈90 m/s). The architectural goal of WP6.5 ("spawn airborne, no tumble, bounded pitch rate") is fully achieved; making the aircraft hold a useful cruise state is a parameter-tuning concern for WP7.
+- **Lessons captured in archived plan:**
+  - The β1 static-margin path was empirically refuted in the prior abandoned attempt before β1's actual mechanism was understood — confirmation that "structural property of the schema" (not parameters) was the real gap.
+  - The dynamic-instability finding (200× discrepancy between my linearized analytical model and observed angular acceleration) is a useful frame for any future tuning work: linear-stability analysis underestimates the real divergence rate because stall regime + descent-induced AoA coupling are first-order, not perturbative.
+  - The agent's first-try sign error on the incidence rotation (P1.6 catch — `-incidenceRad` not `+incidenceRad` per the canonical span axis) demonstrates that **physical-sign tests** ("positive incidence → positive lift") are the only reliable convention anchor. Pure-math identity tests would have passed.
+  - Operator instinct to stop-and-escalate after Phase 2 failure (rather than have the agent unilaterally pick A/B/C) preserved the option to choose between path (A) damping or (C) automated tuning-search; (A) succeeded, (C) deferred.
+- **Status:** resolved 2026-05-11
 
 ### SURFACE-2026-05-10-01 — AoA sign-convention bug in `computeAngleOfAttack` causes divergent pitch instability
 - **Source:** feature:build (WP7 Phase F → Phase E back-loop → code investigation, 2026-05-10)

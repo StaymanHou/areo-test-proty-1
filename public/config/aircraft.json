@@ -5,33 +5,39 @@
   "surfaces": [
     {
       "name": "wing-left",
-      "position": { "x": -2, "y": 0, "z": 0 },
-      "normal":   { "x":  0, "y": 1, "z": 0 },
-      "chord":    { "x":  0, "y": 0, "z": -1 },
+      "position":     { "x": -2, "y": 0, "z": 0 },
+      "normal":       { "x":  0, "y": 1, "z": 0 },
+      "chord":        { "x":  0, "y": 0, "z": -1 },
       "area": 6,
-      "curve": "symmetric-flat-plate"
+      "curve": "symmetric-flat-plate",
+      "incidenceRad": 0.0349,
+      "clQ": 3
     },
     {
       "name": "wing-right",
-      "position": { "x": 2, "y": 0, "z": 0 },
-      "normal":   { "x": 0, "y": 1, "z": 0 },
-      "chord":    { "x": 0, "y": 0, "z": -1 },
+      "position":     { "x": 2, "y": 0, "z": 0 },
+      "normal":       { "x": 0, "y": 1, "z": 0 },
+      "chord":        { "x": 0, "y": 0, "z": -1 },
       "area": 6,
-      "curve": "symmetric-flat-plate"
+      "curve": "symmetric-flat-plate",
+      "incidenceRad": 0.0349,
+      "clQ": 3
     },
     {
       "name": "h-stab",
-      "position": { "x": 0, "y": 0,   "z": 3 },
-      "normal":   { "x": 0, "y": 1,   "z": 0 },
-      "chord":    { "x": 0, "y": 0,   "z": -1 },
+      "position":     { "x": 0, "y": 0,   "z": 3 },
+      "normal":       { "x": 0, "y": 1,   "z": 0 },
+      "chord":        { "x": 0, "y": 0,   "z": -1 },
       "area": 1.5,
-      "curve": "symmetric-flat-plate"
+      "curve": "symmetric-flat-plate",
+      "incidenceRad": -0.0175,
+      "clQ": 8
     },
     {
       "name": "v-stab",
-      "position": { "x": 0, "y": 0.5, "z": 3 },
-      "normal":   { "x": 1, "y": 0,   "z": 0 },
-      "chord":    { "x": 0, "y": 0,   "z": -1 },
+      "position":     { "x": 0, "y": 0.5, "z": 3 },
+      "normal":       { "x": 1, "y": 0,   "z": 0 },
+      "chord":        { "x": 0, "y": 0,   "z": -1 },
       "area": 1,
       "curve": "symmetric-flat-plate"
     }

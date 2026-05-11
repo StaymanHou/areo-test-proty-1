@@ -31,6 +31,21 @@ export interface AircraftSurfaceConfig {
   /** Resolved curve parameters (defaults filled in if input was a bare string). */
   curveParams: SymmetricFlatPlateParams;
   maxDeflectionRad?: number;
+  /**
+   * Fixed mount angle of the surface relative to the fuselage longitudinal axis,
+   * in radians. Rotates the surface about its span axis at construction time.
+   * Positive = leading edge up → positive AoA at level body attitude with forward
+   * airflow → positive lift. Default 0 (unchanged Phase-1 behavior).
+   * See arch.md Revision 2026-05-11 (D10) and CONVENTIONS.md.
+   */
+  incidenceRad?: number;
+  /**
+   * Pitch-rate damping coefficient (β4). When non-zero and the body has angular
+   * velocity, the surface generates an additional aerodynamic force opposing
+   * the local pitch motion at its position. Default undefined → no damping.
+   * See arch.md Revision 2026-05-11 ("Fallback path"/β4 hedge) and CONVENTIONS.md.
+   */
+  clQ?: number;
 }
 
 export interface AircraftConfig {
@@ -171,6 +186,24 @@ export function parseAircraftConfig(raw: unknown): AircraftConfig {
       }
       maxDeflectionRad = s.maxDeflectionRad;
     }
+    let incidenceRad: number | undefined;
+    if (s.incidenceRad !== undefined) {
+      if (typeof s.incidenceRad !== 'number' || !Number.isFinite(s.incidenceRad)) {
+        throw new Error(
+          `aircraft config: surfaces[${i}].incidenceRad must be a finite number`,
+        );
+      }
+      incidenceRad = s.incidenceRad;
+    }
+    let clQ: number | undefined;
+    if (s.clQ !== undefined) {
+      if (typeof s.clQ !== 'number' || !Number.isFinite(s.clQ)) {
+        throw new Error(
+          `aircraft config: surfaces[${i}].clQ must be a finite number`,
+        );
+      }
+      clQ = s.clQ;
+    }
     return {
       name: s.name,
       position: asVec3(s.position, `surfaces[${i}].position`),
@@ -182,6 +215,8 @@ export function parseAircraftConfig(raw: unknown): AircraftConfig {
       curveType,
       curveParams,
       maxDeflectionRad,
+      incidenceRad,
+      clQ,
     };
   });
 

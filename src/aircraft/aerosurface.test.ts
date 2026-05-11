@@ -694,3 +694,245 @@ describe('AeroSurface.setCurves', () => {
     expect(liftAfter).toBeGreaterThan(50);
   });
 });
+
+describe('AeroSurface — WP6.5: per-surface incidence (D10)', () => {
+  it('defaults: incidenceRad omitted leaves normal/chord/rest snapshots unchanged (regression baseline)', () => {
+    const cfg = {
+      position: new Vector3(0, 0, 0),
+      normal: new Vector3(0, 1, 0),
+      chord: new Vector3(0, 0, -1),
+      area: 1,
+      clCurve: FLAT_CL,
+      cdCurve: FLAT_CD,
+    };
+    const withoutIncidence = createAeroSurface(cfg);
+    const withZeroIncidence = createAeroSurface({ ...cfg, incidenceRad: 0 });
+
+    // Identical normal/chord/rest snapshots — bit-for-bit Phase-1 behavior preserved.
+    expect(withoutIncidence.incidenceRad).toBe(0);
+    expect(withZeroIncidence.incidenceRad).toBe(0);
+    expect(withZeroIncidence.normal.equals(withoutIncidence.normal)).toBe(true);
+    expect(withZeroIncidence.chord.equals(withoutIncidence.chord)).toBe(true);
+    expect(withZeroIncidence.restNormal.equals(withoutIncidence.restNormal)).toBe(true);
+    expect(withZeroIncidence.restChord.equals(withoutIncidence.restChord)).toBe(true);
+    expect(withZeroIncidence.spanAxis.equals(withoutIncidence.spanAxis)).toBe(true);
+    // And those snapshots equal the input vectors after normalize.
+    expect(withZeroIncidence.normal.x).toBeCloseTo(0, 12);
+    expect(withZeroIncidence.normal.y).toBeCloseTo(1, 12);
+    expect(withZeroIncidence.normal.z).toBeCloseTo(0, 12);
+    expect(withZeroIncidence.chord.x).toBeCloseTo(0, 12);
+    expect(withZeroIncidence.chord.y).toBeCloseTo(0, 12);
+    expect(withZeroIncidence.chord.z).toBeCloseTo(-1, 12);
+  });
+
+  it('positive incidenceRad rotates the surface leading-edge-up → non-zero lift at level body attitude with forward airflow', () => {
+    const { cl, cd } = createSymmetricFlatPlateCurves();
+    // 15° incidence — the stall peak for the default flat-plate curve; gives the
+    // maximum pre-stall CL, so produces an unambiguously large positive lift.
+    const incidence = (15 * Math.PI) / 180;
+    const s = createAeroSurface({
+      position: new Vector3(0, 0, 0),
+      normal: new Vector3(0, 1, 0),
+      chord: new Vector3(0, 0, -1),
+      area: 1,
+      clCurve: cl,
+      cdCurve: cd,
+      incidenceRad: incidence,
+    });
+
+    // Body flies straight forward (−Z) at 30 m/s, level (identity rotation).
+    // Without incidence, AoA would be 0 → CL=0 → zero lift.
+    // With +15° incidence, the surface sees +15° AoA → CL = clMax → strong +Y lift.
+    const body: BodyState = {
+      position: new Vector3(),
+      quaternion: new Quaternion(),
+      linvel: new Vector3(0, 0, -30),
+      angvel: new Vector3(),
+    };
+    const { force } = computeAeroForce(s, body);
+
+    // Sanity: expected lift magnitude is roughly 0.5·ρ·v²·A·CL(15°).
+    const clMax = DEFAULT_FLAT_PLATE_PARAMS.clSlope * DEFAULT_FLAT_PLATE_PARAMS.stallAlpha;
+    const q = 0.5 * AIR_DENSITY * 30 * 30 * 1; // area=1
+    const expectedLiftY = q * clMax * Math.cos(incidence); // world-frame Y component
+    // Tolerate ~5% — the lift acts along the rotated normal, which has both Y and Z
+    // components after a 15° incidence rotation about the span axis (+X).
+    expect(force.y).toBeGreaterThan(expectedLiftY * 0.9);
+    expect(force.y).toBeLessThan(expectedLiftY * 1.1);
+  });
+
+  it('incidence is a surface property, not a body property — same surface produces the same rest snapshots regardless of body attitude', () => {
+    const incidence = (10 * Math.PI) / 180;
+    const sA = createAeroSurface({
+      position: new Vector3(0, 0, 0),
+      normal: new Vector3(0, 1, 0),
+      chord: new Vector3(0, 0, -1),
+      area: 1,
+      clCurve: FLAT_CL,
+      cdCurve: FLAT_CD,
+      incidenceRad: incidence,
+    });
+    const sB = createAeroSurface({
+      position: new Vector3(0, 0, 0),
+      normal: new Vector3(0, 1, 0),
+      chord: new Vector3(0, 0, -1),
+      area: 1,
+      clCurve: FLAT_CL,
+      cdCurve: FLAT_CD,
+      incidenceRad: incidence,
+    });
+    // Surfaces are independent of any BodyState — their rest snapshots only
+    // depend on construction inputs.
+    expect(sA.restNormal.equals(sB.restNormal)).toBe(true);
+    expect(sA.restChord.equals(sB.restChord)).toBe(true);
+    expect(sA.spanAxis.equals(sB.spanAxis)).toBe(true);
+    // And the rotation took effect: the rest normal is no longer pure +Y, the rest
+    // chord is no longer pure −Z. Span axis (from the *pre-incidence* normal × chord
+    // = (0,1,0) × (0,0,-1) = (-1,0,0)) is unchanged by incidence.
+    expect(sA.restNormal.y).toBeCloseTo(Math.cos(incidence), 9);
+    // Leading-edge-up convention: +incidence tilts chord toward +Y (leading edge
+    // rises). Normal, perpendicular to chord, gains a +Z component (tilts toward
+    // where the wind comes from). See CONVENTIONS.md "incidenceRad".
+    expect(sA.restNormal.z).toBeCloseTo(Math.sin(incidence), 9);
+    expect(sA.spanAxis.x).toBeCloseTo(-1, 12);
+    expect(sA.spanAxis.y).toBeCloseTo(0, 12);
+    expect(sA.spanAxis.z).toBeCloseTo(0, 12);
+    // Chord gains +Y component — the leading edge has tilted up.
+    expect(sA.restChord.y).toBeCloseTo(Math.sin(incidence), 9);
+    expect(sA.restChord.z).toBeCloseTo(-Math.cos(incidence), 9);
+  });
+
+  it('default clQ=0 / omitted preserves bit-for-bit force output (regression baseline)', () => {
+    const { cl, cd } = createSymmetricFlatPlateCurves();
+    const cfg = {
+      position: new Vector3(0, 0, 3),
+      normal: new Vector3(0, 1, 0),
+      chord: new Vector3(0, 0, -1),
+      area: 1.5,
+      clCurve: cl,
+      cdCurve: cd,
+    };
+    const baseline = createAeroSurface(cfg);
+    const explicitZero = createAeroSurface({ ...cfg, clQ: 0 });
+
+    // Body with non-zero angular velocity — exercises the rotation-induced
+    // airflow contribution that clQ would amplify if non-zero.
+    const body: BodyState = {
+      position: new Vector3(),
+      quaternion: new Quaternion(),
+      linvel: new Vector3(0, 0, -30),
+      angvel: new Vector3(0.5, 0, 0), // +0.5 rad/s pitch rate
+    };
+    const fBaseline = computeAeroForce(baseline, body);
+    const fbX = fBaseline.force.x;
+    const fbY = fBaseline.force.y;
+    const fbZ = fBaseline.force.z;
+    const fExplicit = computeAeroForce(explicitZero, body);
+    expect(fExplicit.force.x).toBeCloseTo(fbX, 12);
+    expect(fExplicit.force.y).toBeCloseTo(fbY, 12);
+    expect(fExplicit.force.z).toBeCloseTo(fbZ, 12);
+  });
+
+  it('positive clQ amplifies rotation-induced airflow → larger damping force on rotating body', () => {
+    const { cl, cd } = createSymmetricFlatPlateCurves();
+    const baseCfg = {
+      position: new Vector3(0, 0, 3), // aft surface (h-stab-like)
+      normal: new Vector3(0, 1, 0),
+      chord: new Vector3(0, 0, -1),
+      area: 1.5,
+      clCurve: cl,
+      cdCurve: cd,
+    };
+    const undamped = createAeroSurface(baseCfg);
+    const damped = createAeroSurface({ ...baseCfg, clQ: 8 });
+
+    // Body has nose-up pitch rate. At an aft surface, rotation makes the point
+    // move downward (−Y) → local airflow has a +Y component → +AoA → lift up
+    // → at aft position, nose-down moment → damping. clQ amplifies this.
+    const body: BodyState = {
+      position: new Vector3(),
+      quaternion: new Quaternion(),
+      linvel: new Vector3(0, 0, -30),
+      angvel: new Vector3(1.0, 0, 0), // +1 rad/s pitch rate (substantial)
+    };
+    // Snapshot immediately after each call — `computeAeroForce` returns a
+    // reused output Vector3 (see "result.force vector is reused" regression).
+    const fUndamped = computeAeroForce(undamped, body);
+    const undampedY = fUndamped.force.y;
+    const fDamped = computeAeroForce(damped, body);
+    const dampedY = fDamped.force.y;
+
+    // Both produce a positive Y force; the damped surface produces a larger
+    // one because rotation contribution is amplified by (1 + clQ) = 9.
+    expect(undampedY).toBeGreaterThan(0);
+    expect(dampedY).toBeGreaterThan(undampedY);
+    // Ratio sanity: with clQ=8, rotation contribution is 9x — total force is
+    // not 9x because linvel-driven airflow is unchanged, but it should be
+    // meaningfully larger.
+    expect(dampedY / undampedY).toBeGreaterThan(1.2);
+  });
+
+  it('clQ damping direction opposes pitch rate (sign-convention regression anchor)', () => {
+    // The key regression class: when body pitches +X (nose up), the aft-surface
+    // damping force should produce a moment that opposes +X — i.e., a nose-DOWN
+    // moment about the CG. For an aft surface (z=+3, position above and behind
+    // CG along the +Z direction), upward force (+Y) gives r × F = (0,0,3) ×
+    // (0,F,0) = (-3F, 0, 0) which is NEGATIVE X → nose down → damps + pitch ✓.
+    // So the damped Y force must be positive when pRate is positive.
+    const { cl, cd } = createSymmetricFlatPlateCurves();
+    const surface = createAeroSurface({
+      position: new Vector3(0, 0, 3),
+      normal: new Vector3(0, 1, 0),
+      chord: new Vector3(0, 0, -1),
+      area: 1.5,
+      clCurve: cl,
+      cdCurve: cd,
+      clQ: 8,
+    });
+
+    // Case A: positive pitch rate (nose up). Damping should produce upward
+    // force at aft surface → nose-down moment about CG.
+    const posPitchRate: BodyState = {
+      position: new Vector3(),
+      quaternion: new Quaternion(),
+      linvel: new Vector3(0, 0, -30),
+      angvel: new Vector3(1.0, 0, 0),
+    };
+    const fPositive = computeAeroForce(surface, posPitchRate);
+    expect(fPositive.force.y).toBeGreaterThan(0);
+
+    // Case B: negative pitch rate (nose down). Damping should produce downward
+    // force at aft surface → nose-up moment about CG.
+    const negPitchRate: BodyState = {
+      position: new Vector3(),
+      quaternion: new Quaternion(),
+      linvel: new Vector3(0, 0, -30),
+      angvel: new Vector3(-1.0, 0, 0),
+    };
+    const fNegative = computeAeroForce(surface, negPitchRate);
+    expect(fNegative.force.y).toBeLessThan(0);
+  });
+
+  it('setGeometry re-applies stored incidenceRad after normal/chord live-edit', () => {
+    const incidence = (12 * Math.PI) / 180;
+    const s = createAeroSurface({
+      position: new Vector3(0, 0, 0),
+      normal: new Vector3(0, 1, 0),
+      chord: new Vector3(0, 0, -1),
+      area: 1,
+      clCurve: FLAT_CL,
+      cdCurve: FLAT_CD,
+      incidenceRad: incidence,
+    });
+    const restNormalBefore = s.restNormal.clone();
+
+    // Re-set normal/chord to the same values — incidence should re-apply, so
+    // restNormal stays at the rotated direction (not bare +Y).
+    s.setGeometry({ normal: new Vector3(0, 1, 0), chord: new Vector3(0, 0, -1) });
+    expect(s.restNormal.x).toBeCloseTo(restNormalBefore.x, 9);
+    expect(s.restNormal.y).toBeCloseTo(restNormalBefore.y, 9);
+    expect(s.restNormal.z).toBeCloseTo(restNormalBefore.z, 9);
+    expect(s.incidenceRad).toBe(incidence);
+  });
+});
+

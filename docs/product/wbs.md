@@ -1,7 +1,7 @@
 ---
 stage: wbs
 state: complete
-updated: 2026-05-09 (WP8)
+updated: 2026-05-11 (WP6.5 inserted per arch Revision 2026-05-11)
 ---
 
 # Work Breakdown Structure
@@ -84,17 +84,23 @@ T-shirt sizing: **XS** ≤ 2h · **S** ≤ half day · **M** ≤ 1 day · **L** 
 - [x] CONVENTIONS.md documents +aileron→roll right, +elevator→nose up, +rudder→nose right, deflection-via-spanAxis model
 - [x] 37 new tests; 106/106 pass; verified end-to-end at localhost:5173
 
-### WP7: Flight-feel tuning pass
-**Description:** The decisive feel task per R2. Iterate on flight model constants (CL slopes, stall α, mass, inertia, thrust, control authority, damping) until flying feels right. Capture the working preset.
+### WP6.5: Per-surface incidence (β1 — airborne trim-spawn schema extension)
+**Description:** Implements the schema extension decided in arch Revision 2026-05-11 (D10). Adds an optional `incidenceRad` field to each aerosurface in `aircraft.json` representing the surface's fixed mount angle relative to the fuselage longitudinal axis, and threads it through `computeAeroForce` so a surface at non-zero incidence sees a non-zero local AoA at level body attitude. With wings at ~+2° and h-stab at ~-1°, this gives the airframe a true level-trim equilibrium and allows it to spawn airborne and fly straight indefinitely.
 **Phase:** 1
-**Dependencies:** WP6
-**Size:** L
+**Dependencies:** WP6 (controls), WP4 (aerosurface primitive)
+**Size:** S
 **Tasks:**
-- [ ] Expose all flight-model constants in lil-gui with live-apply
-- [ ] "Export preset" button writes current values back to `aircraft.json` shape
-- [ ] Tuning sessions: takeoff roll, level flight, banking, pitching, stall recovery
-- [ ] Cross-check feel with casual player (one external pair of eyes)
-- [ ] Commit tuned preset as the default `aircraft.json`
+- [ ] Add `incidenceRad?: number` (default 0) to `AircraftSurfaceConfig`; plumb through `parseAircraftConfig` → `AeroSurface` constructor.
+- [ ] In `computeAeroForce`, apply the incidence rotation about the surface's pre-baked span axis when computing local AoA (sign convention: positive `incidenceRad` produces positive AoA at zero body pitch and forward flight).
+- [ ] Update `CONVENTIONS.md` with the incidence sign convention and a one-liner on the trim mechanism.
+- [ ] Pick initial incidence values for `public/config/aircraft.json` (start at wings=+2°, h-stab=-1°; refine in WP7 Phase E retune).
+- [ ] Spawn the aircraft airborne (already true: launched at (0,50,0)). Confirm no key press is required and the aircraft holds level flight via the new trim equilibrium.
+- [ ] Tests:
+  - Default `incidenceRad=0` must produce bit-for-bit identical force vectors to current behavior on all existing 227 cases (regression guard).
+  - New test: a level-flow surface with non-zero `incidenceRad` returns non-zero lift in the expected direction.
+  - New test: the incidence rotation is a fixed property of the surface (independent of body attitude).
+- [ ] Verify-self exit gate: `|pRate| < 360°/s` sustained over 5+ seconds at the dev page at `http://localhost:5173/?debug=true`, with telemetry capture pattern (`[tel f=N]` console messages) already established this cycle. Altitude bounded ±50m, airspeed in [25, 35] m/s.
+- [ ] Closes-by-implementation: SURFACE-2026-05-10-02 in `workflow/backlog.md`.
 
 ### WP8: Phase 1 world (flat terrain + skybox + landmarks) — DONE 2026-05-09
 **Description:** Per arch D4, flat textured ground plane + skybox + 2–3 placed landmarks (runway, control tower) for spatial reference. Rapier ground collider. Runs at 60fps.
@@ -111,7 +117,7 @@ T-shirt sizing: **XS** ≤ 2h · **S** ≤ half day · **M** ≤ 1 day · **L** 
 ### WP9: Phase 1 verification
 **Description:** Meets Phase 1 exit criteria. Deployable dev build; a developer can open the URL, take off, fly around, and crash; 60fps on a mid-range laptop in Chrome/Safari/Firefox.
 **Phase:** 1
-**Dependencies:** WP2, WP3, WP7, WP8
+**Dependencies:** WP2, WP3, WP6.5, WP7, WP8
 **Size:** S
 **Tasks:**
 - [ ] End-to-end playthrough: takeoff, fly, land-or-crash
@@ -265,17 +271,17 @@ T-shirt sizing: **XS** ≤ 2h · **S** ≤ half day · **M** ≤ 1 day · **L** 
 ```
 WP1 ─► WP2 ─► WP3 ─┐
   │                │
-  └─► WP4 ─► WP5 ──┼─► WP6 ─► WP7 ─► WP9 ─► WP10 ─► WP11 ─┬─► WP13 ─┐
-                   │                                      ├─► WP14 ─┤
-WP1 ─► WP8 ────────┘                               WP10─► WP12      ├─► WP17 ─► WP18 ─► WP21 ─► WP22 ─► WP23
-                                                                    ├─► WP15 ─┤                      ▲
-                                                                    └─► WP16 ─┘                      │
-                                                              WP17 ─► WP19 ─────────────────────────┤
-                                                              WP17 ─► WP20 ─────────────────────────┘
+  └─► WP4 ─► WP5 ──┼─► WP6 ─► WP6.5 ─► WP7 ─► WP9 ─► WP10 ─► WP11 ─┬─► WP13 ─┐
+                   │                                                ├─► WP14 ─┤
+WP1 ─► WP8 ────────┘                                         WP10─► WP12      ├─► WP17 ─► WP18 ─► WP21 ─► WP22 ─► WP23
+                                                                    ├─► WP15 ─┤                                  ▲
+                                                                    └─► WP16 ─┘                                  │
+                                                              WP17 ─► WP19 ─────────────────────────────────────┤
+                                                              WP17 ─► WP20 ─────────────────────────────────────┘
 ```
 
 **Critical path (longest chain to ship):**
-`WP1 → WP4 → WP5 → WP6 → WP7 → WP9 → WP10 → WP11 → WP16 → WP17 → WP20 → WP21 → WP22 → WP23`
+`WP1 → WP4 → WP5 → WP6 → WP6.5 → WP7 → WP9 → WP10 → WP11 → WP16 → WP17 → WP20 → WP21 → WP22 → WP23`
 
 WP7 (flight-feel tuning) and WP16 (combat) are the two heaviest items and sit on the critical path. WP20 (visual polish) is L but trivially parallelizable with WP18/WP19.
 

@@ -26,3 +26,6 @@ dist-ssr
 # Playwright MCP scratch (console logs, screenshots) from verify-self runs
 .playwright-mcp/
 /*.png
+
+# Claude Code local state (auto-memory, etc.)
+.claude/

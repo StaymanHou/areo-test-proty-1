@@ -21,6 +21,21 @@ export interface AeroSurfaceConfig {
   cdCurve: LiftDragCurve;
   /** Maximum deflection magnitude in radians. Default ~25° (0.436 rad). */
   maxDeflectionRad?: number;
+  /**
+   * Fixed mount angle of the surface about its span axis, in radians. Applied
+   * once at construction time (and re-applied by `setGeometry`). Positive =
+   * leading edge up → positive AoA at level body attitude with forward
+   * airflow → positive lift. Default 0.
+   */
+  incidenceRad?: number;
+  /**
+   * Pitch-rate damping coefficient (β4). When non-zero, adds a damping force
+   * along the surface normal proportional to the rotation-induced component of
+   * the local airflow normal to the surface. Scales with dynamic pressure;
+   * does NOT divide by airspeed (no low-speed singularity). Default 0 (no
+   * damping — pre-Phase-3 behavior preserved). See CONVENTIONS.md.
+   */
+  clQ?: number;
 }
 
 export const DEFAULT_MAX_DEFLECTION_RAD = (25 * Math.PI) / 180;
@@ -59,16 +74,20 @@ export class AeroSurface {
   clCurve: LiftDragCurve;
   cdCurve: LiftDragCurve;
 
-  /** Rest (un-deflected) chord, refreshed by setGeometry. */
+  /** Rest (un-deflected) chord, refreshed by setGeometry. Incidence-rotated. */
   restChord: Vector3;
-  /** Rest (un-deflected) normal, refreshed by setGeometry. */
+  /** Rest (un-deflected) normal, refreshed by setGeometry. Incidence-rotated. */
   restNormal: Vector3;
-  /** Pre-baked rotation axis for deflections — `restNormal × restChord`, unit length. */
+  /** Pre-baked rotation axis for deflections — original (pre-incidence) normal × chord, unit length. */
   spanAxis: Vector3;
   /** Mutable for WP7 live tuning; do not mutate during the per-tick hot path. */
   maxDeflectionRad: number;
   /** Current deflection angle in radians; signed. Mutated via setDeflection. */
   deflection = 0;
+  /** Fixed mount angle about the span axis. Re-applied by setGeometry on geometry edits. */
+  incidenceRad: number;
+  /** Pitch-rate damping coefficient. 0 = no damping. */
+  clQ: number;
 
   constructor(config: AeroSurfaceConfig) {
     this.position = config.position.clone();
@@ -78,15 +97,32 @@ export class AeroSurface {
     this.clCurve = config.clCurve;
     this.cdCurve = config.cdCurve;
     this.maxDeflectionRad = config.maxDeflectionRad ?? DEFAULT_MAX_DEFLECTION_RAD;
+    this.incidenceRad = config.incidenceRad ?? 0;
+    this.clQ = config.clQ ?? 0;
 
-    this.restNormal = this.normal.clone();
-    this.restChord = this.chord.clone();
-    // Span axis = normal × chord. If parallel, surface geometry is degenerate.
-    const span = new Vector3().crossVectors(this.restNormal, this.restChord);
+    // Span axis = (pre-incidence) normal × chord. If parallel, surface geometry is degenerate.
+    const span = new Vector3().crossVectors(this.normal, this.chord);
     if (span.lengthSq() < 1e-9) {
       throw new Error('AeroSurface: normal and chord must not be parallel');
     }
     this.spanAxis = span.normalize();
+
+    // Apply fixed mount-angle (incidence) about the span axis. Default 0 leaves
+    // normal/chord unchanged — preserves all pre-D10 fixture behavior bit-for-bit.
+    // Sign: rotate by −incidenceRad so that for the canonical wing layout
+    // (normal=+Y, chord=−Z, spanAxis=normal×chord=−X) a +incidenceRad value tilts
+    // the leading edge UP (chord gains a +Y component), producing positive AoA
+    // at level body attitude with forward airflow → positive lift. See
+    // CONVENTIONS.md for the convention statement.
+    if (this.incidenceRad !== 0) {
+      _scratchDeflectQ.setFromAxisAngle(this.spanAxis, -this.incidenceRad);
+      this.normal.applyQuaternion(_scratchDeflectQ);
+      this.chord.applyQuaternion(_scratchDeflectQ);
+    }
+
+    // Rest snapshots are taken AFTER incidence — deflections compose on top.
+    this.restNormal = this.normal.clone();
+    this.restChord = this.chord.clone();
   }
 
   /**
@@ -141,14 +177,21 @@ export class AeroSurface {
       this.chord.copy(opts.chord).normalize();
     }
     if (opts.normal !== undefined || opts.chord !== undefined) {
-      // Re-bake rest snapshots and spanAxis from the (now-current) normal+chord.
+      // Re-bake spanAxis from the (now-current, pre-incidence) normal+chord,
+      // then re-apply stored incidence, then snapshot rest. Matches constructor.
       _scratchSpan.crossVectors(this.normal, this.chord);
       if (_scratchSpan.lengthSq() < 1e-9) {
         throw new Error('AeroSurface.setGeometry: normal and chord must not be parallel');
       }
+      this.spanAxis.copy(_scratchSpan).normalize();
+      if (this.incidenceRad !== 0) {
+        // Sign matches the constructor — see comment there.
+        _scratchDeflectQ.setFromAxisAngle(this.spanAxis, -this.incidenceRad);
+        this.normal.applyQuaternion(_scratchDeflectQ);
+        this.chord.applyQuaternion(_scratchDeflectQ);
+      }
       this.restNormal.copy(this.normal);
       this.restChord.copy(this.chord);
-      this.spanAxis.copy(_scratchSpan).normalize();
       this.deflection = 0;
     }
   }
@@ -346,8 +389,16 @@ export function computeAeroForce(
   _outAppPoint.copy(bodyState.position).add(_scratchAppOffset);
 
   // 2. Airflow at application point in world frame.
-  // worldOffset (from body origin to point) is _scratchAppOffset.
-  computeAirflowAtPoint(bodyState, _scratchAppOffset, _scratchAirflow);
+  // Airflow = −(linvel + ω × r). With β4 (clQ>0), the rotation contribution is
+  // amplified by (1 + clQ) — this augments the natural pitch-rate damping that
+  // arises from points away from CG seeing rotation-induced flow, by an extra
+  // per-surface gain. No singularity at low airspeed; clQ=0 preserves the
+  // pre-β4 behavior exactly. See arch.md Revision 2026-05-11 ("Fallback path").
+  _scratchAngVelCross.copy(bodyState.angvel).cross(_scratchAppOffset);
+  if (surface.clQ !== 0) {
+    _scratchAngVelCross.multiplyScalar(1 + surface.clQ);
+  }
+  _scratchAirflow.copy(bodyState.linvel).add(_scratchAngVelCross).negate();
   const v2 = _scratchAirflow.lengthSq();
   if (v2 < 1e-12) {
     _outForce.set(0, 0, 0);

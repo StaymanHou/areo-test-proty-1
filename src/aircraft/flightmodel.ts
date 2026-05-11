@@ -63,6 +63,8 @@ export class FlightModel {
         clCurve: s.clCurve,
         cdCurve: s.cdCurve,
         maxDeflectionRad: s.maxDeflectionRad,
+        incidenceRad: s.incidenceRad,
+        clQ: s.clQ,
       }),
     );
 

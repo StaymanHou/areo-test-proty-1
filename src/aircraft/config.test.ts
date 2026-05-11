@@ -112,6 +112,60 @@ describe('parseAircraftConfig', () => {
     expect(() => parseAircraftConfig(bad)).toThrow(/maxDeflectionRad/);
   });
 
+  // --- Per-surface incidence (WP6.5 / D10) ---
+
+  it('incidenceRad is undefined when absent (AeroSurface default 0 takes over downstream)', () => {
+    const cfg = parseAircraftConfig(validBaseline());
+    expect(cfg.surfaces[0]!.incidenceRad).toBeUndefined();
+  });
+
+  it('parses an explicit numeric incidenceRad (positive and negative)', () => {
+    const raw = validBaseline();
+    (raw.surfaces[0] as unknown as { incidenceRad: number }).incidenceRad = 0.035;
+    const cfg = parseAircraftConfig(raw);
+    expect(cfg.surfaces[0]!.incidenceRad).toBe(0.035);
+
+    const raw2 = validBaseline();
+    (raw2.surfaces[0] as unknown as { incidenceRad: number }).incidenceRad = -0.017;
+    const cfg2 = parseAircraftConfig(raw2);
+    expect(cfg2.surfaces[0]!.incidenceRad).toBe(-0.017);
+  });
+
+  it('rejects non-finite or non-numeric incidenceRad', () => {
+    const bad = validBaseline();
+    (bad.surfaces[0] as unknown as { incidenceRad: unknown }).incidenceRad = '0.035';
+    expect(() => parseAircraftConfig(bad)).toThrow(/incidenceRad/);
+    const bad2 = validBaseline();
+    (bad2.surfaces[0] as unknown as { incidenceRad: number }).incidenceRad = NaN;
+    expect(() => parseAircraftConfig(bad2)).toThrow(/incidenceRad/);
+    const bad3 = validBaseline();
+    (bad3.surfaces[0] as unknown as { incidenceRad: number }).incidenceRad = Infinity;
+    expect(() => parseAircraftConfig(bad3)).toThrow(/incidenceRad/);
+  });
+
+  // --- Per-surface pitch-rate damping (WP6.5 Phase 3 / β4) ---
+
+  it('clQ is undefined when absent (AeroSurface default 0 takes over downstream)', () => {
+    const cfg = parseAircraftConfig(validBaseline());
+    expect(cfg.surfaces[0]!.clQ).toBeUndefined();
+  });
+
+  it('parses an explicit numeric clQ (positive)', () => {
+    const raw = validBaseline();
+    (raw.surfaces[0] as unknown as { clQ: number }).clQ = 8;
+    const cfg = parseAircraftConfig(raw);
+    expect(cfg.surfaces[0]!.clQ).toBe(8);
+  });
+
+  it('rejects non-finite or non-numeric clQ', () => {
+    const bad = validBaseline();
+    (bad.surfaces[0] as unknown as { clQ: unknown }).clQ = '8';
+    expect(() => parseAircraftConfig(bad)).toThrow(/clQ/);
+    const bad2 = validBaseline();
+    (bad2.surfaces[0] as unknown as { clQ: number }).clQ = NaN;
+    expect(() => parseAircraftConfig(bad2)).toThrow(/clQ/);
+  });
+
   // --- Parametric curve schema (WP7 Phase A) ---
 
   const validParametricCurve = () => ({

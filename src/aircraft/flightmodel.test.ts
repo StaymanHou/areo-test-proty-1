@@ -266,6 +266,94 @@ describe('FlightModel', () => {
     }
   });
 
+  it('WP6.5/D10: incidenceRad on JSON surfaces is threaded through to the constructed AeroSurfaces', () => {
+    // Integration-boundary regression guard: a future refactor of the parse →
+    // FlightModel surface-construction glue (currently flightmodel.ts:58) must
+    // not silently drop the incidenceRad field. Anchor: with non-zero incidence
+    // on the wings, the constructed surfaces' rest snapshots must reflect the
+    // mount-angle rotation. The default-zero case is the regression baseline
+    // (no other test changes), proven elsewhere by all pre-D10 tests passing
+    // unchanged.
+    const incidence = (2 * Math.PI) / 180; // +2° — a realistic wing setting
+    const raw = baselineRaw();
+    (raw.surfaces[0] as unknown as { incidenceRad: number }).incidenceRad = incidence;  // wing-left
+    (raw.surfaces[1] as unknown as { incidenceRad: number }).incidenceRad = incidence;  // wing-right
+    (raw.surfaces[2] as unknown as { incidenceRad: number }).incidenceRad = -incidence; // h-stab at -2°
+    const cfg = parseAircraftConfig(raw);
+
+    const world = new RAPIER.World({ x: 0, y: -9.81, z: 0 });
+    const aircraft = new Aircraft(world, cfg);
+    const fm = new FlightModel(aircraft);
+
+    expect(fm.surfaces[0]!.incidenceRad).toBe(incidence);
+    expect(fm.surfaces[1]!.incidenceRad).toBe(incidence);
+    expect(fm.surfaces[2]!.incidenceRad).toBe(-incidence);
+    expect(fm.surfaces[3]!.incidenceRad).toBe(0); // v-stab — left at default
+
+    // And the rest snapshots reflect the rotation (chord gains a +Y / −Y
+    // component depending on incidence sign). This proves the rotation actually
+    // took effect — not just that the field was stored.
+    expect(fm.surfaces[0]!.restChord.y).toBeCloseTo(Math.sin(incidence), 9);
+    expect(fm.surfaces[2]!.restChord.y).toBeCloseTo(-Math.sin(incidence), 9);
+    // V-stab unchanged from default.
+    expect(fm.surfaces[3]!.restChord.y).toBeCloseTo(0, 12);
+  });
+
+  it('WP6.5/β4: clQ on JSON surfaces produces real pitch-rate damping in FlightModel', () => {
+    // Integration-boundary regression guard: clQ must thread through
+    // parseAircraftConfig → FlightModel construction → computeAeroForce
+    // (via flightmodel.ts:58) such that the running physics shows damping.
+    // Anchor: spin up a body with a +pitch rate, run one physics step with
+    // and without clQ, and confirm the with-clQ version generates a stronger
+    // restoring pitch torque (smaller angvel.x after the step).
+    const withoutClQ = parseAircraftConfig(baselineRaw());
+    const rawWith = baselineRaw();
+    (rawWith.surfaces[0] as unknown as { clQ: number }).clQ = 3; // wing-left
+    (rawWith.surfaces[1] as unknown as { clQ: number }).clQ = 3; // wing-right
+    (rawWith.surfaces[2] as unknown as { clQ: number }).clQ = 8; // h-stab
+    const withClQ = parseAircraftConfig(rawWith);
+
+    // Both aircraft: forward flight at 30 m/s with an initial +pitch rate.
+    // Zero gravity isolates aero torque; zero throttle isolates from thrust.
+    // `AircraftCreateOptions` doesn't accept angvel — set it via Rapier directly.
+    const initialPitchRate = 2.0; // rad/s
+    const initial = { linvel: new Vector3(0, 0, -30) };
+
+    const worldA = new RAPIER.World({ x: 0, y: 0, z: 0 });
+    worldA.timestep = 1 / 60;
+    const aircraftA = new Aircraft(worldA, withoutClQ, initial);
+    aircraftA.body.setAngvel({ x: initialPitchRate, y: 0, z: 0 }, true);
+    const fmA = new FlightModel(aircraftA);
+    fmA.applyForces(0);
+    worldA.step();
+    const avA = aircraftA.body.angvel();
+    const avAx = avA.x;
+
+    const worldB = new RAPIER.World({ x: 0, y: 0, z: 0 });
+    worldB.timestep = 1 / 60;
+    const aircraftB = new Aircraft(worldB, withClQ, initial);
+    aircraftB.body.setAngvel({ x: initialPitchRate, y: 0, z: 0 }, true);
+    const fmB = new FlightModel(aircraftB);
+    fmB.applyForces(0);
+    worldB.step();
+    const avB = aircraftB.body.angvel();
+    const avBx = avB.x;
+
+    // Sanity: clQ wired through to the constructed surfaces.
+    expect(fmB.surfaces[0]!.clQ).toBe(3);
+    expect(fmB.surfaces[1]!.clQ).toBe(3);
+    expect(fmB.surfaces[2]!.clQ).toBe(8);
+    expect(fmA.surfaces[0]!.clQ).toBe(0); // default
+
+    // With clQ, the +pitch rate is damped more (avBx < avAx for positive
+    // initial pitch rate). Both should be smaller than initialPitchRate
+    // (damping is present even without clQ via the natural ω×r mechanism),
+    // but the clQ version damps more strongly.
+    expect(avAx).toBeLessThan(initialPitchRate);    // some natural damping
+    expect(avBx).toBeLessThan(avAx);                // clQ amplifies it
+    expect(avBx).toBeGreaterThan(0);                // not over-damped to reverse
+  });
+
   it('1000 calls to applyForces complete in under 50 ms (allocation-free perf proxy)', () => {
     const world = new RAPIER.World({ x: 0, y: -9.81, z: 0 });
     const aircraft = new Aircraft(world, config, {
