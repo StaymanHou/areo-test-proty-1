@@ -1,13 +1,16 @@
 ---
 workflow: feature
-state: plan (complete)
+state: closed
 created: 2026-05-09
+completed: 2026-05-11
 entry: spec
 drive_mode: full-autopilot
 wbs_ref: WP7
+ships: phases A–F + the prerequisite WP6.6 arch fix
+commits: c556cb6 (phases A–D, 2026-05-09); e14cfef (WP6.6, 2026-05-11); 602c6ae (phases E + F, 2026-05-11); bedee21 (post-ship WIP marker, 2026-05-11)
 ---
 
-# Feature: WP7 — Flight-feel tuning pass
+# Feature: WP7 — Flight-feel tuning pass (COMPLETED 2026-05-11)
 
 **Workflow:** feature
 **State:** spec
@@ -648,12 +651,23 @@ This was implicit in the arch.md Revision 2026-05-11 / D10 "Fallback path" hedge
 
 **Surface logged:** SURFACE-2026-05-11-03 in `workflow/backlog.md` (high priority — gates WP7 → WP9 → Phase 1 exit).
 
-## Current Node (revised 2026-05-11 — WP7 SHIPPED, awaiting /feature-finalize)
-- **Path:** Feature > ship (complete) — commits e14cfef (WP6.6) + 602c6ae (WP7 Phases E+F) on `main`
-- **State:** ship (complete). All six phases A–F + the WP6.6 prerequisite arch fix landed in two commits.
+## Current Node (FINAL — feature closed 2026-05-11)
+- **Path:** Feature > closed
+- **State:** closed. All phases A–F + WP6.6 prerequisite arch fix shipped on `main`. Durable docs (CLAUDE.md, roadmap.md, wbs.md) updated. Backlog swept: SURFACE-2026-05-09-05 moved to Resolved; SURFACE-2026-05-11-04 stays open as Phase 2 candidate; SURFACE-2026-05-11-02 stays open with disposition; SURFACE-2026-05-09-01 and SURFACE-2026-04-19-01 unchanged (WP9 / Phase 3 candidates respectively).
 - **Blocked:** none.
-- **Ready for:** `/feature-finalize` to archive this WIP file, update durable docs (CLAUDE.md status, roadmap/WBS check-off), sweep backlog, and mark closed-by-implementation surfaces resolved.
-- **Open discoveries (carried to finalize):**
-  - SURFACE-2026-05-11-04 (phugoid undamped) — Phase 2 candidate; not gating Phase 1.
-  - SURFACE-2026-05-11-02 — re-dispositioned during ship as "Phase 2 only if external feedback rejects the descending glide."
-  - SURFACE-2026-05-09-05 (verify-self friendly trim) — closed-by-implementation; mark resolved at finalize.
+- **Archive destination:** `workflow/archive/wp7-flight-feel-tuning.md`.
+
+## Retrospect
+
+- **What changed in our understanding:** The original Phase E plan assumed "Phase E is just parameter tuning against a verified-stable airframe." That assumption was wrong twice. First, WP6.5's verified-stable airframe was only stable at low V (which produced the WP6.6 work, F26 escalation #1). Second, even after WP6.6 made damping V-robust, the long-period phugoid mode remained undamped, so single-knob tuning could not produce a long-horizon stable cruise (which produced the option-(c) decision). The bigger pattern: each layer of verification I peeled back revealed another hidden boundary. The workflow's discipline of "be skeptical of 'we already verified this'" earned its keep.
+- **Assumptions that held:**
+  - The arch.md decisions (D2 aerosurface primitive, D3 JSON config + lil-gui, D10 β1 incidence, "Fallback path" β4 damping) all landed and worked as the architecture predicted.
+  - The Khan & Nahon per-surface model produces correct-feeling short-period dynamics — WP6.6's V-scaling fix preserves WP6.5's calibration bit-for-bit.
+  - The Phase A–D infrastructure (parametric curves, live mutators, lil-gui Flight Model folder, JSON export) shipped first try in 2026-05-09 and held up across all subsequent work without changes.
+  - The Telemetry GUI + `[tel f=N]` console log + `window.__aircraft` hook (added during the Phase F back-loop) became *the* observability infrastructure across WP6.5/WP6.6/WP7 verify-self runs and now ships to production-debug as a Phase 1 deliverable.
+- **Assumptions that were wrong:**
+  - **Single-knob tuning works.** WP6.5 left a descending-glide attractor that SURFACE-2026-05-11-02 said should be closable by (a) baseline throttle, (b) mass reduction, or (c) wing area increase. Two single-knob attempts proved this wrong: any non-zero baseline throttle makes the phugoid divergent over long horizons. The "level cruise feel" is architecturally unreachable in Phase 1.
+  - **Short observation windows prove stability.** WP6.5's verify-self used a 6-second window. WP6.6 added a 14-second window. Phase E's first attempt passed the 6-second window but failed the 14-second window. The 14-second window then *also* missed a longer-period divergence — a second probe extended to 31 seconds caught the NaN cascade for the throttle=0.05 case. The general rule is in `feedback_verify_self_envelope.md`: observation window must be ≥2× the longest-period oscillation under observation.
+  - **OR-separated SURFACE recipes can be combined for faster convergence.** WP7 Phase E attempt 1 stacked mass=700 + throttle=0.15 (combining options (b) and (a)). It looked OK at 7 seconds. The combination obscured which knob mattered when the divergence appeared at 14s. Memory `feedback_surface_or_means_or.md` codifies the corrective: try one knob at a time.
+  - **Verify-human is the only place "feels right" gets judged.** Q4 research positioned Phase F's external casual-player check as the canonical feel-rights gate. In full-autopilot the operator IS the casual-player surrogate; the disposition is honest about the deviation. If external feedback later rejects the descending glide, SURFACE-2026-05-11-04 is the escalation path. The workflow handles this without breaking — but the lesson is that "feel right" is an open-ended verdict, not a checkbox.
+- **Approach delta:** The plan was 6 phases: A (curve schema), B (mutators), C (lil-gui), D (export), E (tuning pass), F (feel-check + commit defaults). The actual path was: A → B → C → D in one session in 2026-05-09 (per plan), THEN long pause across WP6.5 + AoA-sign-fix + WP8, THEN F26 escalation in 2026-05-11 that produced WP6.6, THEN Phase E retune attempts 1+2 (both refuted), THEN option-(c) disposition, THEN Phase F operator-as-tester disposition. The plan had no model for "the tuning pass might empirically refute the existence of a Phase 1-acceptable tune"; the workflow accommodated this via the option-(c) decision and SURFACE logging. The L-sized delivery (vs the original M estimate) is mostly the F26 escalations + the long-horizon verify-self lesson, not the original A–F scope.

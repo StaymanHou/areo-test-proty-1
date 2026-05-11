@@ -26,16 +26,6 @@ Surface-notes from workflow runs. Consumed and resolved by higher-level workflow
 - **Suggested action:** At WP7 Phase E entry: experiment with (a) baseline `throttle = 0.4` at spawn (cheapest — `Controls` class might need a constructor option), (b) `mass = 500–700 kg` (changes ground feel), (c) `area = 9–10 m²` per wing (changes visual feel of wing size). Iterate via lil-gui live; export preset to `aircraft.json` when it feels right. The strong physical priors (incidence 0–4°, clQ 0–16, lift/weight ratio ~1 at cruise speed) make this a bounded search — likely 1–2 lil-gui sessions.
 - **Status:** WP7 Phase E disposition 2026-05-11 — the "level cruise" goal is **not closable within Phase 1 scope** due to SURFACE-2026-05-11-04 (phugoid undamped). Phase E shipped option (c) (accept descending glide). This entry stays open as a candidate for Phase 2 if the casual-player feel-check (Phase F AC #7) rejects the descending glide as unplayable.
 
-### SURFACE-2026-05-09-05 — Phase 4 verify-self required WP7 trim to fully validate; need a verify-self-friendly trim
-- **Source:** feature:build (WP8 Phase 4 verify-self back-loop)
-- **Target level:** product:wbs (process; relates to WP9 verification approach)
-- **Type:** process / observability gap
-- **Summary:** WP8 Phase 4 had two observable outcomes (`horizon-tilt-after-roll`, `tower-parallax-on-approach`) that required sustained level flight to evaluate. Without WP7's tuning preset committed, the default-trim aircraft dives off-screen quickly, breaking continuity for these sustained-frame checks. The skybox-upload fix is verifiable from a single boot screenshot (P4.vs.1 PASS) — but anything requiring "fly for several seconds and observe X" needs a flyable trim.
-- **Context:** This confirms the two-way dependency originally noted in SURFACE-2026-05-09-02. WP8's success is partially observable without WP7; WP7's success is partially observable without WP8. Both must land before WP9 can do its "developer takes off, flies, crashes" exit-criteria check.
-- **Suggested action:** When `/session-resume`-ing WP7 Phase F, the first action after PF.1 (casual-player nomination) should be to commit the candidate preset block to `public/config/aircraft.json` BEFORE the external feel-check; then re-take WP8's deferred observability outcomes (P4.vs.2 + P4.vs.3) opportunistically during the WP7 feel-check, not as separate verify-self runs.
-- **Priority:** medium (load-bearing for the WP7 → WP8 → WP9 chain)
-- **Status:** pending
-
 ### SURFACE-2026-05-09-01 — End-to-end browser test infrastructure not configured
 - **Source:** feature:verify-codify (WP6 Phase 4)
 - **Target level:** product:wbs (likely WP9 Phase 1 verification, or a dedicated tooling WP)
@@ -57,6 +47,11 @@ Surface-notes from workflow runs. Consumed and resolved by higher-level workflow
 - **Status:** pending
 
 ## Resolved
+
+### SURFACE-2026-05-09-05 — Phase 4 verify-self required WP7 trim to fully validate (resolved by disposition)
+- **Source:** feature:build (WP8 Phase 4 verify-self back-loop, 2026-05-09)
+- **Resolution:** Closed-by-implementation 2026-05-11 at WP7 finalize. The original surface expected a WP7-committed-tuned-preset (level cruise) to enable sustained-frame observation of WP8's deferred outcomes (`horizon-tilt-after-roll`, `tower-parallax-on-approach`). WP7's actual disposition was option (c) — ship the WP6.5 baseline (descending glide) unchanged — because the phugoid is undamped (SURFACE-2026-05-11-04) and no single-knob tune produces a usable long-horizon cruise. The descending-glide trajectory IS observable for 6+ seconds before significant altitude loss, which proved sufficient for WP8's Phase F verify-self outcomes during the WP7 verify-self subagent run (multiple successful long-horizon Playwright probes documented in the WP7 archive). The two-way dependency the surface noted is now moot. If WP9 finds that the descending-glide trajectory IS still too short for some cross-browser observation, the right path is to use the `?debug=true` paused state (the debug GUI has a "Pause physics" toggle) for any sustained-frame visual check, not a tuning fix.
+- **Status:** resolved 2026-05-11
 
 ### SURFACE-2026-05-09-03 — `window.__aircraft` debug telemetry hook
 - **Source:** feature:build (WP7 Phase E tuning session, 2026-05-09)

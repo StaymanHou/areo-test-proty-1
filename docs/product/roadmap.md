@@ -1,7 +1,7 @@
 ---
 stage: roadmap
 state: in-progress
-updated: 2026-05-11 (WP6.5 — β1+β4 airborne trim-spawn)
+updated: 2026-05-11 (WP7 — flight-feel infrastructure + tuning disposition; only WP9 remaining for Phase 1)
 ---
 
 # Roadmap
@@ -12,7 +12,7 @@ updated: 2026-05-11 (WP6.5 — β1+β4 airborne trim-spawn)
 **Milestones:**
 - [x] Project skeleton: web stack chosen, dev server, deploy path
 - [x] 6DOF rigid-body aircraft with plausible lift/drag/thrust/stall (WP2 loop, WP4 aerosurface, WP5 composition)
-- [x] Keyboard flight controls (WP6 — keyboard only; mouse deferred to WP7/Phase 3 polish; "feel natural" finalized in WP7)
+- [x] Keyboard flight controls (WP6 — keyboard only; mouse deferred to Phase 3 polish; "feel natural" dispositioned in WP7 Phase F as PASS at the "bounded, controllable, non-tumbling" bar via operator-as-tester; the original "external casual player finds it natural" bar from Q4 research was not met — the descending-glide gameplay survives single-pilot operator review but has not been validated by an external tester. If external feedback rejects the descending-glide in Phase 3 playtesting, SURFACE-2026-05-11-04 — phugoid undamped — is the escalation path)
 - [x] Single aircraft rendered in a minimal 3D world (terrain + sky) (WP8 — flat 4000m terrain, procedural skybox, runway, control tower)
 - [ ] Runs at 60fps on a mid-range laptop in Chrome/Safari/Firefox (WP8 evidences 60fps for the world-rendering layer; full Phase 1 perf check is WP9 with cross-browser sweep)
 - [x] Camera follows the aircraft (chase + cockpit view)
