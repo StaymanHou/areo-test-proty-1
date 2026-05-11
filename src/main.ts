@@ -1,5 +1,5 @@
 import RAPIER from '@dimforge/rapier3d-compat';
-import { DirectionalLight, Vector3 } from 'three';
+import { DirectionalLight, Euler, Vector3 } from 'three';
 import { createRenderContext } from './world/scene';
 import { initDebug } from './engine/debug';
 import { GameLoop } from './engine/loop';
@@ -130,6 +130,87 @@ async function bootstrap() {
     updateDebugDisplay();
 
     attachFlightModelTuning(debug.gui, aircraft, flightModel);
+
+    const telemetryFolder = debug.gui.addFolder('Telemetry');
+    const tel = {
+      altitude: 0,
+      airspeed: 0,
+      vSpeed: 0,
+      pitchDeg: 0,
+      rollDeg: 0,
+      yawDeg: 0,
+      pitchRateDegS: 0,
+      rollRateDegS: 0,
+      yawRateDegS: 0,
+    };
+    telemetryFolder.add(tel, 'altitude').name('altitude (m)').listen().disable();
+    telemetryFolder.add(tel, 'airspeed').name('airspeed (m/s)').listen().disable();
+    telemetryFolder.add(tel, 'vSpeed').name('vertical speed (m/s)').listen().disable();
+    telemetryFolder.add(tel, 'pitchDeg').name('pitch (°)').listen().disable();
+    telemetryFolder.add(tel, 'rollDeg').name('roll (°)').listen().disable();
+    telemetryFolder.add(tel, 'yawDeg').name('yaw (°)').listen().disable();
+    telemetryFolder.add(tel, 'pitchRateDegS').name('pitch rate (°/s)').listen().disable();
+    telemetryFolder.add(tel, 'rollRateDegS').name('roll rate (°/s)').listen().disable();
+    telemetryFolder.add(tel, 'yawRateDegS').name('yaw rate (°/s)').listen().disable();
+    telemetryFolder.open();
+
+    const RAD2DEG = 180 / Math.PI;
+    const telemetryEuler = new Euler(0, 0, 0, 'YXZ');
+    const updateTelemetry = () => {
+      const s = aircraft.readBodyState();
+      telemetryEuler.setFromQuaternion(s.quaternion, 'YXZ');
+      tel.altitude = +s.position.y.toFixed(2);
+      tel.airspeed = +s.linvel.length().toFixed(2);
+      tel.vSpeed = +s.linvel.y.toFixed(2);
+      tel.pitchDeg = +(telemetryEuler.x * RAD2DEG).toFixed(2);
+      tel.rollDeg = +(telemetryEuler.z * RAD2DEG).toFixed(2);
+      tel.yawDeg = +(telemetryEuler.y * RAD2DEG).toFixed(2);
+      tel.pitchRateDegS = +(s.angvel.x * RAD2DEG).toFixed(2);
+      tel.rollRateDegS = +(s.angvel.z * RAD2DEG).toFixed(2);
+      tel.yawRateDegS = +(s.angvel.y * RAD2DEG).toFixed(2);
+      requestAnimationFrame(updateTelemetry);
+    };
+    updateTelemetry();
+
+    let telemetryFrame = 0;
+    const telemetryLog = () => {
+      const s = aircraft.readBodyState();
+      telemetryEuler.setFromQuaternion(s.quaternion, 'YXZ');
+      console.log(
+        `[tel f=${telemetryFrame}] alt=${s.position.y.toFixed(2)} ` +
+          `as=${s.linvel.length().toFixed(2)} vs=${s.linvel.y.toFixed(2)} ` +
+          `pitch=${(telemetryEuler.x * RAD2DEG).toFixed(2)}° ` +
+          `roll=${(telemetryEuler.z * RAD2DEG).toFixed(2)}° ` +
+          `yaw=${(telemetryEuler.y * RAD2DEG).toFixed(2)}° ` +
+          `pRate=${(s.angvel.x * RAD2DEG).toFixed(1)}°/s ` +
+          `rRate=${(s.angvel.z * RAD2DEG).toFixed(1)}°/s ` +
+          `yRate=${(s.angvel.y * RAD2DEG).toFixed(1)}°/s`,
+      );
+      telemetryFrame++;
+    };
+    setInterval(telemetryLog, 100);
+    telemetryLog();
+
+    (window as unknown as { __aircraft: unknown }).__aircraft = {
+      body: aircraft.body,
+      flightModel,
+      getState: () => {
+        const s = aircraft.readBodyState();
+        telemetryEuler.setFromQuaternion(s.quaternion, 'YXZ');
+        return {
+          position: { x: s.position.x, y: s.position.y, z: s.position.z },
+          linvel: { x: s.linvel.x, y: s.linvel.y, z: s.linvel.z },
+          angvel: { x: s.angvel.x, y: s.angvel.y, z: s.angvel.z },
+          eulerDeg: {
+            pitch: telemetryEuler.x * RAD2DEG,
+            yaw: telemetryEuler.y * RAD2DEG,
+            roll: telemetryEuler.z * RAD2DEG,
+          },
+          airspeed: s.linvel.length(),
+          throttle: controls.throttle,
+        };
+      },
+    };
   }
 
   loop.start();
