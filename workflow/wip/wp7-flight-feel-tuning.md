@@ -648,12 +648,12 @@ This was implicit in the arch.md Revision 2026-05-11 / D10 "Fallback path" hedge
 
 **Surface logged:** SURFACE-2026-05-11-03 in `workflow/backlog.md` (high priority — gates WP7 → WP9 → Phase 1 exit).
 
-## Current Node (revised 2026-05-11 — WP7 ALL PHASES COMPLETE, ready for ship)
-- **Path:** Feature > complete (all phases A–F [x]; ready for /feature-ship)
-- **Active scope:** All six phases complete. Phase A (parametric curves), B (live mutators), C (lil-gui flight model folder), D (export preset button) shipped 2026-05-09. Phase E (developer tuning pass) shipped 2026-05-11 as option (c) — WP6.5 baseline. Phase F (feel-check + commit defaults) shipped 2026-05-11 with operator-as-tester verdict.
+## Current Node (revised 2026-05-11 — WP7 SHIPPED, awaiting /feature-finalize)
+- **Path:** Feature > ship (complete) — commits e14cfef (WP6.6) + 602c6ae (WP7 Phases E+F) on `main`
+- **State:** ship (complete). All six phases A–F + the WP6.6 prerequisite arch fix landed in two commits.
 - **Blocked:** none.
-- **Ready for:** `/feature-ship` to finalize. The ship step will bundle WP6.6 commit + Phase E/F final state into a coherent WP7 ship commit.
-- **Open discoveries (carried to ship):**
+- **Ready for:** `/feature-finalize` to archive this WIP file, update durable docs (CLAUDE.md status, roadmap/WBS check-off), sweep backlog, and mark closed-by-implementation surfaces resolved.
+- **Open discoveries (carried to finalize):**
   - SURFACE-2026-05-11-04 (phugoid undamped) — Phase 2 candidate; not gating Phase 1.
-  - SURFACE-2026-05-11-02 — re-dispositioned as "Phase 2 if Phase F rejects the descending glide" — Phase F accepted, so this becomes "Phase 2 only if external feedback rejects."
-  - SURFACE-2026-05-09-05 (verify-self friendly trim) — closed-by-implementation since Phase F ran successfully against the no-cruise WP6.5 baseline. Mark resolved at /feature-finalize.
+  - SURFACE-2026-05-11-02 — re-dispositioned during ship as "Phase 2 only if external feedback rejects the descending glide."
+  - SURFACE-2026-05-09-05 (verify-self friendly trim) — closed-by-implementation; mark resolved at finalize.
