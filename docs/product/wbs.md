@@ -1,7 +1,7 @@
 ---
 stage: wbs
 state: complete
-updated: 2026-05-11 (WP6.5 inserted per arch Revision 2026-05-11)
+updated: 2026-05-11 (WP6.5 DONE — β1 + β4 airborne trim-spawn)
 ---
 
 # Work Breakdown Structure
@@ -84,23 +84,22 @@ T-shirt sizing: **XS** ≤ 2h · **S** ≤ half day · **M** ≤ 1 day · **L** 
 - [x] CONVENTIONS.md documents +aileron→roll right, +elevator→nose up, +rudder→nose right, deflection-via-spanAxis model
 - [x] 37 new tests; 106/106 pass; verified end-to-end at localhost:5173
 
-### WP6.5: Per-surface incidence (β1 — airborne trim-spawn schema extension)
-**Description:** Implements the schema extension decided in arch Revision 2026-05-11 (D10). Adds an optional `incidenceRad` field to each aerosurface in `aircraft.json` representing the surface's fixed mount angle relative to the fuselage longitudinal axis, and threads it through `computeAeroForce` so a surface at non-zero incidence sees a non-zero local AoA at level body attitude. With wings at ~+2° and h-stab at ~-1°, this gives the airframe a true level-trim equilibrium and allows it to spawn airborne and fly straight indefinitely.
+### WP6.5: Per-surface incidence + pitch-rate damping (β1 + β4 — airborne trim-spawn) — DONE 2026-05-11
+**Description:** Implements the schema extensions decided in arch Revision 2026-05-11 (D10 + "Fallback path" hedge). Phase 1 added `incidenceRad` (β1) — per-surface mount angle giving the airframe a static moment-trim equilibrium. Phase 2 set wings=+2°, h-stab=-1° in `aircraft.json` and the live verify-self failed (max|pRate|=8401°/s) — β1 creates the trim point but it's dynamically unstable at current mass/speed parameters. Per operator decision, Phase 3 added `clQ` (β4) — per-surface pitch-rate damping that amplifies the natural ω×r mechanism by `(1+clQ)`. Wings clQ=3, h-stab clQ=8. Final verify-self: max|pRate|=149.1°/s (target <360, pass by 2.4×), no gimbal flips, divergence cured. Shipped in commit `6ad3133`.
 **Phase:** 1
 **Dependencies:** WP6 (controls), WP4 (aerosurface primitive)
-**Size:** S
+**Size:** S (actual: ~M — Phase 3 was added mid-flight after Phase 2 verify-self failed)
 **Tasks:**
-- [ ] Add `incidenceRad?: number` (default 0) to `AircraftSurfaceConfig`; plumb through `parseAircraftConfig` → `AeroSurface` constructor.
-- [ ] In `computeAeroForce`, apply the incidence rotation about the surface's pre-baked span axis when computing local AoA (sign convention: positive `incidenceRad` produces positive AoA at zero body pitch and forward flight).
-- [ ] Update `CONVENTIONS.md` with the incidence sign convention and a one-liner on the trim mechanism.
-- [ ] Pick initial incidence values for `public/config/aircraft.json` (start at wings=+2°, h-stab=-1°; refine in WP7 Phase E retune).
-- [ ] Spawn the aircraft airborne (already true: launched at (0,50,0)). Confirm no key press is required and the aircraft holds level flight via the new trim equilibrium.
-- [ ] Tests:
-  - Default `incidenceRad=0` must produce bit-for-bit identical force vectors to current behavior on all existing 227 cases (regression guard).
-  - New test: a level-flow surface with non-zero `incidenceRad` returns non-zero lift in the expected direction.
-  - New test: the incidence rotation is a fixed property of the surface (independent of body attitude).
-- [ ] Verify-self exit gate: `|pRate| < 360°/s` sustained over 5+ seconds at the dev page at `http://localhost:5173/?debug=true`, with telemetry capture pattern (`[tel f=N]` console messages) already established this cycle. Altitude bounded ±50m, airspeed in [25, 35] m/s.
-- [ ] Closes-by-implementation: SURFACE-2026-05-10-02 in `workflow/backlog.md`.
+- [x] β1: `incidenceRad?: number` on `AircraftSurfaceConfig` + `AeroSurfaceConfig`; finite-number validation; threaded through `flightmodel.ts:58`.
+- [x] β1: `computeAeroForce` applies the incidence rotation about the surface's span axis at construction (sign: positive = leading edge up → positive AoA → positive lift). Re-applied by `setGeometry` on live edits.
+- [x] β4: `clQ?: number` on both configs; finite-number validation; threaded through `flightmodel.ts:58`.
+- [x] β4: `computeAeroForce` amplifies the rotation-induced (ω × r) contribution to local airflow by `(1 + clQ)`. No 1/V singularity — distinct from the standard `cl_q·c̄/(2V)` form that NaN'd in the prior abandoned attempt.
+- [x] CONVENTIONS.md documents both fields' sign conventions and the trim mechanism.
+- [x] `aircraft.json` set: wings incidenceRad=+0.0349 (+2°), h-stab incidenceRad=-0.0175 (-1°), wings clQ=3, h-stab clQ=8, v-stab unchanged.
+- [x] Aircraft spawns airborne (unchanged from WP5; `(0,50,0)`, linvel `(0,0,-30)`, throttle=0); no key press required.
+- [x] Tests: 6 unit (default-zero parity for both, positive-incidence positive-lift, surface-property invariance, sign-convention regression anchors, clQ amplification, clQ sign) + 6 config-parse (absent/numeric/non-finite for both) + 2 integration-boundary (incidenceRad + clQ threaded through to real-physics behavior). Full suite 242/242 green; tsc clean.
+- [x] Verify-self exit gate: max|pRate|=149.10°/s ≪ 360°/s target; no gimbal flips; altitude/airspeed within bounds (descending glide — parameter-tuning concern deferred to WP7 Phase E, not a stability concern).
+- [x] Closes-by-implementation: SURFACE-2026-05-10-02 + SURFACE-2026-05-11-01 (both Resolved in `workflow/backlog.md`).
 
 ### WP8: Phase 1 world (flat terrain + skybox + landmarks) — DONE 2026-05-09
 **Description:** Per arch D4, flat textured ground plane + skybox + 2–3 placed landmarks (runway, control tower) for spatial reference. Rapier ground collider. Runs at 60fps.

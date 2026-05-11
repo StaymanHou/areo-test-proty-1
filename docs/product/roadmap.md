@@ -1,7 +1,7 @@
 ---
 stage: roadmap
 state: in-progress
-updated: 2026-05-09 (WP8)
+updated: 2026-05-11 (WP6.5 — β1+β4 airborne trim-spawn)
 ---
 
 # Roadmap
