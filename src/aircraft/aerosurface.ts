@@ -29,11 +29,14 @@ export interface AeroSurfaceConfig {
    */
   incidenceRad?: number;
   /**
-   * Pitch-rate damping coefficient (β4). When non-zero, adds a damping force
-   * along the surface normal proportional to the rotation-induced component of
-   * the local airflow normal to the surface. Scales with dynamic pressure;
-   * does NOT divide by airspeed (no low-speed singularity). Default 0 (no
-   * damping — pre-Phase-3 behavior preserved). See CONVENTIONS.md.
+   * Pitch-rate damping coefficient (β4). When non-zero, amplifies the
+   * rotation-induced contribution to local airflow by `(1 + clQ · max(v,
+   * V_REF) / V_REF)`. The `max(v, V_REF)` floor preserves WP6.5's low-V
+   * β4 calibration bit-for-bit; above V_REF=30, amplification grows linearly
+   * with v so the resulting damping moment scales as V², keeping damping
+   * ratio constant across the flight envelope. No 1/V singularity. Default
+   * 0 (no damping — pre-β4 behavior preserved). See CONVENTIONS.md and
+   * SURFACE-2026-05-11-03.
    */
   clQ?: number;
 }
@@ -48,6 +51,19 @@ export interface BodyState {
 }
 
 export const AIR_DENSITY = 1.225; // kg/m³, sea-level ISA. Phase 1 constant.
+
+// β4 airspeed-scaling reference (arch.md Revision 2026-05-11 "Fallback path",
+// SURFACE-2026-05-11-03). The β4 damping amplification on (ω × r) is
+// (1 + clQ · max(v, V_REF) / V_REF). The `max(v, V_REF)` floor matters: WP6.5's
+// β4 was calibrated at low airspeed (V < V_REF, descending-glide regime), and
+// a naive `v / V_REF` would shrink damping below WP6.5 levels there. By
+// flooring at V_REF, the formula reduces to (1 + clQ) for all v ≤ V_REF —
+// preserving WP6.5 calibration bit-for-bit in the low-V regime. Above V_REF,
+// amplification grows linearly with v so the damping moment scales as V²,
+// matching the V² growth of the destabilizing pitch moment from `incidenceRad`
+// and keeping the damping ratio constant across the high-V regime. No 1/V
+// singularity. clQ=0 preserves pre-β4 behavior exactly.
+const BETA4_V_REF = 30;
 
 // Module-scoped scratch buffers — avoid allocation in the hot path.
 // Safe because computeForce is single-threaded (browser main thread / physics tick).
@@ -390,13 +406,18 @@ export function computeAeroForce(
 
   // 2. Airflow at application point in world frame.
   // Airflow = −(linvel + ω × r). With β4 (clQ>0), the rotation contribution is
-  // amplified by (1 + clQ) — this augments the natural pitch-rate damping that
-  // arises from points away from CG seeing rotation-induced flow, by an extra
-  // per-surface gain. No singularity at low airspeed; clQ=0 preserves the
-  // pre-β4 behavior exactly. See arch.md Revision 2026-05-11 ("Fallback path").
+  // amplified by (1 + clQ · max(v, V_REF) / V_REF). The floor at V_REF makes the
+  // formula degenerate to (1 + clQ) for all v ≤ V_REF — bit-identical to WP6.5
+  // β4 calibration in the low-V regime. Above V_REF, amplification grows
+  // linearly with v so the damping moment scales as V², matching the V² growth
+  // of the destabilizing lift moment from `incidenceRad` and keeping damping
+  // ratio constant. No 1/V singularity; clQ=0 preserves pre-β4 behavior exactly.
+  // See arch.md Revision 2026-05-11 ("Fallback path") and SURFACE-2026-05-11-03.
   _scratchAngVelCross.copy(bodyState.angvel).cross(_scratchAppOffset);
   if (surface.clQ !== 0) {
-    _scratchAngVelCross.multiplyScalar(1 + surface.clQ);
+    const vBody = bodyState.linvel.length();
+    const vScale = vBody > BETA4_V_REF ? vBody / BETA4_V_REF : 1;
+    _scratchAngVelCross.multiplyScalar(1 + surface.clQ * vScale);
   }
   _scratchAirflow.copy(bodyState.linvel).add(_scratchAngVelCross).negate();
   const v2 = _scratchAirflow.lengthSq();

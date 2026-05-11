@@ -4,6 +4,18 @@ Surface-notes from workflow runs. Consumed and resolved by higher-level workflow
 
 ## Open
 
+### SURFACE-2026-05-11-04 — Phugoid (long-period) mode is undamped at Phase 1 airframe
+- **Source:** feature:build (WP7 Phase E retune attempts 1 + 2, 2026-05-11)
+- **Target level:** product:arch (likely Phase 2 — not Phase 1 blocking)
+- **Type:** tech-debt / arch-gap
+- **Priority:** low–medium (NOT gating for Phase 1 ship; gates "level cruise feel" if/when that becomes a Phase 2 goal)
+- **Summary:** WP7 Phase E tried two single-knob retunes (mass=700+throttle=0.15; mass=1000+throttle=0.05) against the WP6.6-baseline. Both were stable at short observation windows (≤7s) but **divergent at long windows (≥14s)**. Diagnosis: the phugoid mode (long-period airspeed↔altitude exchange, ~10–14s at this airframe) is fundamentally undamped. WP6.6 added airspeed-scaling to the *short-period* β4 damping (pitch-rate `q`) but did NOT add anything to dampen the long-period mode. Any non-zero baseline throttle injects energy that the airframe cannot dissipate per cycle, so the phugoid grows until tumble/NaN. The only stable attractor is throttle=0 (the descending glide). Phase E shipped option (c) — the WP6.5 baseline (descending glide) — and deferred the "feels like level flight" question to Phase F's casual-player feel-check.
+- **Context:** This was anticipated as a possible failure mode in arch.md's "Fallback path" (which sanctioned β4-pitch-rate-damping as a hedge against case (3) "tuning is just hard"). The fallback path mentions option (3) automated parameter search but does NOT mention a long-period damping mechanism. A new arch decision would be required.
+- **Suggested action (Phase 2 candidate):** Add `cl_alpha_dot` (alpha-rate damping) as a per-surface coefficient — phugoid is driven by AoA tracking lag at constant thrust, so damping `α̇` directly should attenuate the long-period mode. Could be analogous to WP6.6's V-scaling fix (a single field added to AeroSurfaceConfig, simple math in computeAeroForce). Alternative: simulate atmospheric drag growth more aggressively (currently the model has only cdMax=1.2 at ±π/2). Both are arch-level extensions; not in scope for Phase 1.
+- **Verification approach:** any future fix must verify against a ≥30-second Playwright probe (3+ phugoid periods) with various baseline throttle values (0.05, 0.15, 0.4) — single-period observation hides the divergence.
+- **Why we accept it for Phase 1:** the descending-glide attractor IS playable (matches "takeoff/landing" mission type from vision.md). Phase F's casual-player test will judge whether it's acceptably playable. If not, escalate. Memory `feedback_verify_self_envelope.md` (just persisted) is the lesson here.
+- **Status:** pending — Phase 2 candidate; not gating Phase 1
+
 ### SURFACE-2026-05-11-02 — β1+β4 stable state is a descending glide, not level cruise (parameter-tuning gap)
 - **Source:** feature:build (WP6.5 Phase 3 verify-self, 2026-05-11)
 - **Target level:** product:wbs (WP7 Phase E retune — already paused and queued)
@@ -12,7 +24,7 @@ Surface-notes from workflow runs. Consumed and resolved by higher-level workflow
 - **Summary:** With wings incidenceRad=+2°, h-stab incidenceRad=-1°, wings clQ=3, h-stab clQ=8, the airframe is dynamically stable (max|pRate|=149°/s, no tumble). But airspeed bleeds 30→2 m/s and altitude trends 50→33m within the 6s observation window. The system is in a low-energy descending glide because at mass=1000 kg, spawn airspeed v=30 m/s, and zero throttle, lift is only ~14.8% of weight. Force balance for level flight requires v≈90 m/s OR baseline throttle ≈ 0.4 OR reduced mass.
 - **Context:** WP6.5 closed the *architectural* gap (no level-trim equilibrium / dynamic instability). The remaining "feels like flight" tuning is exactly WP7 Phase E's job. WP7 was already paused awaiting WP6.5; it now resumes with a clean stable baseline to tune against.
 - **Suggested action:** At WP7 Phase E entry: experiment with (a) baseline `throttle = 0.4` at spawn (cheapest — `Controls` class might need a constructor option), (b) `mass = 500–700 kg` (changes ground feel), (c) `area = 9–10 m²` per wing (changes visual feel of wing size). Iterate via lil-gui live; export preset to `aircraft.json` when it feels right. The strong physical priors (incidence 0–4°, clQ 0–16, lift/weight ratio ~1 at cruise speed) make this a bounded search — likely 1–2 lil-gui sessions.
-- **Status:** pending — WP7 Phase E timing
+- **Status:** WP7 Phase E disposition 2026-05-11 — the "level cruise" goal is **not closable within Phase 1 scope** due to SURFACE-2026-05-11-04 (phugoid undamped). Phase E shipped option (c) (accept descending glide). This entry stays open as a candidate for Phase 2 if the casual-player feel-check (Phase F AC #7) rejects the descending glide as unplayable.
 
 ### SURFACE-2026-05-09-05 — Phase 4 verify-self required WP7 trim to fully validate; need a verify-self-friendly trim
 - **Source:** feature:build (WP8 Phase 4 verify-self back-loop)
@@ -22,16 +34,6 @@ Surface-notes from workflow runs. Consumed and resolved by higher-level workflow
 - **Context:** This confirms the two-way dependency originally noted in SURFACE-2026-05-09-02. WP8's success is partially observable without WP7; WP7's success is partially observable without WP8. Both must land before WP9 can do its "developer takes off, flies, crashes" exit-criteria check.
 - **Suggested action:** When `/session-resume`-ing WP7 Phase F, the first action after PF.1 (casual-player nomination) should be to commit the candidate preset block to `public/config/aircraft.json` BEFORE the external feel-check; then re-take WP8's deferred observability outcomes (P4.vs.2 + P4.vs.3) opportunistically during the WP7 feel-check, not as separate verify-self runs.
 - **Priority:** medium (load-bearing for the WP7 → WP8 → WP9 chain)
-- **Status:** pending
-
-### SURFACE-2026-05-09-03 — `window.__aircraft` debug telemetry hook not implemented
-- **Source:** feature:build (WP7 Phase E tuning session)
-- **Target level:** product:wbs (likely WP9 Phase 1 verification, paired with SURFACE-2026-05-09-01)
-- **Type:** observability gap / tooling
-- **Summary:** WP7 Phase E tuning had no programmatic way to read aircraft pitch/altitude/airspeed/bank-angle. The only readouts were the existing lil-gui Controls panel and screenshots (uninformative without a horizon). Future tuning passes (and the proposed Playwright e2e infra in SURFACE-2026-05-09-01) would benefit from a debug-only `window.__aircraft` hook exposing live numeric state.
-- **Context:** Mentioned in passing in WP6 retro and SURFACE-2026-05-09-01's "Suggested action" — WP9 already targets this. Phase E surfaces it again as a real (rather than hypothetical) gap.
-- **Suggested action:** At WP9 (Phase 1 verification), add a debug-only `window.__aircraft = { body, flightModel, getState: () => ({...}) }` hook in `src/main.ts`'s `if (debug) {...}` block. Use it both for Playwright assertions and for a future tuning-readouts panel in lil-gui.
-- **Priority:** low–medium (tracked alongside SURFACE-2026-05-09-01; both wait for WP9 timing)
 - **Status:** pending
 
 ### SURFACE-2026-05-09-01 — End-to-end browser test infrastructure not configured
@@ -55,6 +57,22 @@ Surface-notes from workflow runs. Consumed and resolved by higher-level workflow
 - **Status:** pending
 
 ## Resolved
+
+### SURFACE-2026-05-09-03 — `window.__aircraft` debug telemetry hook
+- **Source:** feature:build (WP7 Phase E tuning session, 2026-05-09)
+- **Resolution:** Implemented in `src/main.ts` inside the existing `if (debug)` block during the Phase F back-loop diagnosis (2026-05-10). Adds: a `Telemetry` lil-gui folder with read-only displays for altitude/airspeed/vertical speed/pitch/roll/yaw + their rates; a `window.__aircraft` global exposing `{ body, flightModel, getState() }`; a 100 ms `[tel f=N]` `console.log` line carrying the full kinematic state. Gated on `?debug=true`. Used heavily and successfully as the verify-self mechanism for WP6.5 and WP6.6 — the back-loop diagnosis tooling became the project's primary aero-physics observability infrastructure. No tests written (debug-only helper). Surface closed retroactively during WP6.6 task-close (2026-05-11) on the observation that it had been silently providing service for two work-packages.
+- **Status:** resolved 2026-05-11
+
+### SURFACE-2026-05-11-03 — β1+β4 stability margin is not robust to airspeed (damping ratio collapses as V grows)
+- **Source:** feature:build (WP7 Phase E retune, 2026-05-11)
+- **Resolution:** Resolved-with-test by WP6.6 (2026-05-11). One-line change in `src/aircraft/aerosurface.ts` `computeAeroForce`: replaced the airspeed-independent `(1 + clQ)` β4 amplification on `(ω × r)` with `(1 + clQ · max(v, V_REF) / V_REF)` where `v = |bodyState.linvel|` and `V_REF = 30 m/s`. The `max(v, V_REF)` floor preserves WP6.5's low-V β4 calibration bit-for-bit (the formula reduces to `(1 + clQ)` for all v ≤ V_REF — exactly matching pre-fix); above V_REF the amplification grows linearly with v so the damping moment scales as V², matching the V² growth of the destabilizing pitch moment from `incidenceRad`. No 1/V singularity. Schema unchanged (`clQ` keeps its meaning).
+  - **Test coverage:** two new regression anchors in `src/aircraft/aerosurface.test.ts` — one asserting the high-V growth branch (`yHigh > yRef` at v=60 vs v=30), one asserting the low-V floor doesn't blow up (forces at v=5,10,20,30 are all finite and bounded). Existing β4 default-zero-parity and sign-convention tests preserved unchanged. Total 244/244 tests green, tsc clean.
+  - **Verification:** two Playwright-MCP verify-self trajectories at `?debug=true`:
+    - Trajectory A (low-V regression, spawn linvel z=-30): output bit-identical to the pre-fix WP6.5 baseline (max|pRate| ≤ 110°/s, bounded ±30° pitch). The floor branch does its job — no behavior change in the WP6.5 regime.
+    - Trajectory B (high-V probe, spawn linvel z=-90, 3·V_REF): max|pRate| = 390°/s (single transient at f=64 during near-stall recovery, surrounding frames ≪ 360°/s), airspeed bounded < 70 m/s, no NaN, no gimbal flips. **Dramatic improvement vs the pre-fix high-V failure modes:** the previous Run A (mass=700, thrust=8000, throttle=0.4) collapsed to NaN at f=54 (airspeed 845 m/s); the previous Run B (WP6.5 baseline + throttle=0.4) produced max|pRate|=1766°/s with ±90° pitch flips. The post-fix Trajectory B has max|pRate| ~4.5× lower than pre-fix Run B, ~3e8× lower than pre-fix Run A, and is bounded throughout.
+  - **Residual:** ±50° pitch oscillation at high-V is parameter-tuning territory (precisely WP7 Phase E's job). The architectural goal — "make β4 damping work across the V envelope so tuning can take over" — is met.
+  - **Lessons captured:** the initial implementation (no floor: `1 + clQ · v / V_REF`) regressed low-V by shrinking amplification below the WP6.5-calibrated `(1 + clQ)` baseline. When a fix targets an asymmetric problem (here: only high-V was broken), write the formula to be a no-op in the unaffected regime, not a redistribution across both. Caught by Trajectory A retest before commit.
+- **Status:** resolved 2026-05-11
 
 ### SURFACE-2026-05-10-02 — Phase 1 airframe has no level-trim equilibrium (architectural) + SURFACE-2026-05-11-01 — β1 alone is dynamically unstable
 - **Source:** feature:build (AoA sign-convention fix Phase 2 verify-self, 2026-05-10; deepened in static-margin geometry fix attempt, 2026-05-10; β1-alone divergence finding 2026-05-11)
