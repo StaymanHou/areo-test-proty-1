@@ -1,7 +1,7 @@
 ---
 stage: wbs
-state: complete
-updated: 2026-05-11 (WP9.6 DONE — @playwright/test adopted with one load-bearing smoke that doubles as the WP9.5 regression anchor + the WP9 casual-flight pathway verification. WP9 Phase 1 fully closed at the Chromium-only / operator-as-tester bar. Phase 1 complete pending cross-browser sweep at WP21.)
+state: in-progress
+updated: 2026-05-12 (Phase 2 arch revision — D11/D12/D13 landed in arch.md. Phase 2 WBS updated: WP10 description reflects decisions taken; new WP10.5 inserts β5 clAlphaDot schema extension between WP10 and WP11; WP11/WP12 specs locked to D11/D12; WP17 augmented with ≥30s phugoid-damping probe. Phase 1 entries unchanged.)
 ---
 
 # Work Breakdown Structure
@@ -186,28 +186,62 @@ T-shirt sizing: **XS** ≤ 2h · **S** ≤ half day · **M** ≤ 1 day · **L** 
 
 **Note:** Phase 2 opens with a brief arch revision (see P8 back-loop risk) to decide the mission framework and HUD approach. That work is WP10 below, before the mission-type WPs.
 
-### WP10: Phase 2 arch revision — mission + HUD framework
-**Description:** Decide mission framework shape (declarative JSON? scripted? state-machine?) and HUD approach (DOM overlay vs Three.js ortho). Update `docs/product/arch.md` with a revision section. Deferred from Phase 1 arch per its "Unknowns" section.
+### WP10: Phase 2 arch revision — mission + HUD framework — DONE 2026-05-12
+**Description:** Decide mission framework shape and HUD approach; document in `docs/product/arch.md` Revision 2026-05-12. **Decisions made (operator-as-architect under full-autopilot deviation per `feedback_operator_as_external.md`; Phase 3 re-validation hook recorded in arch.md Rev 2026-05-12):**
+- **D11 — Mission framework: declarative JSON + optional script hook.** Each mission is a JSON file under `public/missions/<name>.json` matching the `Mission` schema (objectives, win/fail conditions, spawn, optional `scriptHook`). Combat (WP16) is the only mission expected to register a script hook (for AI enemy). The other three are declarative-pure.
+- **D12 — HUD: DOM overlay.** CSS-absolute `<div>` over the canvas, with waypoint arrows via `THREE.Vector3.project()`. `HUD` interface boundary is the Phase 3 swap point if a Three.js ortho impl becomes needed.
+- **D13 — β5 AoA-rate damping (`clAlphaDot`).** Schema extension on `AeroSurface` and `AircraftSurfaceConfig`; closes SURFACE-2026-05-11-04 architecturally; default 0 so existing 246 tests still pass; implementation lands in WP10.5.
 **Phase:** 2
 **Dependencies:** WP9
-**Size:** S
+**Size:** S (actual: ~S — three decisions documented in one arch revision)
+**Tasks:**
+- [x] Decide mission framework shape — D11 (declarative JSON + script hook).
+- [x] Decide HUD approach — D12 (DOM overlay).
+- [x] Settle phugoid mechanism — D13 (β5 `clAlphaDot`).
+- [x] Append `## Revision 2026-05-12` section to `docs/product/arch.md` with rationale, alternatives rejected, schema sketches, and Phase-3 swap points.
+- [x] Update D11/D12/D13 highlights into `arch.md` "Key Decisions" list for discoverability.
+- [x] Bump `wbs.md` Phase 2: insert WP10.5; lock WP11/WP12 specs to D11/D12; augment WP17 with phugoid probe.
+
+### WP10.5: β5 (`clAlphaDot`) schema extension
+**Description:** Implements arch revision D13 — adds `clAlphaDot?: number` to `AircraftSurfaceConfig` and `AeroSurfaceConfig`, plumbs it through `parseAircraftConfig` → `AeroSurface` constructor, and augments `computeAeroForce`'s CL by `clAlphaDot · dα/dt` (finite difference over the fixed physics timestep). Default 0 → bit-for-bit parity with current 246-test suite. First-tick handling skips the augmentation (no previous-AoA reference). Same shape as WP6.5/WP6.6 schema extensions. Closes the architectural side of SURFACE-2026-05-11-04 (tuning is a downstream Phase 2 concern, expected per WP14/WP16).
+**Phase:** 2
+**Dependencies:** WP10
+**Size:** XS
+**Tasks:**
+- [ ] Add `clAlphaDot?: number` to `AircraftSurfaceConfig` and `AeroSurfaceConfig`; finite-number validation in `parseAircraftConfig`.
+- [ ] Thread through `flightmodel.ts` and `AeroSurface` constructor; add `prevAoA: number | undefined` field on the surface instance.
+- [ ] In `computeAeroForce`: on first call (prevAoA undefined) → baseline behavior, store current AoA as prevAoA; on subsequent calls → compute `dα/dt = (α_now − α_prev) / dt_physics`, augment CL by `clAlphaDot · dα/dt`, update prevAoA. Allocation-free.
+- [ ] Update CONVENTIONS.md with the β5 sign convention (positive `clAlphaDot` damps AoA rise) and the first-tick contract.
+- [ ] Tests: (a) default `clAlphaDot=0` → bit-for-bit parity (existing 246 cases unchanged); (b) constant-α with non-zero `clAlphaDot` → zero augmentation; (c) increasing α with positive `clAlphaDot` → augmented lift in +α direction; (d) first-tick → baseline only; (e) config-parse: absent / numeric / non-finite.
+- [ ] `aircraft.json` ships unchanged (no `clAlphaDot` set → default 0). Non-zero tuning is deferred to whichever Phase 2 mission first surfaces the need.
+- [ ] verify-auto: full Vitest suite green (target 250+/250+), tsc clean, `npm run test:e2e` 1/1 green.
+- [ ] verify-self: confirm `clAlphaDot=0` regression — `npm run test:e2e` smoke passes (no behavior change vs current Phase 1 baseline).
 
 ### WP11: Mission framework
-**Description:** Core mission runner: load a mission definition, expose objective state, detect win/lose, allow return to mission select. Read-only access to aircraft state.
+**Description:** Core mission runner per **D11** (declarative JSON + optional script hook). `src/mission/loader.ts` loads `public/missions/<id>.json`; `src/mission/runner.ts` owns the lifecycle (load → start → tick → complete/fail) and reads aircraft state via the typed `AircraftState` interface (not via `window.__aircraft`). Emits objective state changes to the HUD. Script-hook registry under `src/mission/hooks/` (empty in WP11; WP16 registers `combat-ai`).
 **Phase:** 2
-**Dependencies:** WP10
+**Dependencies:** WP10, WP10.5
 **Size:** M
 **Tasks:**
-- [ ] Mission definition schema (per WP10 decision)
-- [ ] Mission lifecycle: load → start → tick → complete/fail
-- [ ] Mission-select screen (minimal DOM menu)
-- [ ] Return-to-select flow after mission ends
+- [ ] `Mission` + `Objective` + `FailCondition` types per the binding schema in arch.md Rev 2026-05-12 D11.
+- [ ] `src/mission/parse.ts`: runtime guard analogous to `parseAircraftConfig` — validates JSON against the schema, finite-number checks, unknown-field rejection.
+- [ ] `src/mission/loader.ts`: `loadMission(id: string): Promise<Mission>` — fetches `public/missions/<id>.json` and runs `parseMission`.
+- [ ] `src/mission/runner.ts`: lifecycle (`start`, `tick(aircraftState, dt)`, `getStatus()`); declarative win/fail evaluation (all-objectives, timeout, out-of-bounds, crash). Emits `objectiveChange` and `statusChange` events.
+- [ ] `src/mission/hooks/registry.ts`: name → callback registry; lookup at mission start when `scriptHook` is set; throw with helpful error if name is unknown.
+- [ ] `src/mission/select.ts` (minimal DOM menu): list available missions, click → load → start. Return-to-select flow on mission end (status complete or failed).
+- [ ] Tests: schema parse (valid + each invalid shape), runner lifecycle (start/tick/complete/fail for each `FailCondition`), all-objectives win evaluation, hook registry hit + miss.
 
 ### WP12: HUD
-**Description:** In-mission HUD showing altitude, airspeed, current objective, status. Approach per WP10 decision.
+**Description:** In-mission HUD per **D12** (DOM overlay, CSS-absolute `<div>` over the canvas). Live `src/hud/dom-hud.ts` implementing the `HUD` interface (`setAircraftState`, `setObjective`, `setWaypointArrow`, `setStatus`, `show`/`hide`). Waypoint arrow positioned each frame via `THREE.Vector3.project()`. The interface boundary is the Phase 3 swap point.
 **Phase:** 2
 **Dependencies:** WP10
 **Size:** S
+**Tasks:**
+- [ ] `src/hud/HUD.ts`: interface declaration per arch.md Rev 2026-05-12 D12.
+- [ ] `src/hud/dom-hud.ts`: implementation — creates and owns DOM nodes for altitude, airspeed, throttle, objective text, status banner, waypoint arrow.
+- [ ] `setWaypointArrow(worldPos)`: project world position via the active camera; if behind camera → hide arrow; else position the arrow DOM node at the projected screen coords.
+- [ ] CSS in `src/hud/hud.css` (or a single stylesheet under `src/hud/`); HUD is hidden until `show()`.
+- [ ] Tests: lightweight DOM-mode tests (jsdom or stub `document`) — assert `setAircraftState` updates the right text nodes, `setWaypointArrow(null)` hides the arrow, `setStatus('won', '...')` populates the banner.
 
 ### WP13: Free flight mission
 **Description:** No objectives — just fly around the map. Baseline mission type; validates the framework with the simplest case.
@@ -224,10 +258,11 @@ T-shirt sizing: **XS** ≤ 2h · **S** ≤ half day · **M** ≤ 1 day · **L** 
 **Dependencies:** WP11, WP12
 **Size:** S
 **Tasks:**
-- [ ] Waypoint entity: position, radius, index
-- [ ] Objective logic: fly within radius in order
-- [ ] HUD: current waypoint distance + directional arrow
+- [ ] Mission JSON: ordered `reach-waypoint` objectives per D11 schema; `timeoutSec` for fail-on-timeout.
+- [ ] Runner already handles ordering via `Objective.order`; verify enforcement.
+- [ ] HUD: current waypoint distance + directional arrow (driven by `setWaypointArrow(worldPos)` per D12).
 - [ ] Win: last waypoint cleared. Fail: timer expires.
+- [ ] First Phase 2 candidate for non-zero `clAlphaDot` tuning if the descending-glide attractor proves unplayable for sustained waypoint runs (per D13 — verify against ≥30s probe).
 
 ### WP15: Takeoff/landing mission
 **Description:** Airfield with a runway. Detect wheels-down on runway within bounds + safe vertical speed. Objective: take off, pattern around, land.
@@ -241,7 +276,7 @@ T-shirt sizing: **XS** ≤ 2h · **S** ≤ half day · **M** ≤ 1 day · **L** 
 - [ ] HUD: current phase, glideslope indicator (optional)
 
 ### WP16: Combat mission
-**Description:** Biggest Phase 2 risk (R6). Keep minimal per research: one simple AI enemy (air or ground), one weapon, hit detection, damage model. No AI pathfinding beyond "fly toward / turn toward player."
+**Description:** Biggest Phase 2 risk (R6). Keep minimal per research: one simple AI enemy (air or ground), one weapon, hit detection, damage model. No AI pathfinding beyond "fly toward / turn toward player." Per **D11**, this is the only Phase 2 mission expected to register a `scriptHook` — the AI enemy logic lives in `src/mission/hooks/combat-ai.ts`. The internal AI architecture (behavior tree vs FSM) is a WP16-internal decision; arch.md does not pre-commit.
 **Phase:** 2
 **Dependencies:** WP11, WP12
 **Size:** L
@@ -250,13 +285,19 @@ T-shirt sizing: **XS** ≤ 2h · **S** ≤ half day · **M** ≤ 1 day · **L** 
 - [ ] Projectile lifecycle: spawn, raycast or collider, hit, despawn
 - [ ] AI enemy: one target entity (stationary ground target OR minimally-AI aircraft). If aircraft, reuse flight model with a dumb "turn to face player" controller.
 - [ ] Damage model: hitpoints on player + enemy; destruction state
+- [ ] `src/mission/hooks/combat-ai.ts` registered with the hook registry per D11.
+- [ ] Mission JSON: `scriptHook: 'combat-ai'` + a `destroy-target` objective.
 - [ ] Win: enemy destroyed. Fail: player destroyed.
 
 ### WP17: Phase 2 verification
-**Description:** All four mission types playable end-to-end via mission-select. Exit-criteria check.
+**Description:** All four mission types playable end-to-end via mission-select. Exit-criteria check. Adds a ≥30s level-cruise probe per arch.md Rev 2026-05-12 D13 to validate β5 (`clAlphaDot`) damping under non-zero throttle, since phugoid behavior hides in single-period observation.
 **Phase:** 2
 **Dependencies:** WP13, WP14, WP15, WP16
 **Size:** S
+**Tasks:**
+- [ ] End-to-end mission-select → play → win/lose → return-to-select for each of the four mission types.
+- [ ] ≥30s Playwright probe at non-zero throttles (`0.05`, `0.15`, `0.4`) — assert bounded |altitude − spawn| and bounded pitch oscillation across the full window. Phugoid coverage per D13. (Memory `feedback_verify_self_envelope.md` applies.)
+- [ ] FPS check at Chromium across all four mission types (cross-browser sweep remains WP21).
 
 ---
 
@@ -327,17 +368,17 @@ T-shirt sizing: **XS** ≤ 2h · **S** ≤ half day · **M** ≤ 1 day · **L** 
 ```
 WP1 ─► WP2 ─► WP3 ─┐
   │                │
-  └─► WP4 ─► WP5 ──┼─► WP6 ─► WP6.5 ─► WP7 ─► WP9 ─► WP10 ─► WP11 ─┬─► WP13 ─┐
-                   │                                                ├─► WP14 ─┤
-WP1 ─► WP8 ────────┘                                         WP10─► WP12      ├─► WP17 ─► WP18 ─► WP21 ─► WP22 ─► WP23
-                                                                    ├─► WP15 ─┤                                  ▲
-                                                                    └─► WP16 ─┘                                  │
-                                                              WP17 ─► WP19 ─────────────────────────────────────┤
-                                                              WP17 ─► WP20 ─────────────────────────────────────┘
+  └─► WP4 ─► WP5 ──┼─► WP6 ─► WP6.5 ─► WP7 ─► WP9 ─► WP10 ─► WP10.5 ─► WP11 ─┬─► WP13 ─┐
+                   │                                                          ├─► WP14 ─┤
+WP1 ─► WP8 ────────┘                                              WP10 ─► WP12          ├─► WP17 ─► WP18 ─► WP21 ─► WP22 ─► WP23
+                                                                              ├─► WP15 ─┤                                  ▲
+                                                                              └─► WP16 ─┘                                  │
+                                                                        WP17 ─► WP19 ─────────────────────────────────────┤
+                                                                        WP17 ─► WP20 ─────────────────────────────────────┘
 ```
 
 **Critical path (longest chain to ship):**
-`WP1 → WP4 → WP5 → WP6 → WP6.5 → WP7 → WP9 → WP10 → WP11 → WP16 → WP17 → WP20 → WP21 → WP22 → WP23`
+`WP1 → WP4 → WP5 → WP6 → WP6.5 → WP7 → WP9 → WP10 → WP10.5 → WP11 → WP16 → WP17 → WP20 → WP21 → WP22 → WP23`
 
 WP7 (flight-feel tuning) and WP16 (combat) are the two heaviest items and sit on the critical path. WP20 (visual polish) is L but trivially parallelizable with WP18/WP19.
 
@@ -345,9 +386,9 @@ WP7 (flight-feel tuning) and WP16 (combat) are the two heaviest items and sit on
 
 ## Architectural gaps found
 
-None that require a back-loop. WP10 is a *planned* arch revision at the Phase 1→2 boundary — arch.md explicitly deferred those decisions, so this is on-plan work, not a P8 regression.
+None that require a P8 back-loop. WP10 closed 2026-05-12 as the planned Phase 1→2 arch revision (D11/D12/D13). Phase 2 WPs are now decision-locked. WP10.5 is a small schema-extension WP that lands D13 in code before Phase 2 feature WPs begin.
 
-Recommend `/product-context` next (transition P9).
+Recommend `/product-context` next (transition P9) — to refresh `CLAUDE.md` for Phase 2 (mention Phase 1 closed, point to D11/D12/D13, update "Current Phase" section).
 
 ## Session Pause — 2026-05-09 09:05
 Paused after WP6 finalize. See `workflow/.session.md` to resume.
@@ -357,4 +398,10 @@ Paused at end-of-cycle. WP1–WP8 all shipped; only WP9 (Phase 1 verification) r
 
 ## Session Pause — 2026-05-11 20:35
 Paused after WP9 ran-and-blocked + WP9.5 shipped + session-reflect + 3 learnings persisted. Operator pause to decide between re-running WP9 verify, adopting @playwright/test, or other. See `workflow/.session.md` to resume.
+
+## Session Pause — 2026-05-11 21:10
+Paused after WP9.6 shipped + finalized (commits 70b2c2b + d6d1c0e). Phase 1 closed at the Chromium-only / operator-as-tester bar. Both operator-requested options shipped. Next unit is WP10 (Phase 2 arch revision — mission framework + HUD approach), which requires operator architectural input — paused per orchestrator cross-workflow rule §5 + operator's "absolutely necessary" escalation clause. See `workflow/.session.md` to resume.
+
+## WBS Update — 2026-05-12 (Phase 2 arch revision)
+WP10 closed under operator-as-architect (full-autopilot deviation per `feedback_operator_as_external.md`). Three architectural decisions landed in `arch.md` Revision 2026-05-12: **D11** (declarative-JSON missions + optional script hook), **D12** (DOM-overlay HUD), **D13** (β5 `clAlphaDot` AoA-rate damping — closes SURFACE-2026-05-11-04 architecturally). WBS updates: WP10 marked DONE; **new WP10.5** inserted as the β5 schema-extension WP (XS); WP11/WP12/WP14/WP16/WP17 task lists locked to the binding D11/D12/D13 specs; WP17 augmented with a ≥30s phugoid probe per D13. Critical path now: `... → WP10 → WP10.5 → WP11 → WP16 → ...`. Phase 1 entries (WP1–WP9.6) unchanged.
 

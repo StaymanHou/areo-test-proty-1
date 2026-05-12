@@ -28,14 +28,16 @@ src/
   engine/              # game loop, input, assets, debug UI
   world/               # scene, terrain, camera
   aircraft/            # rigidbody, aerosurface, flightmodel, controls
-  mission/             # (Phase 2)
-  hud/                 # (Phase 2)
+  mission/             # Phase 2 (WP11): loader.ts, runner.ts, parse.ts, select.ts, hooks/
+  hud/                 # Phase 2 (WP12): HUD interface + dom-hud.ts implementation
 public/
   models/              # GLTF aircraft, textures
+  missions/            # Phase 2 (WP11): declarative-JSON mission definitions
   config/
     aircraft.json      # tunable flight model constants
+tests/e2e/             # Playwright smoke (WP9.6) + Phase 2 mission-level probes
 CLAUDE.md              # this file
-CONVENTIONS.md         # (Phase 1 WP1) — coord conventions, module rules
+CONVENTIONS.md         # coord conventions, module rules, β1/β4/β5 sign conventions
 ```
 
 ## Getting Started
@@ -69,7 +71,7 @@ No Docker. No backend.
 - **Flight-model constants live in `public/config/aircraft.json`**, not in code. Tune via lil-gui, export back to JSON.
 - **Debug UI gated on `?debug=true`.** Never ship debug panels to end users.
 - **No framework (React/R3F).** Vanilla Three.js. Revisit if mission-select / HUD grows beyond basic DOM overlays.
-- **Phase discipline.** Phase 1 work does not implement Phase 2 systems (mission framework, HUD, AI). `mission/` and `hud/` are empty dirs in Phase 1 by design.
+- **Phase discipline.** Phase 1 closed 2026-05-12 (post-WP10 arch revision). Phase 2 populates `mission/` and `hud/` per D11/D12. Phase 2 work does not pre-implement Phase 3 polish (audio, visual replacement, onboarding) — those are WP18+ deliverables. AI architecture (behavior tree vs FSM) is a WP16-internal decision, not an arch decision.
 - **Write code for a casual-gamer audience.** "Feels right" beats "is accurate." When tuning a constant, the test is whether a non-pilot player says "yeah, that's how a plane should behave."
 
 ### Testing
@@ -79,13 +81,13 @@ No Docker. No backend.
 
 ## Current Phase
 
-**Phase 1 — Flight PoC** (see `docs/product/roadmap.md`).
+**Phase 2 — Mission System MVP** (see `docs/product/roadmap.md`).
 
-**Goal:** Prove the core loop — a plane flies in a browser with plausible physics and responsive controls. No missions, no UI chrome.
+**Goal:** Add structured gameplay — the four mission types from the vision (free flight, waypoint, takeoff/landing, combat), each minimally playable, with mission-select + in-mission HUD.
 
-**Exit criteria:** A developer can open the dev URL, take off, fly around, and crash — and it feels right. 60fps on a mid-range laptop in Chrome / Safari / Firefox.
+**Exit criteria:** From the main screen a player can pick any of the four mission types, play it to completion (or failure), and return to mission select.
 
-**Status (2026-05-11, post-WP9.6):** WP1–WP8 + WP9.5 + WP9.6 all shipped. **WP9.6 DONE — `@playwright/test` adopted with one load-bearing smoke test (`tests/e2e/casual-flight.spec.ts`) that doubles as the WP9.5 collider-fix regression anchor AND the WP9 Phase 3 casual-flight pathway verification.** SURFACE-2026-05-09-01 RESOLVED. 246/246 Vitest + 1/1 Playwright green. WP9 Phase 1 is now fully verified (boot, telemetry, input pipeline, FPS-Chromium, finite-and-moving casual-flight pathway). Remaining open SURFACE items: **SURFACE-2026-05-11-04** (phugoid is divergent under non-zero forcing — Phase 2 candidate, NOT gating Phase 1); SURFACE-2026-05-11-02 (descending-glide vs level cruise — Phase 2 feel-tuning); SURFACE-2026-04-19-01 (bundle size — Phase 3). Prior WP7 disposition: empirically refuted single-knob improvements over WP6.5 baseline; shipped descending-glide attractor + operator-as-tester feel-check.
+**Status (2026-05-12, post-WP10):** Phase 1 closed at the Chromium-only / operator-as-tester bar (WP1–WP9 + WP9.5 + WP9.6 all shipped, 246/246 Vitest + 1/1 Playwright green). **WP10 closed 2026-05-12 — Phase 2 arch revision shipped three decisions (D11/D12/D13).** Next WP is **WP10.5** (β5 `clAlphaDot` schema extension, XS — closes the SURFACE-2026-05-11-04 phugoid mode architecturally before mission feature WPs begin), then **WP11** (mission framework — declarative JSON + script hook per D11) and **WP12** (HUD — DOM overlay per D12) in parallel. Remaining open SURFACE items: **SURFACE-2026-05-11-04** (phugoid — addressed by D13 schema landing in WP10.5, tuning deferred to whichever mission first surfaces the need); SURFACE-2026-05-11-02 (descending-glide vs level cruise — depends on phugoid fix); SURFACE-2026-04-19-01 (bundle size — Phase 3).
 
 ## Key Decisions
 
@@ -97,6 +99,11 @@ See `docs/product/arch.md` for the full list and rationale. Highlights:
 - **D4: Flat terrain in Phase 1.** Flat plane + skybox + 2–3 landmarks. Heightmap is a Phase 3 polish swap via the `terrain.ts` interface.
 - **D6: No ECS in Phase 1.** Single aircraft, simple world. Reconsider at Phase 2 if entities multiply.
 - **D9: Static deploy, backend-less.** Aligns with "no-install" vision principle.
+- **D10/D11/D12/D13 (Phase 1→2 boundary):**
+  - **D10:** Per-surface `incidenceRad` (β1) is the trim mechanism (shipped WP6.5).
+  - **D11:** Missions are declarative JSON files in `public/missions/`; combat (WP16) registers an optional `scriptHook` for AI enemy behavior. Other three mission types are declarative-pure.
+  - **D12:** HUD is a DOM overlay (`src/hud/dom-hud.ts`) implementing a `HUD` interface; waypoint arrows project world coords via `THREE.Vector3.project()`. Three.js ortho is the Phase 3 swap point.
+  - **D13:** Per-surface `clAlphaDot` (β5) is the phugoid-damping mechanism (lands in WP10.5; default 0; tuning per Phase 2 mission as needed).
 
 ## Key Risks
 
