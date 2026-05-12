@@ -18,6 +18,8 @@ import { loadMission, loadMissionList } from './mission/loader';
 import { MissionRunner } from './mission/runner';
 import { MissionSelectScreen } from './mission/select';
 import type { Mission, MissionManifestEntry } from './mission/types';
+import { DomHud } from './hud/dom-hud';
+import { formatActiveObjective } from './hud/format';
 
 async function bootstrap() {
   const mount = document.querySelector<HTMLDivElement>('#app');
@@ -72,6 +74,9 @@ async function bootstrap() {
   let activeMission: Mission | null = null;
   let missionManifest: MissionManifestEntry[] = [];
 
+  // WP12 HUD wiring (D12 DOM-overlay).
+  const hud = new DomHud(camera, renderer.domElement);
+
   const loop = new GameLoop(
     {
       onPhysics: (dt) => {
@@ -99,6 +104,16 @@ async function bootstrap() {
         }
 
         cameraController.update(aircraft.mesh.position, aircraft.mesh.quaternion, 1 / 60);
+
+        // WP12 HUD per-frame update. Hot path — `hud` no-ops when not shown.
+        if (missionRunner.getStatus() === 'running') {
+          toAircraftState(aircraft.readBodyState(), aircraftStateBuf);
+          hud.setAircraftState(aircraftStateBuf);
+          hud.setThrottle(controls.throttle);
+          // Phase 2 missions have no active-waypoint surface yet; WP14 will
+          // wire the next-waypoint position into this call.
+          hud.setWaypointArrow(null);
+        }
 
         debug?.stats.begin();
         renderer.render(scene, camera);
@@ -261,8 +276,23 @@ async function bootstrap() {
     controls.throttle = mission.spawn.throttle;
     missionRunner.start(mission);
     missionSelect.hide();
+    // WP12 — HUD lifecycle: show on mission start, set initial objective +
+    // status, then unpause the loop so onRender starts feeding per-frame data.
+    hud.show();
+    hud.setStatus('flying');
+    hud.setObjective(
+      formatActiveObjective(mission.objectives, missionRunner.getObjectiveStates()),
+    );
     loop.setPaused(false);
   }
+
+  // WP12 — re-render the objective string when any objective state changes.
+  missionRunner.on('objectiveChange', () => {
+    if (activeMission === null) return;
+    hud.setObjective(
+      formatActiveObjective(activeMission.objectives, missionRunner.getObjectiveStates()),
+    );
+  });
 
   // Status-change listener — on terminal state (won/failed), pause the loop,
   // briefly show the outcome banner, then return to the select screen.
@@ -272,8 +302,10 @@ async function bootstrap() {
     if (activeMission === null) return;
     const missionName = activeMission.name;
     loop.setPaused(true);
+    hud.setStatus(status);
     void missionSelect.showOutcome(status, missionName).then(() => {
       activeMission = null;
+      hud.hide();
       missionSelect.show(missionManifest);
     });
   });

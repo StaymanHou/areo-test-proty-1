@@ -419,3 +419,6 @@ WP10 closed under operator-as-architect (full-autopilot deviation per `feedback_
 ## WP11 Shipped — 2026-05-12
 Mission framework — declarative-JSON missions + DOM mission-select + MissionRunner lifecycle — landed in commit `690788a`. Three phases, single-pass build, no back-loops. 24 files changed (+2937 LOC). 345/345 Vitest (was 256, +89) + 4/4 Playwright + tsc strict + build clean. WP9.6 casual-flight regression anchor preserved via `?mission=free-flight&debug=true` compat path. Live integration verified end-to-end (mission-select renders, click → run, deep-link auto-start, invalid id → error fallback). Hook registry empty (WP16 will register `combat-ai`). Next: **WP12** (HUD, D12) — parallel-trackable, since the runner already emits `objectiveChange`/`statusChange` events that the HUD will consume. Then WP13–WP16 mission content (each ships its own JSON; WP16 adds the one script hook).
 
+## Session Pause — 2026-05-12 09:55
+Paused at the post-WP11 fork. WP10 + WP10.5 + WP11 all shipped this session (full-autopilot). Operator chose to pause rather than continue. See `workflow/.session.md` to resume — live options listed there (WP12 HUD next is the natural pick).
+
