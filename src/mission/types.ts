@@ -9,8 +9,8 @@
 // identity: `AircraftState.position` and `SpawnConfig.position` are the same
 // shape and trivially comparable.
 
-export type { Vec3Plain } from '../aircraft/state';
-import type { Vec3Plain } from '../aircraft/state';
+export type { Vec3Plain } from '../aircraft/physics-core/state';
+import type { Vec3Plain } from '../aircraft/physics-core/state';
 
 export const MISSION_TYPES = [
   'free-flight',

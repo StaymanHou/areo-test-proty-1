@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll } from 'vitest';
 import RAPIER from '@dimforge/rapier3d-compat';
 import { Vector3 } from 'three';
 import { Aircraft } from './rigidbody';
-import { parseAircraftConfig, type AircraftConfig } from './config';
+import { parseAircraftConfig, type AircraftConfig } from './physics-core/config';
 
 const baselineRaw = () => ({
   mass: 1000,

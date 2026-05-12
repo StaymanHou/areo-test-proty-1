@@ -2,7 +2,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { PerspectiveCamera } from 'three';
 import { DomHud } from './dom-hud';
-import type { AircraftState } from '../aircraft/state';
+import type { AircraftState } from '../aircraft/physics-core/state';
 
 function freshAircraftState(overrides: Partial<AircraftState> = {}): AircraftState {
   return {

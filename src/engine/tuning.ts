@@ -3,9 +3,9 @@ import { Vector3 } from 'three';
 import {
   buildSymmetricFlatPlateCurves,
   type SymmetricFlatPlateParams,
-} from '../aircraft/aerosurface';
+} from '../aircraft/physics-core/aerosurface';
 import type { Aircraft } from '../aircraft/rigidbody';
-import type { FlightModel } from '../aircraft/flightmodel';
+import type { FlightModel } from '../aircraft/physics-core/flightmodel';
 
 // Live-tuning UI for the flight model. Wires lil-gui sliders to the Phase B
 // mutators (Aircraft.setMassProperties, AeroSurface.setGeometry / setCurves,

@@ -20,7 +20,7 @@
 //   - `destroy-target`: hook-driven — runner inspects `objectiveState.completed`
 //     which only the script hook (WP16 combat-ai) writes.
 
-import type { AircraftState } from '../aircraft/state';
+import type { AircraftState } from '../aircraft/physics-core/state';
 import { getHook, type HookFn, type HookState } from './hooks/registry';
 import type {
   Mission,

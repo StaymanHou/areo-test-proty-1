@@ -4,7 +4,7 @@ import {
   computeAeroForce,
   createAeroSurface,
 } from './aerosurface';
-import type { Aircraft } from './rigidbody';
+import type { Aircraft } from '../rigidbody';
 
 // Body-local thrust direction = nose forward = −Z (per CONVENTIONS.md).
 const _thrustLocal = new Vector3(0, 0, -1);

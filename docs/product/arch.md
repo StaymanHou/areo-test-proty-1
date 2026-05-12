@@ -1,7 +1,7 @@
 ---
 stage: arch
 state: complete
-updated: 2026-05-12
+updated: 2026-05-12 (afternoon — D14 added: physics tuning harness + parameter search)
 ---
 
 
@@ -105,6 +105,7 @@ Separating physics tick from render tick is the standard game-loop pattern ("Fix
 - **D11 — Missions are declarative JSON + optional script hook.** Each mission is a JSON file conforming to a `Mission` schema (objectives, win/fail conditions, spawn). Combat (WP16) registers a `scriptHook` for AI enemy behavior; the other three mission types (free flight, waypoint, takeoff/landing) are declarative-pure. Rationale + alternatives: see Revision 2026-05-12 below.
 - **D12 — HUD is a DOM overlay.** CSS-absolute `<div>` layered over the canvas, with waypoint arrows positioned via `THREE.Vector3.project()`. Three.js ortho camera is rejected for v1 (no shader-based HUD elements planned). The `HUD` interface is the Phase 3 swap point. Rationale: see Revision 2026-05-12 below.
 - **D13 — Per-surface AoA-rate damping (`clAlphaDot`, β5) is the phugoid-mode mechanism.** Each `AeroSurface` carries an optional `clAlphaDot` (default 0) that augments CL by `clAlphaDot · dα/dt`. Damps the phugoid mode (long-period coupled airspeed/AoA oscillation) that SURFACE-2026-05-11-04 logged. Default-zero ships in WP10.5; tuning is Phase 2 per-mission. Rationale + verification: see Revision 2026-05-12 below.
+- **D14 — Headless physics harness + automated parameter search is the tuning methodology.** Physics mechanism tuning (β5 first; future βN extensions next) runs against a Node-side headless harness that steps the shipped Rapier physics + flight model at many multiples of wall-clock, scored against an envelope-probing fitness function, driven by a gradient-free optimizer (Nelder-Mead start; CMA-ES fallback). Replaces the manual `build → verify-self → guess` loop for any WP that adjusts `aircraft.json` physics constants. A harness↔browser parity test guards against drift. Rationale + cascade: see Revision 2026-05-12 (afternoon) below.
 
 ## Unknowns / deferred to Phase 2 arch pass
 
@@ -294,3 +295,240 @@ For `clAlphaDot = 0`, behavior is bit-for-bit identical to current behavior (the
 - **Damage model**: still deferred. Hitpoints scalar on a destructible-entity type is the v1 minimum; deeper component damage is Phase 3 polish if at all.
 - **Bundle size (SURFACE-2026-04-19-01)**: still Phase 3 (WP18/WP21). No arch change.
 - **Multiplayer**: out of scope per vision. No arch.
+
+## Revision 2026-05-12 (afternoon) — D14: Physics tuning harness + automated parameter search
+
+**Context.** WP14.5 attempted to tune the β5 (`clAlphaDot`) mechanism that landed in WP10.5 (D13). Three Playwright-driven tuning attempts (+5/+10, +1/+2, -1/-2 on wings/h-stab) all diverged catastrophically — at every sign, every magnitude, every operating regime tested. The WP14.5 retrospect surfaced two findings: (1) the β5 mechanism itself is dimensionally wrong (raw `dα/dt`, no V-normalization — see SURFACE-2026-05-12-03), and (2) the *methodology* of tuning Phase-2 physics by hand-driven `feature-build → verify-self → adjust` loops cannot scale to the search density that real aero coefficients need. Three attempts under `feedback_retune_attempt_budget.md` is the right discipline for refuting a mechanism, but the budget was hit before any meaningful parameter-space coverage was achieved. Per-attempt cost: ~5 minutes of Playwright probe + agent reasoning across three throttle bands. Search density: 3 points in a 2-knob × 3-regime space — sparse to the point of being uninformative.
+
+This revision is the operator-acknowledged escalation from "the β5 mechanism is wrong" to "we lack a systematic way to search physics parameter space at all." It pauses Phase 2 mission progress (post-WP14 line) and routes the next several WPs through harness + optimizer infrastructure rather than further mission content.
+
+**Driving mode disclosure.** Operator-as-architect deviation continues under full-autopilot drive mode per `feedback_operator_as_external.md`. The decision sketch below was reviewed and accepted by the operator before this revision was written; the operator explicitly framed the requirement as "search 100+ combinations, without Playwright, with regression/convergence." All architectural specifics below are the agent's working-out under that framing. **Phase 3 re-validation hook:** D14's design is reviewable at WP21 (cross-browser QA) or sooner if the cascade WPs (14.6/14.7/14.8) surface a problem.
+
+---
+
+### D14 — Physics tuning harness + automated parameter search
+
+**Decision.** Tuning of physics mechanism coefficients in `aircraft.json` (β4 `clQ`, β5 `clAlphaDot`, future βN extensions, plus shared knobs like mass, area, thrust) is performed by a Node-side headless harness that steps the shipped flight model and physics engine without browser, render, or HUD overhead, at as-fast-as-CPU-allows wall-clock. The harness is driven by a gradient-free optimizer that fits a regression to the score surface and converges on parameter values that satisfy an envelope-probing fitness function. Replaces the manual lil-gui + Playwright-probe loop for any WP that adjusts physics constants.
+
+**Why this is arch-level, not feature-level.**
+- **Changes module topology.** `src/aircraft/flightmodel.ts` and `src/aircraft/rigidbody.ts` currently bind directly to Rapier-WASM-loaded-in-browser. The harness needs the same physics code executable in Node. That requires extracting a framework-agnostic core, and that's a `src/` reorg — not a tooling add.
+- **Changes the tuning workflow.** Phase 2 WPs (WP15, WP16, WP14.5-retry) previously had "tune values in lil-gui" as an implicit verify-self path. With D14, the tuning step becomes a separate harness-run that emits a `aircraft.json`-shaped artifact, which the WP then commits. This is a process change worth codifying in CLAUDE.md alongside the two physics-mechanism discipline rules from the WP14.5 retrospect.
+- **Introduces a new test tier.** Vitest (unit), Playwright (e2e), and now **harness sweeps** (slow, parameter-search). CLAUDE.md "Testing" section grows by one tier. Harness sweeps are too slow for CI on the default path; CI runs the harness↔browser parity test only (fast).
+- **Has a long-lived dependency on Rapier semantics.** If Rapier is swapped (e.g., to `rapier3d-simd` per D-tech-stack), the harness moves with it. That's an arch-level coupling, not a tooling concern.
+
+---
+
+#### D14.1 — Execution strategy: Rapier in Node, not pure-TS re-implementation
+
+**Three candidate execution strategies were considered:**
+
+1. **Node-side Rapier** (chosen). Use `@dimforge/rapier3d-compat` directly from Node — the same WASM binary that ships to the browser. Step the world manually as fast as the CPU allows in a `while` loop. No render budget, no requestAnimationFrame, no fetch-for-config — just `world.step()` in a tight loop. Expected throughput: 50–200× wall-clock on the operator's mid-range laptop (60 Hz physics × 50× = 3000 simulated seconds/sec, so a 30s probe runs in ~0.6s of CPU).
+2. **Pure-TS physics core extraction.** Replace Rapier with a minimal Euler/RK4 integrator we own in TS. Faster (no WASM boundary) and lighter, but **introduces a behavioral fork** between harness and browser. WP14.5's lesson is that pure-math correctness is decoupled from physical correctness; introducing a second physics engine is a second place for those two to diverge. Rejected.
+3. **Stub-Rapier shim.** Mock just the methods `flightmodel.ts` calls; keep the rest of Rapier behind a thin protocol. Lighter than (1) but the protocol surface (gravity, collision detection, rigid body integration) is exactly the part where Rapier's correctness matters. Rejected for the same reason as (2).
+
+(1) wins because **harness physics = shipped physics** by construction. No drift class. The cost is paying the WASM boundary overhead per step, which is bounded — `world.step()` in Rapier is microseconds, and we get ~50–200× wall-clock anyway.
+
+**Determinism contract.** Rapier is deterministic at fixed-dt given identical input sequences and identical initial conditions. The harness MUST:
+- Seed any RNG inputs explicitly (currently the flight model has none; if Phase 2 adds wind/turbulence, that becomes a seed input).
+- Use fixed-dt = 1/60s (matches browser; per D1).
+- Take initial conditions (position, linvel, ang vel, throttle, control deflections) as explicit harness input, not from `aircraft.json` spawn defaults (which are mission-coupled and could change).
+- Step the world a fixed number of ticks per run; do NOT use any "wall-clock until convergence" loop — the loop is deterministic in tick-count.
+
+A regression-fitting optimizer needs deterministic objective values; non-determinism turns gradient signal into noise.
+
+---
+
+#### D14.2 — Module reorg: extract physics-core layer
+
+To make `flightmodel.ts` callable from Node without dragging Three.js or browser globals, the following reorg is required:
+
+**Current state.**
+- `src/aircraft/rigidbody.ts` imports both Rapier AND Three.js. The Three.js dependency is for `syncMesh()` (writes Rapier pose into a Three.js mesh).
+- `src/aircraft/flightmodel.ts` imports Rapier types and `BodyState`. No direct Three.js.
+- `src/aircraft/aerosurface.ts` is already framework-agnostic — pure math + Rapier scratch types.
+
+**Target state.**
+```
+src/
+  aircraft/
+    physics-core/                 # NEW — framework-agnostic, Node-compatible
+      aerosurface.ts              # MOVED — already pure
+      flightmodel.ts              # MOVED — drop the Three.js leakage if any
+      rigidbody-core.ts           # NEW — Rapier-only RigidBody, no Three.js
+      state.ts                    # MOVED — AircraftState plain-data (already exists)
+      config.ts                   # MOVED — parseAircraftConfig (synchronous parse; loader stays)
+      step.ts                     # NEW — composable single-tick step function
+    rigidbody.ts                  # KEPT — Three.js mesh binding + delegates to rigidbody-core
+    controls.ts                   # KEPT — Three.js-free already; stays here for locality
+```
+
+The split criterion is: **can this code run in Node with only `@dimforge/rapier3d-compat` and `aircraft.json` as inputs?** If yes → `physics-core/`. If no (Three.js mesh, DOM input events, lil-gui) → outside.
+
+Modules under `physics-core/` are the only ones the harness imports. The browser entry (`src/main.ts`) imports from both `physics-core/` and the browser-side wrappers. **No behavioral change** — pure file moves + interface tightening. Vitest tests follow their moved modules.
+
+**Why this is safe.** The split criterion is mechanical (does it import `three`?). The 385/385 Vitest suite covers the moved code. The harness↔browser parity test (D14.3) guards against silent drift after the move.
+
+---
+
+#### D14.3 — Parity test: harness must not drift from browser
+
+The single biggest risk in D14 is **harness/browser drift** — the harness's trajectories silently diverging from what the browser actually produces, so the optimizer converges on values that are wrong in the shipped game. Mitigation is structural:
+
+**Parity test contract:**
+- A fixed set of initial-condition fixtures (currently: WP14.5's three throttle bands @ 0.05/0.15/0.4 starting from `(0,50,0)` with linvel `(0,0,-30)`). Easily extended.
+- The harness runs each fixture for N ticks (start at N=1800 → 30s) and emits a trajectory CSV: `tick, posX, posY, posZ, vX, vY, vZ, pitch, yaw, roll, airspeed`.
+- A Playwright spec under `tests/e2e/parity.spec.ts` runs the same fixtures in-browser at fixed-dt (skip render interpolation) and emits the same CSV via `window.__aircraft.getTrajectory()`.
+- A Vitest spec diffs the two CSVs column-by-column with a tight tolerance (`|Δ| < 1e-6` per scalar, except angles which use shortest-arc distance). Any divergence fails CI.
+
+The tolerance is tight on purpose. We are using the same Rapier WASM with the same fixed-dt and the same code path — bit-identity is the expected default; any drift indicates the split was not clean.
+
+**Determinism caveat.** If parity-test failures show up cross-platform (Mac vs Linux CI), that's evidence that WASM is non-deterministic across the boundary and we need to either pin a single platform for harness runs or relax tolerance with care. Treat this as a SURFACE if hit.
+
+---
+
+#### D14.4 — Score function: envelope-probing fitness
+
+The optimizer needs a scalar score per parameter point. The score function is the load-bearing piece — see WP14.5's catastrophic failure mode (Attempt 1 *appeared* to work at one throttle and broke at others). Per `feedback_verify_self_envelope.md`, the score MUST probe the operating envelope, not a single nominal initial condition.
+
+**Score function shape (binding for the harness implementation WP):**
+
+```
+score(params) = Σ_regime  weight_regime · regime_score(simulate(params, regime))
+
+where regime ∈ {low_throttle, mid_throttle, high_throttle}  (initial set; extensible)
+and regime_score is a piecewise function on the trajectory:
+
+   if any NaN/Infinity at any tick:   -1e9 - tick_of_first_NaN  (heavy penalty, prefer-failing-later)
+   else:
+     altitude_penalty   = max(0, |max(alt) - spawn_alt| - ALT_ENVELOPE) ** 2
+     airspeed_penalty   = max(0, max(|airspeed - target_airspeed|) - AS_ENVELOPE) ** 2
+     pitch_rate_penalty = max(0, max(|pitch_rate_deg_per_sec|) - PITCH_RATE_LIMIT) ** 2
+     phugoid_penalty    = grow_rate_of_alt_envelope_over_window  (positive if growing — phugoid)
+     -1 * (alt_penalty + as_penalty + pitch_rate_penalty + phugoid_penalty)
+```
+
+**Higher is better.** NaN produces a large negative score that still encodes "how soon did it explode" so the optimizer can move *toward* later-NaN regions even when all sampled points NaN. Crucial for the WP14.5 attack regime where every Attempt-1 point exploded — the optimizer needs *some* gradient, not all-equal sentinel values.
+
+**Envelope constants** (initial values; tunable):
+- `ALT_ENVELOPE = 50m` — phugoid allowable amplitude
+- `AS_ENVELOPE = 30 m/s` — airspeed allowable amplitude
+- `PITCH_RATE_LIMIT = 360°/s` — short-period control health (matches WP6.5 budget)
+- `target_airspeed = regime-dependent` (e.g., 25/30/40 m/s for low/mid/high throttle)
+- `weight_regime` — equal weights initially; bias toward gameplay-relevant regimes later
+
+The score function lives in `tools/tune/score.ts`. Vitest covers it. The envelope constants live with the score function, not in `aircraft.json` — they're optimizer hyperparameters, not aircraft physics.
+
+---
+
+#### D14.5 — Optimizer: Nelder-Mead with quadratic regression on best simplex; CMA-ES as fallback
+
+**Choice: Nelder-Mead (downhill simplex) as the primary optimizer.**
+- Gradient-free — works against the noisy, discontinuous (NaN-cliff) score function above.
+- Low-dimensional friendly — physics tuning is typically 2–4 knobs at a time (e.g., `wings.clAlphaDot`, `hstab.clAlphaDot`).
+- Cheap to implement — ~150 LOC pure TS, no dependencies. (Well-known reference: Press et al., *Numerical Recipes*.)
+- Composes well with the regression layer: once the simplex contracts near a candidate optimum, fit a local quadratic (`score ≈ a + bᵀΔp + Δpᵀ C Δp`) to the simplex vertices and emit it as a status report — "near this point, the response surface looks like X, gradient direction Y, conditioning Z." This is what the operator means by "compute the regression": local Taylor fit on the simplex, used both for convergence diagnosis and for human-readable output.
+- **Restarts.** Random-restart Nelder-Mead from K seeded starting points (K=4 initially) bounds the local-minimum risk. Each restart is a fresh harness run, so harness speed is the budget gate.
+
+**Fallback: CMA-ES** if Nelder-Mead repeatedly fails to converge in 2 restart batches. CMA-ES handles multi-modal / ill-conditioned surfaces better but is heavier. Adopt only if needed; we don't pre-build it.
+
+**Stopping criteria:**
+- Score plateau: best vertex score changes < `SCORE_TOL = 1e-3` over `N_PLATEAU = 30` iterations.
+- Simplex diameter: `max ||p_i - p_centroid|| < PARAM_TOL = 1e-4` (in normalized parameter space).
+- Iteration cap: `MAX_ITER = 500` per restart.
+
+**Bayesian optimization explicitly rejected** for this scale. Sample efficiency wins on expensive evaluations (minutes/hour per eval). With harness at 50–200× wall-clock, a 30s probe runs in <1s, and Nelder-Mead's tens-to-hundreds of evals fit in seconds-to-minutes. BayesOpt's GP-fitting + acquisition-function overhead dominates the eval cost at our scale. Reconsider only if score evaluation cost rises (e.g., harness probes go to multi-minute durations for higher-fidelity stability checks).
+
+---
+
+#### D14.6 — Tuning workflow change (codified in CLAUDE.md)
+
+**Before D14.** A physics-tuning WP looked like:
+1. `feature-plan` proposes tuning values.
+2. `feature-build` edits `aircraft.json`.
+3. `feature-verify-self` runs Playwright probe.
+4. If fail → back-loop to step 2 with revised guess (budget per `feedback_retune_attempt_budget.md`: 2-3 attempts then option-c).
+
+**After D14.** A physics-tuning WP looks like:
+1. `feature-plan` defines the optimizer search space (which knobs, bounds) and validates the score function envelope is appropriate for this mission's regime.
+2. `feature-build` runs `npm run tune -- --knobs wings.clAlphaDot,hstab.clAlphaDot --bounds 0..20,0..20 --restarts 4`; harness produces a `tools/tune/results-<timestamp>.json` artifact with the best parameters, score, regression fit, and convergence trace.
+3. Commit only if score crosses an explicit acceptance threshold (defined in the plan); otherwise option-c escalates to mechanism revision (same SURFACE shape as WP14.5).
+4. `feature-build` writes the chosen parameters into `aircraft.json`.
+5. `feature-verify-self` runs Playwright probe to confirm harness↔browser parity holds for the tuned point (catches drift in the mechanism we're tuning, not in physics).
+
+**The 2–3-attempt budget from `feedback_retune_attempt_budget.md` still applies** — but now an "attempt" is one optimizer run (~minutes), not one human-driven probe (~5 minutes + reasoning). The budget is on *optimizer restarts with different starting points or scoring envelopes*, not on individual evaluations. Memory `feedback_retune_attempt_budget.md` will be updated when D14 ships.
+
+This adds a new bullet to CLAUDE.md "Development Conventions" → **Physics-mechanism discipline** section:
+
+> **3. Physics-mechanism tuning runs through the harness, not hand-guessing.** Any WP that adjusts `aircraft.json` physics constants (mass, thrust, areas, β-coefficients, inertia) MUST run the harness optimizer (`npm run tune`) over an explicit parameter space and commit the optimizer's output artifact alongside the JSON change. Hand-guessing physics values is reserved for (a) initial schema-land WPs where defaults must be 0 anyway, and (b) the operator-as-architect explicitly choosing a value for non-physical reasons (e.g., gameplay feel override). **Origin:** WP14.5 exhausted the 3-attempt budget on 3 sparse points in a continuous parameter space; the mechanism may or may not have been tunable — the search density was too low to know.
+
+The two existing rules (no-sign-convention-unit-tests-before-live-observation; schema-land close requires non-default verify-self) remain in force.
+
+---
+
+#### D14.7 — What this is NOT
+
+- **Not a generic ML/AI pipeline.** No neural networks, no learned models, no RL. The score function is hand-written and human-readable; the optimizer is a classical simplex method. The "regression" is local quadratic fit for human-readable convergence diagnosis, not model training.
+- **Not a continuous tuning daemon.** The harness runs on-demand from `npm run tune`, produces an artifact, and exits. It does not run in CI by default; parity test runs in CI, full tuning sweeps do not.
+- **Not a substitute for verify-self in browser.** Browser verify-self still runs on every WP via Playwright. The harness adds a pre-step for tuning WPs only. Non-physics features (HUD, mission flow, controls) ignore the harness entirely.
+- **Not an architectural commitment to long-term parameter search infrastructure.** If Phase 2 closes with WP14.5/15/16 shipped and Phase 3 finds the harness unused for 3+ months, it's allowed to bit-rot or be deleted. The arch decision is "land the harness so we can finish Phase 2"; it is not "we are now a parameter-search shop."
+
+---
+
+#### D14.8 — Forward implications (WBS cascade — binding for `/product-wbs`)
+
+The following new work items land in `wbs.md` Phase 2 in order, before WP14.5-retry. WP15/WP16/WP17 remain blocked behind WP14.5-retry as previously stated. **Existing WP14.5 in WBS is REPLACED in scope** — its current contents (tuning attempts already run and disposed) are archived; the new WP14.5 description (below) is "tune using the harness, ship if any values work, else escalate to mechanism revision."
+
+**WP14.6 — Extract physics-core (D14.2) + parity test (D14.3).** Size: M. Description: file-move reorg per D14.2 with no behavioral change; add `tests/e2e/parity.spec.ts` and a Vitest CSV-diff spec. Acceptance: 385/385 existing tests pass post-move; parity test green in CI; tsc strict clean.
+
+**WP14.7 — Node harness (D14.1).** Size: M. Description: `tools/tune/harness.ts` boots Rapier in Node, loads `aircraft.json`, takes initial conditions + parameter overrides + tick-count from CLI args, emits trajectory CSV. `npm run harness -- --fixture <name> --ticks 1800` runs a single deterministic probe. No optimizer yet — this is the inner loop. Vitest covers CLI parsing + the trajectory emitter; the parity test (WP14.6) is the correctness gate. Includes `tsconfig.tools.json` if Vite's `tsconfig.json` doesn't reach `tools/`.
+
+**WP14.8 — Optimizer + score function (D14.4 + D14.5).** Size: M. Description: `tools/tune/score.ts` implements the envelope-probing score; `tools/tune/optimizer.ts` implements Nelder-Mead with K=4 restarts and quadratic-regression status reporting; `tools/tune/tune.ts` is the CLI entry (`npm run tune -- --knobs ... --bounds ... --regimes ...`). Vitest covers score function on synthetic trajectories (deterministic mocked harness) + Nelder-Mead on synthetic objective functions (Rosenbrock, sphere, etc.) to validate the implementation against known optima.
+
+**WP14.5 (rescoped) — `clAlphaDot` tuning pass via harness.** Size: S–M (depends on outcome). Description: run `npm run tune -- --knobs wings.clAlphaDot,hstab.clAlphaDot --bounds -10..20,-10..20 --restarts 4 --regimes low,mid,high`; commit the result if score crosses acceptance threshold. **If no parameter point produces a passing score across all three regimes**, the mechanism is confirmed unsuitable; surface as a mechanism-revision WP (Options A/B/C from SURFACE-2026-05-12-03), now with regression-gradient evidence to argue for one option over the others. The harness becomes the experiment platform for evaluating Options A/B/C side-by-side.
+
+**WP15 / WP16 / WP17 — unchanged in shape**, but their respective tuning sub-tasks (if any) flow through `npm run tune` now. WP17 Phase 2 verification absorbs the parity test as a permanent CI artifact.
+
+**Critical path update.** New chain:
+
+```
+… → WP10.5 → WP11 → WP12 → WP13 ✓ → WP14 ✓ → WP14.6 → WP14.7 → WP14.8 → WP14.5(retry) → WP15/WP16 → WP17 → WP18 → …
+```
+
+Net cost: +3 WPs (~2 days of agent work) before Phase 2 mission content resumes. Net benefit: every future Phase 2 + Phase 3 physics tuning runs at minutes-per-attempt instead of hours-per-attempt, and converges on optima we can defend with regression evidence instead of "I tried 3 points."
+
+---
+
+#### D14.9 — Project structure additions
+
+```
+tools/                          # NEW — Node-side tools, framework-agnostic
+  tune/
+    harness.ts                  # WP14.7 — Rapier-in-Node single-probe driver
+    score.ts                    # WP14.8 — envelope-probing fitness
+    optimizer.ts                # WP14.8 — Nelder-Mead + restarts + regression
+    tune.ts                     # WP14.8 — CLI entry point
+    results/                    # gitignored — optimizer artifacts (timestamped JSON)
+src/aircraft/physics-core/      # NEW — WP14.6 — framework-agnostic physics
+tests/e2e/parity.spec.ts        # NEW — WP14.6 — browser-side trajectory emitter
+tests/parity-diff.test.ts       # NEW — WP14.6 — Vitest CSV-diff
+tsconfig.tools.json             # NEW — WP14.7 — Node-target tsconfig for tools/
+```
+
+`package.json` adds two scripts at WP14.7/WP14.8:
+```
+"harness": "tsx tools/tune/harness.ts",
+"tune": "tsx tools/tune/tune.ts"
+```
+
+Adopt `tsx` (zero-config TS-on-Node runner) as a devDep — cheaper than maintaining a separate `tsc` build for tools. Locked at WP14.7.
+
+`.gitignore` extends with `tools/tune/results/`.
+
+---
+
+### Open questions / deferred to harness implementation WPs
+
+- **Cross-platform determinism of Rapier WASM.** Assumed bit-identical across Mac/Linux/Windows; will be confirmed by the parity test at WP14.6. If it fails, SURFACE and either pin platform or relax tolerance.
+- **Score function envelope constants.** Initial values are educated guesses; the WP14.5-retry run will be the first real calibration. Constants live in `tools/tune/score.ts` and are themselves tunable (but not via the harness — that'd be infinite regress).
+- **Whether to wire `npm run tune` into pre-commit hooks for files matching `aircraft.json`.** Tempting but probably wrong — tuning is intentional, not reflexive. Deferred to "see how the WPs feel."
+- **Whether the harness needs a Three.js-less mesh stub for collider visualization in trajectory output.** Probably no — the trajectory CSV is sufficient for scoring. Defer until WP14.7 surfaces a need.

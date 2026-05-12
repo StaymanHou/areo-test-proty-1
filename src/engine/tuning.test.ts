@@ -1,10 +1,10 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import RAPIER from '@dimforge/rapier3d-compat';
 import { Quaternion, Vector3 } from 'three';
-import { parseAircraftConfig, type AircraftConfig } from '../aircraft/config';
+import { parseAircraftConfig, type AircraftConfig } from '../aircraft/physics-core/config';
 import { Aircraft } from '../aircraft/rigidbody';
-import { FlightModel } from '../aircraft/flightmodel';
-import { computeAeroForce, type BodyState } from '../aircraft/aerosurface';
+import { FlightModel } from '../aircraft/physics-core/flightmodel';
+import { computeAeroForce, type BodyState } from '../aircraft/physics-core/aerosurface';
 import { attachFlightModelTuning } from './tuning';
 
 // Test fake for lil-gui. Records every (target, key) → onChange callback so a

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { createAircraftState, type AircraftState } from '../aircraft/state';
+import { createAircraftState, type AircraftState } from '../aircraft/physics-core/state';
 import { clearRegistry, registerHook, type HookFn } from './hooks/registry';
 import { MissionRunner, OUT_OF_BOUNDS_LIMIT } from './runner';
 import type { Mission } from './types';

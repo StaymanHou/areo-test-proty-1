@@ -2,7 +2,7 @@
 // number, descriptive errors, unknown-field rejection). Failures throw with
 // a `mission config: ...` prefix so the source is unambiguous in logs.
 
-import type { Vec3Plain } from '../aircraft/state';
+import type { Vec3Plain } from '../aircraft/physics-core/state';
 import {
   FAIL_CONDITIONS,
   MISSION_TYPES,

@@ -1,7 +1,7 @@
 ---
 stage: wbs
 state: in-progress
-updated: 2026-05-12 (WP10 + WP10.5 + WP11 + WP12 + WP13 + WP14 DONE — Phase 2 arch revision, β5 schema, mission framework, HUD, free-flight close, and waypoint patrol all shipped same day. Two mission types playable end-to-end with HUD overlay and Escape-to-menu. Next: WP14.5 clAlphaDot tuning (SURFACE-2026-05-12-01 — unblocks high-energy patrols + WP15 + WP16), WP15 takeoff/landing M, WP16 combat L.)
+updated: 2026-05-12 (afternoon — D14 cascade: WP14.5 rescoped via arch revision; new WP14.6/14.7/14.8 inserted as physics-tuning-harness infrastructure. WP10 + WP10.5 + WP11 + WP12 + WP13 + WP14 DONE earlier today. WP14.5 first attempt closed via option-c — surfaced as SURFACE-2026-05-12-03 + arch revision D14. Phase 2 mission content paused at post-WP14 line; resumes after harness lands and WP14.5-retry either ships or escalates to mechanism revision.)
 ---
 
 # Work Breakdown Structure
@@ -275,16 +275,70 @@ T-shirt sizing: **XS** ≤ 2h · **S** ≤ half day · **M** ≤ 1 day · **L** 
 - [x] Win/fail wiring: runner already handles all-objectives win + timeout fail (WP11). End-to-end works via existing statusChange listener.
 - [ ] (Deferred to WP14.5) Non-zero `clAlphaDot` tuning — SURFACE-2026-05-12-01 logged. WP14 ships within the glide envelope; sustained-throttle patrols wait on the tuning pass.
 
-### WP14.5: `clAlphaDot` tuning pass — pending
-**Description:** Tuning-side close of SURFACE-2026-05-11-04 + SURFACE-2026-05-12-01. Set non-zero `clAlphaDot` on wings (try starting ~5-10) and h-stab (try ~10-15) in `aircraft.json`; verify against ≥30s Playwright probe at non-zero throttle values 0.05, 0.15, 0.4 per arch D13. If tuning works, follow-up may amend `waypoint-patrol.json` to a longer/higher patrol or seed a fresh ambitious-patrol mission. Analogous to WP10.5 in shape (schema landed there with default 0; this is the values pass).
+### WP14.6: Physics-core extraction + harness↔browser parity test
+**Description:** First WP in the D14 cascade (arch.md Rev 2026-05-12 afternoon §D14.2 + §D14.3). File-move reorg: extract framework-agnostic flight model into `src/aircraft/physics-core/` so the same code can run in Node and the browser. `rigidbody.ts` stays in `src/aircraft/` as the Three.js-mesh-binding wrapper; the Rapier-only `rigidbody-core.ts` lives under `physics-core/`. Add a harness↔browser **parity test** that asserts bit-identical trajectories (`|Δ|<1e-6` per scalar) across the WASM boundary for the WP14.5 throttle fixtures (0.05/0.15/0.4 from `(0,50,0)` linvel `(0,0,-30)` for 1800 ticks). Parity test runs in CI; protects against drift between harness (Node) and shipped (browser) physics. **No behavioral change** in the browser — pure file moves + new test artifacts.
 **Phase:** 2
-**Dependencies:** WP10.5 (schema), WP14 (first mission that needs it)
-**Size:** XS-S (tuning iteration with bounded attempt budget per `feedback_retune_attempt_budget.md`)
+**Dependencies:** WP10.5 (β5 schema — physics-core depth-locks the surface schema we extract); WP14 (last mission shipped before the pause)
+**Size:** M
 **Tasks:**
-- [ ] Set `clAlphaDot` on `aircraft.json` wings + h-stab (one knob each per surface; default 0 ships unchanged for surfaces not tuned).
-- [ ] Verify-self via 30s Playwright probe at throttle ∈ {0.05, 0.15, 0.4} — assert no NaN, bounded altitude/airspeed/pitch.
-- [ ] If tuning fits inside 2-3 attempts: amend WP14 mission to longer patrol OR add a separate ambitious-patrol mission.
-- [ ] If tuning does not converge: surface as a deeper arch concern (would need WP10-style arch revision).
+- [ ] Decide split criterion mechanically: does the file import `three`? If no AND it currently runs in browser only via incidental coupling → move under `physics-core/`. If yes (Three.js mesh ownership) → stay outside.
+- [ ] Move `aerosurface.ts`, `flightmodel.ts`, `state.ts`, `config.ts` (parser only — fetch-loader stays in browser-side wrapper) into `src/aircraft/physics-core/`. Add new `rigidbody-core.ts` (Rapier-only) and `step.ts` (composable single-tick driver).
+- [ ] Update `src/aircraft/rigidbody.ts` to delegate Rapier ops to `rigidbody-core.ts`; keep `syncMesh()` here as the Three.js boundary.
+- [ ] Update all importers across `src/` to the new paths. Verify 385/385 existing Vitest cases pass post-move with no behavioral changes (file-move reorg only).
+- [ ] Add `tests/e2e/parity.spec.ts`: loads `/?debug=true`, fetches a known fixture set, runs N ticks at fixed-dt (no render interpolation), emits trajectory CSV via a new `window.__aircraft.getTrajectory()` hook.
+- [ ] Add `tests/parity-diff.test.ts` (Vitest): runs the same fixtures via the harness driver (preview from WP14.7; can land as a tiny synthetic stub here if WP14.7 not yet shipped, but real-harness coverage gates close), diffs against the Playwright-emitted CSV, fails on `|Δ|≥1e-6` per scalar (use shortest-arc distance for angles).
+- [ ] CONVENTIONS.md: short note documenting the `physics-core/` boundary and the "imports `three`?" split rule.
+- [ ] Acceptance: 385/385 Vitest pass; parity test green; `npm run test:e2e` 9/9+1 (existing + parity); tsc strict + build clean.
+
+### WP14.7: Node harness — single-probe driver
+**Description:** Second WP in the D14 cascade (arch.md Rev 2026-05-12 afternoon §D14.1). `tools/tune/harness.ts` boots Rapier-WASM in Node, loads `aircraft.json`, takes initial conditions + parameter overrides + tick-count from CLI args, steps the physics-core `step.ts` in a tight loop, emits a trajectory CSV. No optimizer — this is the deterministic inner loop the optimizer will call repeatedly. Acceptance gate is parity (WP14.6's test must keep passing using the harness as the Node-side trajectory source — i.e., the WP14.6 parity-diff test consumes harness output, not a synthetic stub).
+**Phase:** 2
+**Dependencies:** WP14.6 (physics-core split must land first)
+**Size:** M
+**Tasks:**
+- [ ] Add `tsx` as devDep (zero-config TS-on-Node). Add `tsconfig.tools.json` extending the root tsconfig but targeting Node module resolution if Vite's tsconfig doesn't reach `tools/`.
+- [ ] `tools/tune/harness.ts`: imports from `src/aircraft/physics-core/`; constructs a Rapier world; steps fixed-dt=1/60s; emits CSV columns `tick, posX, posY, posZ, vX, vY, vZ, pitch, yaw, roll, airspeed`.
+- [ ] CLI argument shape: `--fixture <name>` (selects one of the seeded fixtures), `--ticks <N>`, optional `--params <k=v,...>` for parameter overrides on `aircraft.json` knobs (deep-paths like `surfaces.wings.clAlphaDot=5`), optional `--out <path>` (default stdout).
+- [ ] Fixture set seeded: at minimum `throttle-low` (0.05), `throttle-mid` (0.15), `throttle-high` (0.4), all spawning at `(0,50,0)` linvel `(0,0,-30)`. Same initial conditions as the existing WP14.5 phugoid-probe missions.
+- [ ] `package.json`: `"harness": "tsx tools/tune/harness.ts"`. Sanity smoke: `npm run harness -- --fixture throttle-mid --ticks 60 --out -` produces a 61-row CSV (tick 0..60).
+- [ ] Determinism check: run the same fixture twice, diff output — must be byte-identical.
+- [ ] Wire WP14.6's `tests/parity-diff.test.ts` to consume harness output (replace synthetic stub if used). Parity must hold.
+- [ ] Vitest covers: CLI arg parsing, parameter-override deep-path application, CSV row format, determinism (same inputs → byte-identical output across runs).
+- [ ] `.gitignore` extension: `tools/tune/results/`.
+- [ ] Acceptance: harness produces deterministic CSV; parity test still green; 385/385+ Vitest green; tsc strict clean.
+
+### WP14.8: Score function + Nelder-Mead optimizer + CLI
+**Description:** Third WP in the D14 cascade (arch.md Rev 2026-05-12 afternoon §D14.4 + §D14.5). The "search" half of the harness — turns WP14.7's single-probe driver into a parameter-space search. `tools/tune/score.ts` implements the envelope-probing fitness (NaN-penalty with time-to-NaN gradient encoding, altitude/airspeed/pitch-rate envelopes, phugoid growth penalty, multi-regime weighted sum). `tools/tune/optimizer.ts` implements Nelder-Mead with K=4 random restarts and local quadratic regression on the best simplex (for human-readable convergence diagnosis). `tools/tune/tune.ts` is the CLI entry that ties them together and emits results JSON.
+**Phase:** 2
+**Dependencies:** WP14.7 (harness must be callable as a function from `tune.ts`)
+**Size:** M
+**Tasks:**
+- [ ] `tools/tune/score.ts`: implements `score(trajectoryByRegime, envelopeConsts)` per D14.4. NaN penalty = `-1e9 - tick_of_first_NaN` so optimizer has gradient toward later-NaN regions. Envelope constants live at top of file with comments — easy to tune.
+- [ ] Vitest coverage of score: synthetic trajectories (level cruise = high score, mild oscillation = mid, divergent NaN = low + tick-of-NaN encoded). At minimum: nominal trajectory, NaN-at-tick-N trajectory, phugoid trajectory, pitch-rate-blowup trajectory. ≥6 cases.
+- [ ] `tools/tune/optimizer.ts`: Nelder-Mead simplex (reflect, expand, contract, shrink) over a normalized parameter space `[0,1]^N`; per-run normalization back to user-given bounds. Random-restart from K=4 seeded starts. Quadratic-regression fit (`a + bᵀΔp + ΔpᵀCΔp`) on best simplex at convergence; emit fit coefficients in results.
+- [ ] Stopping criteria per D14.5: `SCORE_TOL=1e-3` over 30 iter; `PARAM_TOL=1e-4` in normalized space; `MAX_ITER=500` per restart.
+- [ ] Vitest coverage of optimizer: known objective functions (Rosenbrock, sphere, Booth) — assert convergence to known optima within tolerance. Determinism: same seed → identical result.
+- [ ] `tools/tune/tune.ts`: CLI entry. Argument shape: `--knobs <deep-path,deep-path>`, `--bounds <lo..hi,lo..hi>`, `--regimes <low,mid,high>` (uses harness fixtures by name), `--restarts <K>` (default 4), `--seed <N>` (for reproducibility), `--out <path>` (default `tools/tune/results/<timestamp>.json`).
+- [ ] Results JSON shape: `{ params: {...best}, score: <number>, convergenceTrace: [...], regression: { gradient, hessian, conditionNumber }, restarts: [...per-restart-final] }`. Each restart's final state recorded so we can see whether they all agreed.
+- [ ] `package.json`: `"tune": "tsx tools/tune/tune.ts"`.
+- [ ] CLAUDE.md update: append rule #3 (per D14.6) to the existing "Physics-mechanism discipline" subsection — physics-mechanism tuning runs through `npm run tune`, not hand-guessing.
+- [ ] Acceptance: synthetic-objective optimizer tests green; smoke `npm run tune -- --knobs surfaces.wings.clAlphaDot --bounds 0..1 --regimes mid --restarts 1 --seed 42` runs end-to-end and emits a results JSON; tsc strict + build clean.
+
+### WP14.5: `clAlphaDot` tuning pass via harness (rescoped)
+**Description:** Tuning-side close of SURFACE-2026-05-11-04 + SURFACE-2026-05-12-01, now driven by the WP14.8 harness optimizer. Per arch.md Rev 2026-05-12 (afternoon) §D14.8, replaces the original hand-guessing approach. Run `npm run tune -- --knobs surfaces.wings.clAlphaDot,surfaces.hstab.clAlphaDot --bounds -10..20,-10..20 --regimes low,mid,high --restarts 4`; commit the result only if score crosses an explicit acceptance threshold (defined at plan time). If no parameter point in the searched space produces a passing score across all three regimes, escalate to mechanism revision (Options A/B/C in SURFACE-2026-05-12-03) — now with regression-gradient evidence from the optimizer's results JSON to argue which option is best. The harness becomes the experiment platform for A/B/C comparison if it comes to that.
+
+**Original attempts (archived — historical record).** WP14.5 first ran as a hand-guessing tuning pass on 2026-05-12 (before the D14 arch revision). Three attempts — wings/h-stab `clAlphaDot` at +5/+10, +1/+2, -1/-2 — all diverged catastrophically in every operating regime tested (≤2s NaN at low+mid throttle; high throttle worse, not better). Closed via option-c (revert config, surface SURFACE-2026-05-12-03 for mechanism revision). The session-pause note and the archived plan at `workflow/archive/wp14.5-cl-alpha-dot-tuning.md` carry the full retrospect including the WP10.5 sign-convention test now classified as an over-claim. The D14 arch revision was the response.
+
+**Phase:** 2
+**Dependencies:** WP10.5 (β5 schema), WP14 (first mission that needs it), WP14.8 (harness optimizer)
+**Size:** S–M (one-to-two optimizer runs + acceptance evaluation; M-end if mechanism-revision escalation triggers)
+**Tasks:**
+- [ ] Plan-time: define acceptance threshold for the score (e.g., "all three regimes ≥ -100; no regime NaN"). Threshold sits in the WIP file, NOT in `score.ts`.
+- [ ] Run `npm run tune` per the command above (or with refined bounds based on intuition); commit the results JSON to `tools/tune/results/` (not gitignored for this run).
+- [ ] If score crosses threshold: write the optimizer's best `clAlphaDot` values into `aircraft.json`; verify via the existing `tests/e2e/phugoid-probe.spec.ts` (currently `test.skip`'d) — un-skip it; run; assert green.
+- [ ] If score does not cross threshold across all 3 regimes: do NOT commit `aircraft.json` change. Surface as mechanism-revision WP (SURFACE-2026-05-12-03 Options A/B/C). Attach the optimizer's regression Hessian + per-regime trajectories to the SURFACE entry to make the option choice data-driven.
+- [ ] verify-self in browser at `/?mission=waypoint-patrol`: confirm no regression on the WP14 glide envelope (clAlphaDot must be no-op for the descending-glide regime per `feedback_asymmetric_fix_no_op.md`).
+- [ ] Update SURFACE-2026-05-12-01 + SURFACE-2026-05-11-04 status in `workflow/backlog.md` based on outcome (Resolved if shipped; updated-pending if escalated to mechanism revision).
 
 ### WP15: Takeoff/landing mission
 **Description:** Airfield with a runway. Detect wheels-down on runway within bounds + safe vertical speed. Objective: take off, pattern around, land.
@@ -391,26 +445,31 @@ T-shirt sizing: **XS** ≤ 2h · **S** ≤ half day · **M** ≤ 1 day · **L** 
 WP1 ─► WP2 ─► WP3 ─┐
   │                │
   └─► WP4 ─► WP5 ──┼─► WP6 ─► WP6.5 ─► WP7 ─► WP9 ─► WP10 ─► WP10.5 ─► WP11 ─┬─► WP13 ─┐
-                   │                                                          ├─► WP14 ─┤
-WP1 ─► WP8 ────────┘                                              WP10 ─► WP12          ├─► WP17 ─► WP18 ─► WP21 ─► WP22 ─► WP23
-                                                                              ├─► WP15 ─┤                                  ▲
-                                                                              └─► WP16 ─┘                                  │
-                                                                        WP17 ─► WP19 ─────────────────────────────────────┤
-                                                                        WP17 ─► WP20 ─────────────────────────────────────┘
+                   │                                                          ├─► WP14 ─► WP14.6 ─► WP14.7 ─► WP14.8 ─► WP14.5(retry)
+WP1 ─► WP8 ────────┘                                              WP10 ─► WP12          │                                            │
+                                                                                         └────────┐                                   │
+                                                                                                  ├─► WP15 ─┐                         │
+                                                                                                  └─► WP16 ─┼─► WP17 ─► WP18 ─► WP21 ─► WP22 ─► WP23
+                                                                                                            │                  ▲
+                                                                                                            │                  │
+                                                                                                      WP17 ─► WP19 ────────────┤
+                                                                                                      WP17 ─► WP20 ────────────┘
 ```
 
-**Critical path (longest chain to ship):**
-`WP1 → WP4 → WP5 → WP6 → WP6.5 → WP7 → WP9 → WP10 → WP10.5 → WP11 → WP16 → WP17 → WP20 → WP21 → WP22 → WP23`
+**Critical path (longest chain to ship — updated 2026-05-12 afternoon for D14 cascade):**
+`WP1 → WP4 → WP5 → WP6 → WP6.5 → WP7 → WP9 → WP10 → WP10.5 → WP11 → WP14 → WP14.6 → WP14.7 → WP14.8 → WP14.5(retry) → WP16 → WP17 → WP20 → WP21 → WP22 → WP23`
 
-WP7 (flight-feel tuning) and WP16 (combat) are the two heaviest items and sit on the critical path. WP20 (visual polish) is L but trivially parallelizable with WP18/WP19.
+The D14 cascade (WP14.6 + WP14.7 + WP14.8 + WP14.5-retry) adds ~3 M-sized WPs between WP14 and WP15/WP16, totalling ~2 days of agent work before Phase 2 mission content resumes. The trade is paid once and amortized across every subsequent physics-tuning WP (WP14.5-retry, any future βN coefficient tuning in WP15/WP16/Phase 3 polish). WP7 (flight-feel tuning) and WP16 (combat) remain the two heaviest *mission-side* items on the critical path; the harness cascade is now the third heavyweight block.
 
-**Parallel tracks** within Phase 1: WP4+WP5 can proceed in parallel with WP2+WP3+WP8 after WP1 lands.
+**Parallel tracks** within Phase 1: WP4+WP5 can proceed in parallel with WP2+WP3+WP8 after WP1 lands. **Within the D14 cascade,** the three harness WPs are strictly sequential — WP14.7 needs WP14.6's physics-core extraction, WP14.8 needs WP14.7's single-probe driver. Only WP15 (takeoff/landing) can in principle run in parallel with the cascade since WP15 lives in the glide envelope and does not strictly depend on β5 tuning; per operator directive that parallel track is **not opened** — Phase 2 mission content is paused until the harness lands.
 
 ## Architectural gaps found
 
-None that require a P8 back-loop. WP10 closed 2026-05-12 as the planned Phase 1→2 arch revision (D11/D12/D13). Phase 2 WPs are now decision-locked. WP10.5 is a small schema-extension WP that lands D13 in code before Phase 2 feature WPs begin.
+None that require a P8 back-loop on this pass. The D14 cascade landed in this WBS revision IS the consumed output of the P12-arch-back-loop that triggered Revision 2026-05-12 (afternoon); no additional gaps surfaced while decomposing it. WP10 closed 2026-05-12 (morning) as the planned Phase 1→2 arch revision (D11/D12/D13); WP10.5 shipped the β5 schema. D14 (afternoon) added the harness/optimizer methodology to address SURFACE-2026-05-12-03; the cascade WPs (14.6/14.7/14.8 + rescoped 14.5) are all decision-locked to arch.md §D14.1–§D14.9.
 
-Recommend `/product-context` next (transition P9) — to refresh `CLAUDE.md` for Phase 2 (mention Phase 1 closed, point to D11/D12/D13, update "Current Phase" section).
+Phase 2 WPs are now decision-locked. The CLAUDE.md update for D14.6 (the new tuning-workflow rule) is scheduled inside WP14.8's task list rather than via a separate `/product-context` pass, since CLAUDE.md was already refreshed at the Phase 1→2 boundary and the D14 rule is a single bullet under the existing "Physics-mechanism discipline" subsection.
+
+Next: drive into the D14 cascade. WP14.6 is the first work-package (physics-core extraction + parity test). Under full-autopilot the orchestrator transitions P9 → cross-workflow EXIT→feature:plan with WP14.6 as the entry unit.
 
 ## Session Pause — 2026-05-09 09:05
 Paused after WP6 finalize. See `workflow/.session.md` to resume.
@@ -449,3 +508,27 @@ Waypoint patrol mission — 2 ordered reach-waypoints at descending altitude, gl
 **Back-loop captured:** initial plan set spawn throttle=0.4 to mitigate SURFACE-2026-05-11-02 descending-glide. Verify-self at /?mission=waypoint-patrol hit NaN within ~3s — the SURFACE-2026-05-11-04 phugoid divergence under non-zero throttle forcing. The two open SURFACE items are dual at this airframe (cannot mitigate -11-02 without surfacing -11-04). Ship-side response: mission scope reduced to a glide-reachable short patrol; tuning-side close (non-zero `clAlphaDot`) logged as new SURFACE-2026-05-12-01 → **WP14.5** inserted into WBS as the tuning-pass WP (analogous to WP10.5 schema-extension). High-energy/longer patrols wait on WP14.5.
 
 Next: **WP14.5** (clAlphaDot tuning — unblocks WP15 takeoff/landing + WP16 combat too), then WP15 (takeoff/landing, M), WP16 (combat, L), WP17 (Phase 2 verification).
+
+## Session Pause — 2026-05-12 11:36
+Paused after WP14 ship+finalize+reflect. Five WPs shipped this session (WP12 HUD, WP13 free-flight close, WP14 waypoint patrol) plus WP10/10.5/11 from earlier in the day = 10 commits, working tree clean. Operator chose WP14.5 (clAlphaDot tuning pass per SURFACE-2026-05-12-01) as the next unit. See `workflow/.session.md` to resume.
+
+## Session Pause — 2026-05-12 12:52
+Paused after WP14.5 close + reflect + store-learning. WP14.5 disposition: **option-c** — 3 tuning attempts (+5/+10, +1/+2, -1/-2) all diverged catastrophically; β5 mechanism is dimensionally mismatched (raw `dα/dt`, no V-normalization). Surfaced SURFACE-2026-05-12-03 (high-priority arch revision with 3 candidate fixes — non-dimensional form / magnitude clamp / sign-flip). Also surfaced SURFACE-2026-05-12-02 (low-priority test-mission pollution). CLAUDE.md updated with two physics-mechanism discipline rules (commit `679521f`). Next decision deferred to operator at resume: WP14.5 retry via D14 arch revision, OR WP15 takeoff/landing (works in glide envelope, doesn't need β5 fix), OR WP16 combat. See `workflow/.session.md` to resume.
+
+## WBS Update — 2026-05-12 (afternoon) — D14 cascade
+
+Operator on resume reframed the WP14.5 close: not just "the β5 mechanism is wrong" but "we lack a systematic way to search physics parameter space at all." Three hand-driven Playwright probes is the right discipline for *refuting* a mechanism, but it's far too sparse to *find* parameter values in a continuous space. Operator routed to `/product-arch` for D14, accepted a major detour (~2 days of agent work), and paused Phase 2 mission progress at the post-WP14 line.
+
+**D14 landed in arch.md** as Revision 2026-05-12 (afternoon) — physics tuning harness + automated parameter search. Nine sub-decisions (D14.1–D14.9): Rapier-in-Node (not pure-TS re-impl), `src/aircraft/physics-core/` module extraction, harness↔browser parity test as drift guard, envelope-probing score function with NaN-time-gradient encoding, Nelder-Mead + K=4 restarts + quadratic regression on best simplex, tuning workflow change codified for CLAUDE.md.
+
+**WBS changes:**
+- **WP14.5 rescoped** — original hand-guessing attempts archived in-entry as historical record (3 attempts +5/+10, +1/+2, -1/-2 all diverged; closed option-c per `feedback_retune_attempt_budget.md`). Active scope swapped to "run `npm run tune` against β5; if score crosses acceptance threshold ship the values, else escalate to mechanism revision (Options A/B/C in SURFACE-2026-05-12-03) with regression-gradient evidence."
+- **WP14.6 inserted** (M) — extract `src/aircraft/physics-core/` framework-agnostic core; add harness↔browser parity test (`|Δ|<1e-6` per scalar, in CI).
+- **WP14.7 inserted** (M) — Node harness single-probe driver (`tools/tune/harness.ts`); Rapier-WASM in Node; deterministic CSV emission; `npm run harness`.
+- **WP14.8 inserted** (M) — score function (`tools/tune/score.ts`) + Nelder-Mead optimizer with random restarts and quadratic regression (`tools/tune/optimizer.ts`) + CLI (`tools/tune/tune.ts`); `npm run tune`. Includes CLAUDE.md update for "Physics-mechanism discipline" rule #3.
+
+**Critical path updated** to include the D14 cascade: `… → WP14 → WP14.6 → WP14.7 → WP14.8 → WP14.5(retry) → WP16 → WP17 → …`. WP15 (takeoff/landing, M) could in principle parallel-track the cascade since it lives in the glide envelope; per operator directive that track is **not opened** — Phase 2 mission content waits for harness.
+
+**Why this is the right detour cost.** Three attempts in WP14.5 burned ~hours and produced 3 sparse points in a 2-knob × 3-regime space. The harness will eval hundreds of points in seconds-to-minutes per `npm run tune` invocation, with deterministic gradient signal for the optimizer and regression evidence for the human reviewer. Net amortization: every future physics-tuning WP (WP14.5-retry, WP15 if it surfaces tuning needs, any future βN coefficients, Phase 3 polish) gains the same speed-up. The operator-as-architect deviation per `feedback_operator_as_external.md` continues with Phase 3 re-validation hook recorded in arch.md.
+
+**Open SURFACE items unchanged in priority:** SURFACE-2026-05-12-03 (high — β5 mechanism revision; now downstream of WP14.5-retry outcome, not blocking it); SURFACE-2026-05-12-01 (medium — blocked-by -03); SURFACE-2026-05-11-04 (partial — arch side resolved); SURFACE-2026-05-11-02 (medium); SURFACE-2026-05-12-02 (low — test-mission pollution); SURFACE-2026-04-19-01 (Phase 3 — bundle).

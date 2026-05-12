@@ -4,7 +4,7 @@ import { DEFAULT_FLAT_PLATE_PARAMS } from './aerosurface';
 import { parseAircraftConfig } from './config';
 
 // Vite-resolved JSON import — no Node types needed. ?import-style works in tests.
-import canonicalAircraftConfig from '../../public/config/aircraft.json' with { type: 'json' };
+import canonicalAircraftConfig from '../../../public/config/aircraft.json' with { type: 'json' };
 
 const validBaseline = () => ({
   mass: 1000,

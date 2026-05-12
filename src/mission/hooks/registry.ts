@@ -7,7 +7,7 @@
 // would mask developer mistakes. Tests-only: use `clearRegistry()` to reset
 // state between cases (do not call from production code).
 
-import type { AircraftState } from '../../aircraft/state';
+import type { AircraftState } from '../../aircraft/physics-core/state';
 import type { ObjectiveState } from '../types';
 
 /** Hook-private mutable state. Runner provides a fresh `{}` per mission start. */

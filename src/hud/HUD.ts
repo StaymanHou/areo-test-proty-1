@@ -2,7 +2,7 @@
 // swap point: a future `three-hud.ts` (THREE.js orthographic camera impl)
 // could replace `dom-hud.ts` without touching consumers. v1 ships `DomHud`.
 
-import type { AircraftState, Vec3Plain } from '../aircraft/state';
+import type { AircraftState, Vec3Plain } from '../aircraft/physics-core/state';
 
 export type HudStatus = 'flying' | 'won' | 'failed';
 

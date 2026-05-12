@@ -20,7 +20,7 @@
 
 import { Vector3 } from 'three';
 import type { Camera } from 'three';
-import type { AircraftState, Vec3Plain } from '../aircraft/state';
+import type { AircraftState, Vec3Plain } from '../aircraft/physics-core/state';
 import type { HUD, HudStatus } from './HUD';
 
 const ROOT_CLASS = 'hud-root';

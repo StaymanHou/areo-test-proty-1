@@ -2,7 +2,7 @@
 // human-readable string for the HUD's objective slot. Pure-function — easy to
 // unit test, no DOM access.
 
-import type { Vec3Plain } from '../aircraft/state';
+import type { Vec3Plain } from '../aircraft/physics-core/state';
 import type { Objective, ObjectiveState } from '../mission/types';
 
 /**

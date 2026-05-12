@@ -2,9 +2,9 @@ import { describe, it, expect, beforeAll } from 'vitest';
 import RAPIER from '@dimforge/rapier3d-compat';
 import { Vector3 } from 'three';
 import { Aircraft } from './rigidbody';
-import { FlightModel } from './flightmodel';
-import { parseAircraftConfig, type AircraftConfig } from './config';
-import { computeAeroForce } from './aerosurface';
+import { FlightModel } from './physics-core/flightmodel';
+import { parseAircraftConfig, type AircraftConfig } from './physics-core/config';
+import { computeAeroForce } from './physics-core/aerosurface';
 
 // Regression anchor for SURFACE-2026-05-10-01 (AoA sign-convention bug).
 // Pre-fix, the body developed pitch rate from rest with no inputs and produced

@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import RAPIER from '@dimforge/rapier3d-compat';
 import { Vector3 } from 'three';
-import { Aircraft } from './rigidbody';
+import { Aircraft } from '../rigidbody';
 import { FlightModel } from './flightmodel';
 import { parseAircraftConfig, type AircraftConfig } from './config';
 import { computeAeroForce } from './aerosurface';

@@ -4,13 +4,10 @@ import {
   Group,
   Mesh,
   MeshStandardMaterial,
-  Quaternion,
   Scene,
-  Vector3,
 } from 'three';
-import type { AircraftConfig } from './config';
-import type { BodyState } from './aerosurface';
-import type { Vec3Plain } from './state';
+import type { AircraftConfig } from './physics-core/config';
+import { AircraftBody, type AircraftBodyCreateOptions } from './physics-core/rigidbody-core';
 
 // Visual placeholder: fuselage box + L/R wing slabs (purely cosmetic; physics is single body).
 function buildPlaceholderMesh(config: AircraftConfig): Group {
@@ -40,56 +37,16 @@ function buildPlaceholderMesh(config: AircraftConfig): Group {
   return group;
 }
 
-export interface AircraftCreateOptions {
-  /** Initial position in world frame. */
-  position?: Vector3;
-  /** Initial linear velocity in world frame. */
-  linvel?: Vector3;
+export interface AircraftCreateOptions extends AircraftBodyCreateOptions {
   /** If true, attach a placeholder mesh to the supplied scene. Default true. */
   attachMesh?: boolean;
 }
 
-const _identityRot = { x: 0, y: 0, z: 0, w: 1 };
-
-export class Aircraft {
-  readonly body: RAPIER.RigidBody;
+export class Aircraft extends AircraftBody {
   readonly mesh: Group;
-  readonly config: AircraftConfig;
-
-  // Reusable BodyState scratch — caller of getBodyState() reads this. Single
-  // owner (the FlightModel) so reuse is safe.
-  private readonly _state: BodyState = {
-    position: new Vector3(),
-    quaternion: new Quaternion(),
-    linvel: new Vector3(),
-    angvel: new Vector3(),
-  };
 
   constructor(world: RAPIER.World, config: AircraftConfig, opts: AircraftCreateOptions = {}) {
-    this.config = config;
-    const pos = opts.position ?? new Vector3(0, 0, 0);
-    const linvel = opts.linvel ?? new Vector3(0, 0, 0);
-
-    const desc = RAPIER.RigidBodyDesc.dynamic()
-      .setTranslation(pos.x, pos.y, pos.z)
-      .setLinvel(linvel.x, linvel.y, linvel.z)
-      // Mass + principal inertia in one call. `_identityRot` aligns inertia
-      // tensor with the body axes (symmetric airframe assumption).
-      .setAdditionalMassProperties(
-        config.mass,
-        { x: 0, y: 0, z: 0 },
-        { x: config.inertia.x, y: config.inertia.y, z: config.inertia.z },
-        _identityRot,
-      );
-
-    this.body = world.createRigidBody(desc);
-
-    // Fuselage-shaped collider matching the visual placeholder (BoxGeometry(1, 0.6, 6)).
-    // setDensity(0) keeps the body's configured mass authoritative — the collider would
-    // otherwise add its auto-computed mass on top of setAdditionalMassProperties.
-    const colliderDesc = RAPIER.ColliderDesc.cuboid(0.5, 0.3, 3.0).setDensity(0);
-    world.createCollider(colliderDesc, this.body);
-
+    super(world, config, opts);
     this.mesh = buildPlaceholderMesh(config);
     if (opts.attachMesh !== false && (opts as { scene?: Scene }).scene) {
       (opts as { scene?: Scene }).scene!.add(this.mesh);
@@ -102,59 +59,6 @@ export class Aircraft {
     const r = this.body.rotation();
     this.mesh.position.set(t.x, t.y, t.z);
     this.mesh.quaternion.set(r.x, r.y, r.z, r.w);
-  }
-
-  /** Fill the supplied BodyState from the Rapier body. Returns the same object for chaining. */
-  readBodyState(out: BodyState = this._state): BodyState {
-    const t = this.body.translation();
-    const r = this.body.rotation();
-    const lv = this.body.linvel();
-    const av = this.body.angvel();
-    out.position.set(t.x, t.y, t.z);
-    out.quaternion.set(r.x, r.y, r.z, r.w);
-    out.linvel.set(lv.x, lv.y, lv.z);
-    out.angvel.set(av.x, av.y, av.z);
-    return out;
-  }
-
-  /** Convenience: shared scratch state. Reused across calls — copy if retaining. */
-  get bodyState(): BodyState {
-    return this._state;
-  }
-
-  /**
-   * Teleport the body to a spawn pose: position + linear velocity + identity
-   * rotation + zeroed angular velocity. Used by the mission runner on mission
-   * start / restart (return-to-select flow). Wakes the body if it was sleeping.
-   *
-   * The accompanying `FlightModel.resetSurfaceState()` call resets per-surface
-   * deflection + the WP10.5 β5 `prevAoA` cache — without that the first tick
-   * after restart would compute `dα/dt` against a stale α from the prior
-   * mission run. Both must be called together for a clean restart; this
-   * separation is deliberate (single-responsibility — Aircraft owns the rigid
-   * body, FlightModel owns the aerosurface state).
-   */
-  reset(position: Vec3Plain, linvel: Vec3Plain): void {
-    this.body.setTranslation({ x: position.x, y: position.y, z: position.z }, true);
-    this.body.setRotation(_identityRot, true);
-    this.body.setLinvel({ x: linvel.x, y: linvel.y, z: linvel.z }, true);
-    this.body.setAngvel({ x: 0, y: 0, z: 0 }, true);
-  }
-
-  /**
-   * Live-tuning entry point: replace the body's additional mass + principal
-   * inertia. Wakes the body if it was sleeping.
-   *
-   * Call from GUI-event handlers, never the per-tick hot path.
-   */
-  setMassProperties(mass: number, inertia: Vector3): void {
-    this.body.setAdditionalMassProperties(
-      mass,
-      { x: 0, y: 0, z: 0 },
-      { x: inertia.x, y: inertia.y, z: inertia.z },
-      _identityRot,
-      true,
-    );
   }
 }
 
