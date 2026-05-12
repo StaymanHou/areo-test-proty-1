@@ -103,3 +103,63 @@ test('?mission=does-not-exist renders the mission-select with an error banner', 
 
   expect(pageErrors, `pageerror events: ${pageErrors.join('; ')}`).toEqual([]);
 });
+
+test('WP14: mission-select lists Waypoint Patrol', async ({ page }) => {
+  const pageErrors: string[] = [];
+  page.on('pageerror', (err) => pageErrors.push(err.message));
+
+  await page.goto('/');
+  await expect(page.locator('[data-testid="mission-select"]')).toBeVisible({ timeout: 20_000 });
+
+  const waypointBtn = page.locator('button[data-mission-id="waypoint-patrol"]');
+  await expect(waypointBtn).toBeVisible();
+  await expect(waypointBtn).toHaveText('Waypoint Patrol');
+
+  expect(pageErrors, `pageerror events: ${pageErrors.join('; ')}`).toEqual([]);
+});
+
+test('WP14: ?mission=waypoint-patrol loads and HUD shows waypoint objective + numeric readouts (no NaN)', async ({ page }) => {
+  const pageErrors: string[] = [];
+  const consoleErrors: string[] = [];
+  const consoleNaN: string[] = [];
+  page.on('pageerror', (err) => pageErrors.push(err.message));
+  page.on('console', (msg) => {
+    const text = msg.text();
+    if (msg.type() === 'error') consoleErrors.push(text);
+    if (/NaN|Infinity/i.test(text)) consoleNaN.push(text);
+  });
+
+  await page.goto('/?mission=waypoint-patrol');
+
+  // HUD root attaches after the loop unpauses.
+  await page.waitForSelector('[data-testid="hud-root"]', { timeout: 20_000 });
+
+  // Give a couple of ticks for the physics + mission runner to produce readable telemetry.
+  await page.waitForTimeout(1500);
+
+  // Objective slot is populated with the waypoint pattern. We accept either
+  // "Fly to waypoint (1/2)" (waypoint 1 still active) or "(2/2)" (the
+  // glide-path may have already reached waypoint 1 — both are valid mission
+  // states, neither indicates a bug).
+  const objectiveText = await page.locator('[data-testid="hud-objective"]').textContent();
+  expect(objectiveText, `objective: ${objectiveText}`).toMatch(/^Fly to waypoint \([12]\/2\)$/);
+
+  // No NaN/Infinity anywhere — this is the regression anchor for the SURFACE-2026-05-12-01 phugoid-NaN.
+  const alt = await page.locator('[data-testid="hud-altitude"]').textContent();
+  const as = await page.locator('[data-testid="hud-airspeed"]').textContent();
+  const thr = await page.locator('[data-testid="hud-throttle"]').textContent();
+  expect(alt, `altitude: ${alt}`).toMatch(/^-?\d+$/);
+  expect(as, `airspeed: ${as}`).toMatch(/^-?\d+$/);
+  expect(thr, `throttle: ${thr}`).toMatch(/^-?\d+$/);
+
+  // WP14 Phase 2 — the waypoint-arrow element is in the DOM (DomHud
+  // constructed and rendering). Visibility depends on camera direction at
+  // this instant — not deterministic, so we don't assert it. The position-
+  // feeding pipeline being live is what matters; getActiveWaypointPosition
+  // is unit-tested separately.
+  await expect(page.locator('[data-testid="hud-waypoint-arrow"]')).toHaveCount(1);
+
+  expect(pageErrors, `pageerror events: ${pageErrors.join('; ')}`).toEqual([]);
+  expect(consoleErrors, `console errors: ${consoleErrors.join('; ')}`).toEqual([]);
+  expect(consoleNaN, `NaN/Infinity in console: ${consoleNaN.join('; ')}`).toEqual([]);
+});

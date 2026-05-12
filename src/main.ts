@@ -19,7 +19,7 @@ import { MissionRunner } from './mission/runner';
 import { MissionSelectScreen } from './mission/select';
 import type { Mission, MissionManifestEntry } from './mission/types';
 import { DomHud } from './hud/dom-hud';
-import { formatActiveObjective } from './hud/format';
+import { formatActiveObjective, getActiveWaypointPosition } from './hud/format';
 
 async function bootstrap() {
   const mount = document.querySelector<HTMLDivElement>('#app');
@@ -110,9 +110,18 @@ async function bootstrap() {
           toAircraftState(aircraft.readBodyState(), aircraftStateBuf);
           hud.setAircraftState(aircraftStateBuf);
           hud.setThrottle(controls.throttle);
-          // Phase 2 missions have no active-waypoint surface yet; WP14 will
-          // wire the next-waypoint position into this call.
-          hud.setWaypointArrow(null);
+          // WP14 — feed the next-incomplete reach-waypoint position to the
+          // HUD arrow each frame. `null` when there's none (free-flight,
+          // all complete, or non-waypoint missions). The helper is cheap
+          // (O(objectives), no allocation).
+          hud.setWaypointArrow(
+            activeMission === null
+              ? null
+              : getActiveWaypointPosition(
+                  activeMission.objectives,
+                  missionRunner.getObjectiveStates(),
+                ),
+          );
 
           // WP13 — player-initiated return to mission-select via Escape.
           if (input.wasActionPressed('returnToMenu', DEFAULT_KEY_MAP)) {

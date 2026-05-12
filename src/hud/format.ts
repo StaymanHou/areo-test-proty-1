@@ -2,6 +2,7 @@
 // human-readable string for the HUD's objective slot. Pure-function — easy to
 // unit test, no DOM access.
 
+import type { Vec3Plain } from '../aircraft/state';
 import type { Objective, ObjectiveState } from '../mission/types';
 
 /**
@@ -43,6 +44,28 @@ export function formatActiveObjective(
         index: i,
         total: objectives.length,
       });
+    }
+  }
+  return null;
+}
+
+/**
+ * Pick the world position of the next incomplete `reach-waypoint` objective.
+ * Returns `null` when none is found (zero waypoints, all complete, or all
+ * objectives are non-`reach-waypoint` kinds). Returns the position reference
+ * directly — caller (DomHud) is expected to copy it into a scratch vector
+ * before mutating, since this is the source-of-truth field.
+ */
+export function getActiveWaypointPosition(
+  objectives: readonly Objective[],
+  states: readonly ObjectiveState[],
+): Vec3Plain | null {
+  for (let i = 0; i < objectives.length; i++) {
+    const obj = objectives[i]!;
+    if (obj.kind !== 'reach-waypoint') continue;
+    const state = states[i];
+    if (state === undefined || !state.completed) {
+      return obj.position;
     }
   }
   return null;

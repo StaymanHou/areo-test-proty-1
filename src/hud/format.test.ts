@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { formatObjective, formatActiveObjective } from './format';
+import { formatObjective, formatActiveObjective, getActiveWaypointPosition } from './format';
 import type { Objective, ObjectiveState } from '../mission/types';
 
 const wp = (order: number): Objective => ({
@@ -66,5 +66,48 @@ describe('formatActiveObjective', () => {
   it('handles missing state entries (treats as incomplete)', () => {
     const objs: Objective[] = [wp(0)];
     expect(formatActiveObjective(objs, [])).toBe('Fly to waypoint (1/1)');
+  });
+});
+
+describe('getActiveWaypointPosition', () => {
+  const at = (x: number, y: number, z: number, order: number): Objective => ({
+    kind: 'reach-waypoint',
+    position: { x, y, z },
+    radius: 100,
+    order,
+  });
+
+  it('returns the position of the first incomplete reach-waypoint', () => {
+    const objs: Objective[] = [at(0, 30, -150, 0), at(50, 20, -250, 1)];
+    const states: ObjectiveState[] = [state(false), state(false)];
+    expect(getActiveWaypointPosition(objs, states)).toEqual({ x: 0, y: 30, z: -150 });
+  });
+
+  it('skips completed reach-waypoints to the next one', () => {
+    const objs: Objective[] = [at(0, 30, -150, 0), at(50, 20, -250, 1)];
+    const states: ObjectiveState[] = [state(true), state(false)];
+    expect(getActiveWaypointPosition(objs, states)).toEqual({ x: 50, y: 20, z: -250 });
+  });
+
+  it('returns null when no reach-waypoint objectives exist', () => {
+    expect(getActiveWaypointPosition([], [])).toBeNull();
+    expect(getActiveWaypointPosition([td], [state(false)])).toBeNull();
+  });
+
+  it('returns null when all reach-waypoints are complete', () => {
+    const objs: Objective[] = [at(0, 30, -150, 0), at(50, 20, -250, 1)];
+    const states: ObjectiveState[] = [state(true), state(true)];
+    expect(getActiveWaypointPosition(objs, states)).toBeNull();
+  });
+
+  it('skips non-reach-waypoint kinds', () => {
+    const objs: Objective[] = [td, at(0, 30, -150, 0)];
+    const states: ObjectiveState[] = [state(false), state(false)];
+    expect(getActiveWaypointPosition(objs, states)).toEqual({ x: 0, y: 30, z: -150 });
+  });
+
+  it('handles missing state entries (treats as incomplete)', () => {
+    const objs: Objective[] = [at(0, 30, -150, 0)];
+    expect(getActiveWaypointPosition(objs, [])).toEqual({ x: 0, y: 30, z: -150 });
   });
 });

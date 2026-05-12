@@ -4,6 +4,20 @@ Surface-notes from workflow runs. Consumed and resolved by higher-level workflow
 
 ## Open
 
+### SURFACE-2026-05-12-01 — Phase 2 waypoint missions need non-zero `clAlphaDot` tuning to support sustained non-zero-throttle flight
+- **Source:** feature:build (WP14 Phase 1 verify-self, 2026-05-12)
+- **Target level:** product:wbs (likely a new WP14.5 — `clAlphaDot` tuning pass — analogous to WP10.5's schema-extension WP)
+- **Type:** tuning / arch-tuning-side
+- **Priority:** medium (gates "interesting" waypoint patrols at WP14, gates takeoff/landing at WP15, gates combat-circling at WP16)
+- **Summary:** WP14 plan set spawn `throttle: 0.4` to mitigate the descending-glide attractor (per SURFACE-2026-05-11-02's suggested action) so waypoints at 600m distance could be reached. Verify-self at `/?mission=waypoint-patrol` produced NaN altitude/airspeed within ~3s of mission start — exactly the SURFACE-2026-05-11-04-documented phugoid divergence under non-zero throttle forcing. The two open SURFACE items (-11-02 descending-glide and -11-04 phugoid) are dual: you cannot mitigate -11-02 (higher throttle) without triggering -11-04 (phugoid divergence) at this airframe. The architectural close was already adopted (D13 — β5 `clAlphaDot` schema) and shipped at WP10.5; the schema currently ships with default 0. **The tuning side of D13 — setting non-zero `clAlphaDot` on wings/h-stab in `aircraft.json` — now needs to land.**
+- **Context:** This is the predicted-and-anticipated next step in arch.md Rev 2026-05-12 — D13's text literally says "tuning per Phase 2 mission as needed" and WBS WP14 description says "First Phase 2 candidate for non-zero `clAlphaDot` tuning if the descending-glide attractor proves unplayable for sustained waypoint runs (per D13 — verify against ≥30s probe)." Confirmation: WP14 IS that mission.
+- **WP14 disposition for THIS feature:** mission-scope reduced to a glide-reachable short patrol (2 waypoints within ~250m at descending altitude, spawn throttle=0, 30s timeout). This ships WP14 today as the minimum-viable waypoint mission. The "real" patrols (longer, climbing, sustained-throttle) wait on the tuning pass below.
+- **Suggested action:** New WP14.5 (XS-S) `clAlphaDot` tuning pass — set non-zero `clAlphaDot` on wings (try ~5-10 starting) and h-stab (try ~10-15) in `aircraft.json`; verify against a ≥30s Playwright probe at non-zero throttle values 0.05, 0.15, 0.4 (per arch D13 verification requirement). If tuning works, follow up with WP14.6 ambitious-patrol mission OR amend `waypoint-patrol.json` to the original 4-waypoint loop spec.
+- **Verification approach:** ≥30s Playwright probe at throttle values 0.05, 0.15, 0.4 — assert no NaN, bounded altitude/airspeed/pitch oscillation. Same probe planned for WP17 phase-2 verification per arch.md.
+- **Why we accept it for WP14 ship:** The mission framework + HUD + waypoint mechanics + objective ordering ALL get end-to-end coverage with the reduced-scope patrol. The arch limitation (phugoid undamped at non-zero throttle) is honestly documented. Without this surface, we'd either ship a NaN'ing mission or stall WP14 indefinitely.
+- **Memory anchors used:** `feedback_asymmetric_fix_no_op.md` (mission-local change is no-op for free-flight); `feedback_surface_or_means_or.md` (try ONE option — picked mission-geometry, not shared-config tuning); `feedback_retune_attempt_budget.md` (do not burn this WP's budget on shared-config tuning — escalate as separate WP).
+- **Status:** pending
+
 ### SURFACE-2026-05-11-04 — Phugoid (long-period) mode is undamped at Phase 1 airframe
 - **Source:** feature:build (WP7 Phase E retune attempts 1 + 2, 2026-05-11)
 - **Target level:** product:arch (likely Phase 2 — not Phase 1 blocking)

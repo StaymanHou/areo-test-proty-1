@@ -1,0 +1,26 @@
+{
+  "id": "waypoint-patrol",
+  "name": "Waypoint Patrol",
+  "type": "waypoint",
+  "spawn": {
+    "position": { "x": 0, "y": 50, "z": 0 },
+    "linvel": { "x": 0, "y": 0, "z": -30 },
+    "throttle": 0
+  },
+  "objectives": [
+    {
+      "kind": "reach-waypoint",
+      "position": { "x": 0, "y": 30, "z": -150 },
+      "radius": 100,
+      "order": 0
+    },
+    {
+      "kind": "reach-waypoint",
+      "position": { "x": 50, "y": 20, "z": -250 },
+      "radius": 100,
+      "order": 1
+    }
+  ],
+  "failCondition": "timeout",
+  "timeoutSec": 30
+}
