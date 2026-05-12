@@ -14,7 +14,8 @@ Surface-notes from workflow runs. Consumed and resolved by higher-level workflow
 - **Suggested action (Phase 2 candidate):** Add `cl_alpha_dot` (alpha-rate damping) as a per-surface coefficient — phugoid is driven by AoA tracking lag at constant thrust, so damping `α̇` directly should attenuate the long-period mode. Could be analogous to WP6.6's V-scaling fix (a single field added to AeroSurfaceConfig, simple math in computeAeroForce). Alternative: simulate atmospheric drag growth more aggressively (currently the model has only cdMax=1.2 at ±π/2). Both are arch-level extensions; not in scope for Phase 1.
 - **Verification approach:** any future fix must verify against a ≥30-second Playwright probe (3+ phugoid periods) with various baseline throttle values (0.05, 0.15, 0.4) — single-period observation hides the divergence.
 - **Why we accept it for Phase 1:** the descending-glide attractor IS playable (matches "takeoff/landing" mission type from vision.md). Phase F's casual-player test will judge whether it's acceptably playable. If not, escalate. Memory `feedback_verify_self_envelope.md` (just persisted) is the lesson here.
-- **Status:** pending — Phase 2 candidate; not gating Phase 1
+- **Update 2026-05-11 (WP9 verify-self):** the phugoid is **divergent under non-zero forcing**, not merely undamped. Under sustained full throttle the airspeed amplitude grows unbounded (3↔113 m/s oscillation crossing to Infinity then NaN at t≈8s). Previously characterized as "bounded oscillation"; that was only true for the zero-forcing case (the descending-glide attractor, which IS marginally stable). Any baseline throttle injects energy faster than the natural damping can dissipate. Phase 2 phugoid-damping work should target the divergent regime, not merely tighten the bounded regime.
+- **Status:** pending — Phase 2 candidate; not gating Phase 1 (but compounds with SURFACE-2026-05-11-05)
 
 ### SURFACE-2026-05-11-02 — β1+β4 stable state is a descending glide, not level cruise (parameter-tuning gap)
 - **Source:** feature:build (WP6.5 Phase 3 verify-self, 2026-05-11)
@@ -28,13 +29,20 @@ Surface-notes from workflow runs. Consumed and resolved by higher-level workflow
 
 ### SURFACE-2026-05-09-01 — End-to-end browser test infrastructure not configured
 - **Source:** feature:verify-codify (WP6 Phase 4)
-- **Target level:** product:wbs (likely WP9 Phase 1 verification, or a dedicated tooling WP)
+- **Target level:** product:wbs (re-targeted 2026-05-11 — see Update below)
 - **Type:** gap / tech-debt
 - **Summary:** The project tests via Vitest (unit/integration only). Browser-driven end-to-end verification is performed ad-hoc via Playwright MCP during workflow `verify-self` runs but is not codified into a runnable test suite. The `.playwright-mcp/` directory in the working tree is MCP scratch state, not a configured Playwright test runner.
 - **Context:** Phase 4 of WP6 wired flight controls into the dev page. The integration-boundary check at verify-codify wanted to write a "consuming-surface" test, but the codebase has no harness to host it. Live Playwright via MCP served the codification role this iteration. As phases multiply (mission, HUD, combat), one-shot MCP runs won't scale — eventually we want CI-runnable browser tests for at least the critical input-→-motion path.
 - **Suggested action:** At WP9 (Phase 1 verification), evaluate adding `@playwright/test` as a dev dep with one CI smoke: load page, dispatch a roll keypress, assert the aircraft body's yaw/pitch/roll changed via a debug-only `window.__aircraft` hook. Keep the suite tiny — single happy-path test per critical input — to avoid the "Playwright tests are flaky" trap.
 - **Priority:** low (live verification is sufficient for now; the gap becomes real at Phase 2+)
-- **Status:** pending
+- **Update 2026-05-11 (WP9 Phase 4 decision — DEFER):** Evaluated at WP9 Phase 4. Decision = **DEFER adoption to immediately post-WP9.5** (the proposed collider-fix WP per SURFACE-2026-05-11-05). Reasoning:
+  - The natural first smoke test is "after 5s of casual flight, aircraft state is finite and altitude is in expected range" — exactly the regression-anchor SURFACE-2026-05-11-05 (collider gap) needs.
+  - Adopting TODAY would either commit a failing test (anti-pattern) or commit a test scoped around the known defect (also bad — wouldn't catch the very defect it's meant to anchor).
+  - Adopting AFTER WP9.5 (collider added) lets the smoke test land green AND immediately serves as the regression anchor for the collider fix.
+  - Adopting also resolves WP9 Phase 2's WebKit/Firefox gap (Playwright test runner supports all three engines natively), so re-validating the FPS check across engines becomes a CI artifact rather than an operator-as-tester deviation. Strong compounding rationale.
+- **Re-targeted:** if WP9.5 is authorized, fold this adoption into WP9.5 (collider + smoke test in one WP). Otherwise, surface as **WP10.5** or **a Phase 2 tooling WP** to land before mission framework work begins.
+- **Priority:** **medium** (upgraded 2026-05-11 — the Phase 3 BLOCKER finding showed how a tiny smoke would have caught a structural defect; the gap is no longer "theoretical Phase 2+ concern" but "would have caught a known Phase 1 blocker").
+- **Status:** pending — re-targeted to post-WP9.5
 
 ### SURFACE-2026-04-19-01 — Bundle size: Rapier WASM dominates build
 - **Source:** feature:build (WP1 verify-auto)
@@ -47,6 +55,14 @@ Surface-notes from workflow runs. Consumed and resolved by higher-level workflow
 - **Status:** pending
 
 ## Resolved
+
+### SURFACE-2026-05-11-05 — Aircraft has no collider; tunnels through terrain and NaN's the simulation under any non-trivial input
+- **Source:** feature:build (WP9 Phase 3 operator-as-tester probe, 2026-05-11)
+- **Resolution:** Resolved-with-test by WP9.5 (2026-05-11). One-line addition in `src/aircraft/rigidbody.ts` constructor: `world.createCollider(ColliderDesc.cuboid(0.5, 0.3, 3.0).setDensity(0), this.body)` — matching the fuselage placeholder geometry (`BoxGeometry(1, 0.6, 6)`). `setDensity(0)` keeps the existing `setAdditionalMassProperties` configuration authoritative (otherwise the collider's auto-computed mass would stack on top).
+  - **Test coverage:** two new tests in `src/aircraft/rigidbody.test.ts` — (1) structural anchor "attaches at least one collider to the body so it can interact with terrain" (`numColliders() > 0`), (2) behavioral integration "aircraft body collides with a static ground plane (does not tunnel through)" (creates a Rapier world with a static ground collider, drops the aircraft from y=3 with vy=-10, steps 60 ticks, asserts final y > 0). Total 246/246 tests green; tsc clean.
+  - **Verification (verify-self):** targeted teleport-to-ground probe via Playwright-MCP — body to y=3 with vy=-10, observed impact at t=0.3 (alt=0.28m, vy reversed to +0.30), then bounded bouncing motion in 1.5–6.4m range. `anyNaN=false`, `collisionDetected=true`. Long-horizon no-input 30s also clean.
+  - **Lesson captured (verify-self method):** the original WP9 Phase 3 regression-anchor probe (the gentle casual-input session) was over-broad. It exercised BOTH the tunneling pathology this WP fixes AND the SURFACE-2026-05-11-04 phugoid-divergent-under-forcing pathology that's explicitly out-of-scope. Running it post-fix produced a misleading FAIL signal because the now-stable aircraft climbs to ~110m where it hits the unrelated divergent mode. The targeted teleport probe isolates the collider's contract directly. **General lesson candidate for `/session-store-learning`:** when a regression-anchor exercises multiple defect zones, isolate each zone with a targeted probe; broad probes mask success on one fix when a different defect lights up.
+- **Status:** resolved 2026-05-11
 
 ### SURFACE-2026-05-09-05 — Phase 4 verify-self required WP7 trim to fully validate (resolved by disposition)
 - **Source:** feature:build (WP8 Phase 4 verify-self back-loop, 2026-05-09)

@@ -83,6 +83,12 @@ export class Aircraft {
 
     this.body = world.createRigidBody(desc);
 
+    // Fuselage-shaped collider matching the visual placeholder (BoxGeometry(1, 0.6, 6)).
+    // setDensity(0) keeps the body's configured mass authoritative — the collider would
+    // otherwise add its auto-computed mass on top of setAdditionalMassProperties.
+    const colliderDesc = RAPIER.ColliderDesc.cuboid(0.5, 0.3, 3.0).setDensity(0);
+    world.createCollider(colliderDesc, this.body);
+
     this.mesh = buildPlaceholderMesh(config);
     if (opts.attachMesh !== false && (opts as { scene?: Scene }).scene) {
       (opts as { scene?: Scene }).scene!.add(this.mesh);

@@ -1,7 +1,7 @@
 ---
 stage: wbs
 state: complete
-updated: 2026-05-11 (WP6.6 DONE — airspeed-scaled β4 damping; WP7 DONE — flight-feel infrastructure + tuning disposition; only WP9 remaining for Phase 1)
+updated: 2026-05-11 (WP9.5 DONE — aircraft collider + terrain impact; SURFACE-2026-05-11-05 RESOLVED. WP9 now unblocked — the "fly and crash" outcome is achievable. WP9 verify-self for the BLOCKED leaves can be re-run.)
 ---
 
 # Work Breakdown Structure
@@ -142,15 +142,32 @@ T-shirt sizing: **XS** ≤ 2h · **S** ≤ half day · **M** ≤ 1 day · **L** 
 - [x] Placed runway (30m × 600m along world Z, painted on terrain — no separate collider) + a single landmark tower (8m × 30m at world (40, 0, -250) with static cuboid collider)
 - [x] Sanity-check 60fps budget with the aircraft flying (60fps Chrome + 60.19fps Playwright headless)
 
-### WP9: Phase 1 verification
+### WP9.5: Aircraft collider + terrain impact — DONE 2026-05-11
+**Description:** Closes SURFACE-2026-05-11-05 (Phase 1 BLOCKER discovered in WP9 Phase 3). The aircraft `RigidBody` was created without a collider; the aircraft tunneled through the terrain plane and the integrator NaN'd within ~12s on any non-trivial input. WP9.5 attaches `ColliderDesc.cuboid(0.5, 0.3, 3.0).setDensity(0)` to the body in `src/aircraft/rigidbody.ts` constructor, matching the fuselage placeholder geometry. Density=0 keeps the pre-existing `setAdditionalMassProperties` configuration authoritative.
+**Phase:** 1
+**Dependencies:** WP5 (rigidbody), WP8 (terrain collider)
+**Size:** XS (actual: ~XS — one-line collider add + 2 tests + verify-self pass via targeted teleport-to-ground probe)
+**Tasks:**
+- [x] Add `ColliderDesc.cuboid(0.5, 0.3, 3.0).setDensity(0)` to aircraft body in `rigidbody.ts` constructor.
+- [x] Structural regression test (`numColliders() > 0`) and behavioral integration test ("aircraft body collides with a static ground plane (does not tunnel through)") in `rigidbody.test.ts`. 246/246 tests pass; tsc clean.
+- [x] verify-self via targeted teleport probe: aircraft at y=3 with vy=-10 impacts ground at alt=0.28m, vy reverses to +0.30 (bounce), settles to bounded oscillation 1.5–6.4m, no NaN. Long-horizon no-input 30s also clean.
+- [x] **Verify-self lesson captured:** the original WP9 Phase 3 regression-anchor probe was over-broad (it exercised both the tunneling pathology AND the SURFACE-2026-05-11-04 phugoid-divergent pathology). The targeted teleport probe isolates the collider's contract. Lesson candidate for `/session-store-learning`.
+
+### WP9: Phase 1 verification — UNBLOCKED (WP9.5 resolved SURFACE-2026-05-11-05); re-run pending
+
+**Note (2026-05-11):** WP9.5 shipped the missing aircraft collider. The Phase 3 BLOCKER ("aircraft cannot crash") is resolved. WP9's three tasks still need a re-verification pass — recommended at next session entry, scoped to the leaves previously marked BLOCKED. The Phase 2 (FPS) and Phase 4 (DEFER) outcomes are unaffected.
+
+
 **Description:** Meets Phase 1 exit criteria. Deployable dev build; a developer can open the URL, take off, fly around, and crash; 60fps on a mid-range laptop in Chrome/Safari/Firefox.
 **Phase:** 1
 **Dependencies:** WP2, WP3, WP6.5, WP7, WP8
-**Size:** S
+**Size:** S (actual: S; expanded to 4 phases including a backlog-tooling-decision phase)
 **Tasks:**
-- [ ] End-to-end playthrough: takeoff, fly, land-or-crash
-- [ ] FPS check on Chrome, Safari, Firefox
-- [ ] Phase 1 playtest: a non-developer flies and it feels right (or loop back to WP7)
+- [~] End-to-end playthrough: takeoff, fly, land-or-crash — **partial PASS** (boot, telemetry-finite, input pipeline, descending-glide all confirmed). **BLOCKED on "crash" outcome**: aircraft has no Rapier collider (rigidbody.ts:84 creates the body, never attaches a collider). It tunnels through terrain and the integrator NaN's within ~12s on any non-trivial input. See SURFACE-2026-05-11-05.
+- [~] FPS check on Chrome, Safari, Firefox — **Chromium PASS** (60.01 fps avg, 56.82 min, 0 spikes). **WebKit + Firefox UNVERIFIED** (Playwright-MCP exposes only Chromium in this setup; strict-bar venue is WP21 cross-browser QA).
+- [~] Phase 1 playtest: a non-developer flies and it feels right — **FAIL at "bounded, controllable, non-tumbling" bar** under operator-as-tester deviation. Root cause = SURFACE-2026-05-11-05 (not feel; the simulation terminates in NaN). Strict external-non-developer venue remains WP23. Did NOT loop back to WP7 per plan rule (this is a structural defect, not a feel/phugoid issue).
+
+**Operator decision required:** authorize a new WP (proposed **WP9.5: aircraft collider + terrain impact**, size XS–S, one-line collider + one regression test) to unblock Phase 1 exit, OR accept the gap and forward-surface. See backlog SURFACE-2026-05-11-05 for full disposition.
 
 ---
 
@@ -323,4 +340,10 @@ Recommend `/product-context` next (transition P9).
 
 ## Session Pause — 2026-05-09 09:05
 Paused after WP6 finalize. See `workflow/.session.md` to resume.
+
+## Session Pause — 2026-05-11 15:20
+Paused at end-of-cycle. WP1–WP8 all shipped; only WP9 (Phase 1 verification) remains for Phase 1. See `workflow/.session.md` to resume.
+
+## Session Pause — 2026-05-11 20:35
+Paused after WP9 ran-and-blocked + WP9.5 shipped + session-reflect + 3 learnings persisted. Operator pause to decide between re-running WP9 verify, adopting @playwright/test, or other. See `workflow/.session.md` to resume.
 

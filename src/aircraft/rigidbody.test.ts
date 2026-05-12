@@ -73,6 +73,50 @@ describe('Aircraft (rigidbody)', () => {
     expect(aircraft.mesh.children).toHaveLength(5);
   });
 
+  // Regression anchor for SURFACE-2026-05-11-05 (WP9 Phase 3): the body must
+  // carry a collider so it impacts terrain instead of tunneling through. The
+  // earlier bug was a structural omission, not a behavioral one — assert the
+  // invariant directly.
+  it('attaches at least one collider to the body so it can interact with terrain', () => {
+    const world = new RAPIER.World({ x: 0, y: -9.81, z: 0 });
+    const aircraft = new Aircraft(world, config);
+    expect(aircraft.body.numColliders()).toBeGreaterThan(0);
+  });
+
+  // Behavioral regression anchor for SURFACE-2026-05-11-05: aircraft impacts a
+  // ground collider rather than tunneling through. Mirrors the WP9.5 verify-self
+  // targeted probe (teleport to y=3 with vy=-10, expect impact + bounded resting).
+  it('aircraft body collides with a static ground plane (does not tunnel through)', () => {
+    const world = new RAPIER.World({ x: 0, y: -9.81, z: 0 });
+    world.timestep = 1 / 60;
+
+    // Static ground collider at y=0, large enough that the aircraft cannot miss it.
+    const groundBody = world.createRigidBody(RAPIER.RigidBodyDesc.fixed());
+    world.createCollider(
+      RAPIER.ColliderDesc.cuboid(50, 0.1, 50).setTranslation(0, -0.1, 0),
+      groundBody,
+    );
+
+    const aircraft = new Aircraft(world, config, {
+      position: new Vector3(0, 3, 0),
+      linvel: new Vector3(0, -10, 0),
+    });
+
+    // Step the world for ~1 second of simulated time (60 ticks at 1/60s).
+    for (let i = 0; i < 60; i++) {
+      world.step();
+    }
+
+    const t = aircraft.body.translation();
+    // Post-impact: y must be > 0 (above ground; the body settled or bounced).
+    // Pre-fix this would have been a large negative number as the body tunneled.
+    expect(Number.isFinite(t.y)).toBe(true);
+    expect(t.y).toBeGreaterThan(0);
+    // Generous upper bound: physically the bounce can't lift the body above its
+    // initial drop height (energy conservation with restitution ≤ 1).
+    expect(t.y).toBeLessThan(10);
+  });
+
   it('syncMesh copies body translation + rotation to the Three.js mesh', () => {
     const world = new RAPIER.World({ x: 0, y: -9.81, z: 0 });
     const aircraft = new Aircraft(world, config, {
