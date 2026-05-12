@@ -1,7 +1,7 @@
 ---
 stage: wbs
 state: in-progress
-updated: 2026-05-12 (WP10 + WP10.5 DONE — Phase 2 arch revision landed and β5 schema-extension shipped. WP10.5 closes the architectural side of SURFACE-2026-05-11-04. Phase 2 continues with WP11/WP12 next.)
+updated: 2026-05-12 (WP10 + WP10.5 + WP11 DONE — Phase 2 arch revision, β5 schema, and mission framework all shipped same day. Mission framework is live: page boots into select, ?mission=<id> auto-starts, runner owns lifecycle. Next: WP12 HUD (parallel-trackable with WP13–WP16 mission content).)
 ---
 
 # Work Breakdown Structure
@@ -219,19 +219,25 @@ T-shirt sizing: **XS** ≤ 2h · **S** ≤ half day · **M** ≤ 1 day · **L** 
 - [x] verify-self: full Vitest 256/256 (was 246, +10 new β5); `npm run build` 152ms clean; `npm run test:e2e` 1/1 in 7.5s (WP9.5+9.6 regression anchor preserved); browser at `?debug=true` boots clean, `window.__aircraft.getState()` finite at 5s (position z=-157, aircraft moved 157m from spawn), zero NaN/Infinity in 128 console messages.
 - [x] verify-codify: feature deliverable IS the codified regression suite; integration-boundary anchor is `tests/e2e/casual-flight.spec.ts` (already covers the consuming surface end-to-end).
 
-### WP11: Mission framework
-**Description:** Core mission runner per **D11** (declarative JSON + optional script hook). `src/mission/loader.ts` loads `public/missions/<id>.json`; `src/mission/runner.ts` owns the lifecycle (load → start → tick → complete/fail) and reads aircraft state via the typed `AircraftState` interface (not via `window.__aircraft`). Emits objective state changes to the HUD. Script-hook registry under `src/mission/hooks/` (empty in WP11; WP16 registers `combat-ai`).
+### WP11: Mission framework — DONE 2026-05-12
+**Description:** Core mission runner per **D11** (declarative JSON + optional script hook). `src/mission/loader.ts` loads `public/missions/<id>.json`; `src/mission/runner.ts` owns the lifecycle (load → start → tick → complete/fail) and reads aircraft state via the typed `AircraftState` interface (not via `window.__aircraft`). DOM mission-select screen per **D12** with return-to-select flow on win/fail. Script-hook registry under `src/mission/hooks/` (empty at ship — WP16 registers `combat-ai`). Aircraft now boots into mission-select; `?mission=<id>` deep-link auto-starts. Shipped in commit `690788a`.
 **Phase:** 2
 **Dependencies:** WP10, WP10.5
-**Size:** M
+**Size:** M (actual: ~M — three phases, single-pass build, no back-loops)
 **Tasks:**
-- [ ] `Mission` + `Objective` + `FailCondition` types per the binding schema in arch.md Rev 2026-05-12 D11.
-- [ ] `src/mission/parse.ts`: runtime guard analogous to `parseAircraftConfig` — validates JSON against the schema, finite-number checks, unknown-field rejection.
-- [ ] `src/mission/loader.ts`: `loadMission(id: string): Promise<Mission>` — fetches `public/missions/<id>.json` and runs `parseMission`.
-- [ ] `src/mission/runner.ts`: lifecycle (`start`, `tick(aircraftState, dt)`, `getStatus()`); declarative win/fail evaluation (all-objectives, timeout, out-of-bounds, crash). Emits `objectiveChange` and `statusChange` events.
-- [ ] `src/mission/hooks/registry.ts`: name → callback registry; lookup at mission start when `scriptHook` is set; throw with helpful error if name is unknown.
-- [ ] `src/mission/select.ts` (minimal DOM menu): list available missions, click → load → start. Return-to-select flow on mission end (status complete or failed).
-- [ ] Tests: schema parse (valid + each invalid shape), runner lifecycle (start/tick/complete/fail for each `FailCondition`), all-objectives win evaluation, hook registry hit + miss.
+- [x] `Mission` + `Objective` + `FailCondition` + `MissionStatus` + `SpawnConfig` + `MissionManifestEntry` types in `src/mission/types.ts` per arch.md Rev 2026-05-12 D11. `Vec3Plain` declared in `src/aircraft/state.ts` (dep direction: mission → aircraft) and re-exported from mission types.
+- [x] `src/mission/parse.ts`: strict `parseMission` mirroring `parseAircraftConfig` style. Discriminated-union per `Objective.kind`. Default-fills `winCondition='all-objectives'` and `failCondition='crash'`. Rejects unknown top-level and sub-fields.
+- [x] `src/mission/loader.ts`: `loadMission(id)` + `loadMissionList()` (static fetch from `public/missions/`).
+- [x] `src/mission/runner.ts`: `MissionRunner` class — lifecycle (`start`, `tick(aircraft, dt)`, `getStatus()`, `getObjectiveStates()`, `getElapsed()`); declarative win/fail evaluation (all-objectives, timeout, out-of-bounds, crash with `CRASH_VSPEED_THRESHOLD=2`, OOB `±5000`). Event emitter (`on`/`off` for `objectiveChange | statusChange`). Hook fires BEFORE objective eval; reach-waypoint ordering enforced. Allocation-free per tick.
+- [x] `src/mission/hooks/registry.ts`: name → `HookFn` registry. `registerHook`/`getHook`/`clearRegistry`. Duplicate-register throws.
+- [x] `src/mission/select.ts`: minimal DOM overlay with `show`/`hide`/`onSelect`/`showOutcome` + bare-bones inline CSS. `data-testid` attributes for Playwright. Visual polish deferred to WP20.
+- [x] `src/aircraft/state.ts`: `AircraftState` plain-data interface + `toAircraftState()` allocation-free adapter from `BodyState`. Decouples mission code from three.js classes.
+- [x] `Aircraft.reset(position, linvel)` in `rigidbody.ts` + `FlightModel.resetSurfaceState()` (clears deflection + β5 prevAoA per WP10.5 invariant) for mission restart.
+- [x] `public/missions/index.json` (manifest) + `public/missions/free-flight.json` (the framework-smoke mission — spawn matches the pre-WP11 hardcoded baseline bit-for-bit).
+- [x] `src/main.ts` rewired: aircraft spawns at placeholder; mission-select renders on boot; `?mission=<id>` auto-starts; `startMission` does reset + start + unpause; `statusChange` listener drives return-to-select flow with brief outcome banner.
+- [x] Tests: **93 new** — Phase 1 (51 unit: parse 24 + state 9 + loader 8 + registry 5 + reset 7), Phase 2 (30 unit: runner lifecycle/objectives/events/perf), Phase 3 (8 jsdom select + 3 e2e mission-select + 1 updated casual-flight e2e for the `?mission=free-flight&debug=true` compat path). 345/345 Vitest + 4/4 Playwright + tsc strict + build all clean.
+- [x] verify-auto + verify-self + verify-codify all green per phase. Phase 3 integration boundary covered by both updated `casual-flight.spec.ts` (WP9.6 regression anchor preserved) and new `mission-select.spec.ts`. Live browser subagent confirmed all 4 Phase 3 browser outcomes PASS.
+- [x] Dev dep added: `jsdom` (vitest peer-dep for DOM tests; additive only).
 
 ### WP12: HUD
 **Description:** In-mission HUD per **D12** (DOM overlay, CSS-absolute `<div>` over the canvas). Live `src/hud/dom-hud.ts` implementing the `HUD` interface (`setAircraftState`, `setObjective`, `setWaypointArrow`, `setStatus`, `show`/`hide`). Waypoint arrow positioned each frame via `THREE.Vector3.project()`. The interface boundary is the Phase 3 swap point.
@@ -409,4 +415,7 @@ WP10 closed under operator-as-architect (full-autopilot deviation per `feedback_
 
 ## WP10.5 Shipped — 2026-05-12
 β5 `clAlphaDot` schema extension landed in commits `1410fb2` (arch revision) + `7b2018d` (code + tests). Single-pass build with no back-loops. 256/256 Vitest + 1/1 Playwright + tsc strict + build clean. Default 0 preserves Phase 1 bit-for-bit parity. SURFACE-2026-05-11-04 moved to "partial — architectural side resolved; tuning side pending Phase 2 (WP14/WP16/WP17)". Next WP: **WP11** (mission framework, D11) or **WP12** (HUD, D12) — parallel-trackable.
+
+## WP11 Shipped — 2026-05-12
+Mission framework — declarative-JSON missions + DOM mission-select + MissionRunner lifecycle — landed in commit `690788a`. Three phases, single-pass build, no back-loops. 24 files changed (+2937 LOC). 345/345 Vitest (was 256, +89) + 4/4 Playwright + tsc strict + build clean. WP9.6 casual-flight regression anchor preserved via `?mission=free-flight&debug=true` compat path. Live integration verified end-to-end (mission-select renders, click → run, deep-link auto-start, invalid id → error fallback). Hook registry empty (WP16 will register `combat-ai`). Next: **WP12** (HUD, D12) — parallel-trackable, since the runner already emits `objectiveChange`/`statusChange` events that the HUD will consume. Then WP13–WP16 mission content (each ships its own JSON; WP16 adds the one script hook).
 
