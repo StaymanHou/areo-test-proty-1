@@ -489,3 +489,64 @@ describe('MissionRunner — restart (start() called on the same runner twice)', 
     expect(r.getElapsed()).toBe(0);
   });
 });
+
+describe('MissionRunner — abort (WP13)', () => {
+  beforeEach(() => clearRegistry());
+
+  it('abort() from running sets status=failed and wasAborted=true', () => {
+    const r = new MissionRunner();
+    r.start(makeMission());
+    expect(r.wasAborted()).toBe(false);
+    r.abort();
+    expect(r.getStatus()).toBe('failed');
+    expect(r.wasAborted()).toBe(true);
+  });
+
+  it('abort() emits statusChange', () => {
+    const r = new MissionRunner();
+    r.start(makeMission());
+    const listener = vi.fn();
+    r.on('statusChange', listener);
+    r.abort();
+    expect(listener).toHaveBeenCalledTimes(1);
+  });
+
+  it('abort() is a no-op when not running (status stays unchanged)', () => {
+    const r = new MissionRunner();
+    // Not-started — abort should be silent.
+    const listener = vi.fn();
+    r.on('statusChange', listener);
+    r.abort();
+    expect(r.getStatus()).toBe('not-started');
+    expect(r.wasAborted()).toBe(false);
+    expect(listener).not.toHaveBeenCalled();
+
+    // After natural fail — abort should still be silent.
+    r.start(makeMission());
+    r.tick(makeAircraft({ position: { x: 0, y: 0, z: 0 }, linvel: { x: 0, y: -5, z: 0 } }), DT);
+    expect(r.getStatus()).toBe('failed');
+    expect(r.wasAborted()).toBe(false); // natural crash, not abort
+    listener.mockClear();
+    r.abort();
+    expect(r.wasAborted()).toBe(false); // still false — abort was a no-op
+    expect(listener).not.toHaveBeenCalled();
+  });
+
+  it('start() after abort() resets wasAborted', () => {
+    const r = new MissionRunner();
+    r.start(makeMission());
+    r.abort();
+    expect(r.wasAborted()).toBe(true);
+    r.start(makeMission());
+    expect(r.wasAborted()).toBe(false);
+    expect(r.getStatus()).toBe('running');
+  });
+
+  it('natural fail (crash) leaves wasAborted=false', () => {
+    const r = new MissionRunner();
+    r.start(makeMission());
+    r.tick(makeAircraft({ position: { x: 0, y: 0, z: 0 }, linvel: { x: 0, y: -5, z: 0 } }), DT);
+    expect(r.getStatus()).toBe('failed');
+    expect(r.wasAborted()).toBe(false);
+  });
+});

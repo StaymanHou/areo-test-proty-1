@@ -8,7 +8,7 @@ export interface InputState {
 export type ActionName =
   | 'pitchUp' | 'pitchDown' | 'rollLeft' | 'rollRight'
   | 'yawLeft' | 'yawRight' | 'throttleUp' | 'throttleDown'
-  | 'swapCamera' | 'pause';
+  | 'swapCamera' | 'pause' | 'returnToMenu';
 
 export type KeyMap = Record<ActionName, string>;
 
@@ -23,6 +23,7 @@ export const DEFAULT_KEY_MAP: KeyMap = {
   throttleDown: 'ControlLeft',
   swapCamera:   'KeyV',
   pause:        'KeyP',
+  returnToMenu: 'Escape',
 };
 
 export class InputManager {

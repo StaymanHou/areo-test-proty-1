@@ -113,6 +113,11 @@ async function bootstrap() {
           // Phase 2 missions have no active-waypoint surface yet; WP14 will
           // wire the next-waypoint position into this call.
           hud.setWaypointArrow(null);
+
+          // WP13 — player-initiated return to mission-select via Escape.
+          if (input.wasActionPressed('returnToMenu', DEFAULT_KEY_MAP)) {
+            missionRunner.abort();
+          }
         }
 
         debug?.stats.begin();
@@ -295,13 +300,23 @@ async function bootstrap() {
   });
 
   // Status-change listener — on terminal state (won/failed), pause the loop,
-  // briefly show the outcome banner, then return to the select screen.
+  // briefly show the outcome banner, then return to the select screen. WP13:
+  // player-initiated aborts (via Escape) skip the outcome banner entirely.
   missionRunner.on('statusChange', () => {
     const status = missionRunner.getStatus();
     if (status !== 'won' && status !== 'failed') return;
     if (activeMission === null) return;
-    const missionName = activeMission.name;
     loop.setPaused(true);
+
+    if (missionRunner.wasAborted()) {
+      // Silent return — no banner, no delay.
+      activeMission = null;
+      hud.hide();
+      missionSelect.show(missionManifest);
+      return;
+    }
+
+    const missionName = activeMission.name;
     hud.setStatus(status);
     void missionSelect.showOutcome(status, missionName).then(() => {
       activeMission = null;

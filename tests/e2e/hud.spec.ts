@@ -12,6 +12,24 @@ test('HUD is hidden on mission-select and shown during a running mission', async
   await expect(hudOnSelect).toHaveCount(0);
 });
 
+test('WP13: pressing Escape during a mission returns to mission-select without an outcome banner', async ({ page }) => {
+  await page.goto('/?mission=free-flight');
+  await page.waitForSelector('[data-testid="hud-root"]', { timeout: 20_000 });
+
+  // Press Escape. The page's mission runner should abort and re-render the
+  // mission-select screen without showing the won/failed outcome banner.
+  await page.keyboard.press('Escape');
+
+  // Mission-select reappears.
+  await page.waitForSelector('[data-testid="mission-select"]', { timeout: 5_000 });
+
+  // HUD is gone.
+  await expect(page.locator('[data-testid="hud-root"]')).toHaveCount(0);
+
+  // No outcome banner was shown.
+  await expect(page.locator('[data-testid="mission-outcome-banner"]')).toHaveCount(0);
+});
+
 test('HUD shows numeric altitude/airspeed/throttle and hides status banner during play', async ({ page }) => {
   await page.goto('/?mission=free-flight');
 

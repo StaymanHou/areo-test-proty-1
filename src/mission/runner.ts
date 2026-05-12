@@ -53,6 +53,7 @@ export class MissionRunner {
   private _hookFn: HookFn | undefined = undefined;
   private _hookState: HookState = {};
   private _elapsed = 0;
+  private _aborted = false;
   private readonly _listeners = new Map<MissionEvent, MissionEventListener[]>();
 
   /**
@@ -68,6 +69,7 @@ export class MissionRunner {
     this._mission = mission;
     this._status = 'running';
     this._elapsed = 0;
+    this._aborted = false;
     this._hookState = {};
     if (mission.scriptHook !== undefined) {
       const fn = getHook(mission.scriptHook);
@@ -190,6 +192,28 @@ export class MissionRunner {
 
   getStatus(): MissionStatus {
     return this._status;
+  }
+
+  /**
+   * Player-initiated abort. Sets status to 'failed' and marks the run as
+   * aborted so listeners can distinguish "player chose to leave" from a real
+   * fail (crash / timeout / out-of-bounds) and skip the outcome banner. No-op
+   * if the runner is not currently running. `start()` clears the abort flag,
+   * so a restart after abort behaves normally.
+   */
+  abort(): void {
+    if (this._status !== 'running') return;
+    this._aborted = true;
+    this._status = 'failed';
+    this._emit('statusChange');
+  }
+
+  /**
+   * True if the most recent terminal status transition came from `abort()`
+   * rather than a natural fail condition. Cleared by `start()`.
+   */
+  wasAborted(): boolean {
+    return this._aborted;
   }
 
   getObjectiveStates(): readonly ObjectiveState[] {

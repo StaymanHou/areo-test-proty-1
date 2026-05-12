@@ -254,14 +254,14 @@ T-shirt sizing: **XS** ≤ 2h · **S** ≤ half day · **M** ≤ 1 day · **L** 
 - [x] `tests/e2e/hud.spec.ts` (Playwright): 2 specs — HUD absent on mission-select page, HUD shows numeric alt/airspeed/throttle and hides banner/arrow/objective during free-flight.
 - [x] All four verify-* gates passed each phase. 374/374 Vitest (was 345, +29 hud) + 6/6 Playwright (was 4, +2 hud) + tsc strict + build clean. Live browser subagent at `/` and `/?mission=free-flight` confirmed HUD lifecycle works end-to-end (alt=62, airspeed=15, throttle=0, banner/arrow/objective hidden, console clean).
 
-### WP13: Free flight mission
-**Description:** No objectives — just fly around the map. Baseline mission type; validates the framework with the simplest case.
+### WP13: Free flight mission — DONE 2026-05-12
+**Description:** No objectives — just fly around the map. Baseline mission type; validates the framework with the simplest case. Mission JSON shipped at WP11 (`public/missions/free-flight.json`); HUD overlay shipped at WP12. WP13 closed by adding the player-initiated abort path: Escape key returns from running mission to mission-select without falsely showing the "MISSION FAILED" banner. Implementation: new `'returnToMenu'` action (`'Escape'`) in `DEFAULT_KEY_MAP`, `MissionRunner.abort()` + `wasAborted()`, main.ts statusChange listener branches on `wasAborted()` to bypass outcome banner. Atomic task — shipped via task workflow, not feature workflow.
 **Phase:** 2
-**Dependencies:** WP11
-**Size:** XS
+**Dependencies:** WP11, WP12
+**Size:** XS (actual: ~XS — single-pass task, ~80 LOC including tests)
 **Tasks:**
-- [ ] Mission definition: no-op objectives, infinite duration
-- [ ] Exit condition: player presses a "return to menu" key
+- [x] Mission definition: free-flight.json (shipped at WP11 — zero objectives, infinite duration via no timeout/oob bounds).
+- [x] Exit condition: Escape key triggers `runner.abort()`; main.ts skips the outcome banner when `wasAborted()` is true; mission-select re-renders silently.
 
 ### WP14: Waypoint mission
 **Description:** Ordered checkpoints in 3D space, timer, objective shows next waypoint + distance. HUD shows waypoint arrow.
