@@ -1,7 +1,7 @@
 ---
 stage: roadmap
 state: in-progress
-updated: 2026-05-11 (WP9 — Phase 1 verification closed via WP9.5 collider fix + WP9.6 Playwright regression anchor; cross-browser FPS sweep deferred to WP21 by design)
+updated: 2026-05-12 (WP10–WP12 — Phase 2 arch revision + β5 schema + mission framework + HUD all shipped 2026-05-12. Mission framework + HUD milestones complete; 3 mission-content WPs remaining: WP14 waypoint, WP15 takeoff/landing, WP16 combat.)
 ---
 
 # Roadmap
@@ -25,12 +25,12 @@ updated: 2026-05-11 (WP9 — Phase 1 verification closed via WP9.5 collider fix 
 **Goal:** Add structured gameplay — the four mission types from the vision, each minimally playable.
 
 **Milestones:**
-- [ ] Mission framework: load mission definition, track objectives, win/lose states
-- [ ] Free flight mission (no objectives, just a map)
-- [ ] Waypoint navigation mission (fly through ordered checkpoints, timer)
-- [ ] Takeoff/landing mission (airfield with runway, touchdown detection)
-- [ ] Combat mission: basic weapons, one AI enemy (air or ground), damage model
-- [ ] Mission select screen and in-mission HUD (altitude, speed, objective)
+- [x] Mission framework: load mission definition, track objectives, win/lose states — WP11 (2026-05-12, commit `690788a`)
+- [ ] Free flight mission (no objectives, just a map) — WP13 (implicitly shipped by WP11 via `public/missions/free-flight.json`; formal close pending)
+- [ ] Waypoint navigation mission (fly through ordered checkpoints, timer) — WP14
+- [ ] Takeoff/landing mission (airfield with runway, touchdown detection) — WP15
+- [ ] Combat mission: basic weapons, one AI enemy (air or ground), damage model — WP16
+- [x] Mission select screen and in-mission HUD (altitude, speed, objective) — WP11 mission-select + WP12 HUD (2026-05-12, commits `690788a` + `dd9c0ed`)
 
 **Exit Criteria:** From the main screen a player can pick any of the four mission types, play it to completion (or failure), and return to mission select.
 

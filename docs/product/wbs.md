@@ -1,7 +1,7 @@
 ---
 stage: wbs
 state: in-progress
-updated: 2026-05-12 (WP10 + WP10.5 + WP11 DONE — Phase 2 arch revision, β5 schema, and mission framework all shipped same day. Mission framework is live: page boots into select, ?mission=<id> auto-starts, runner owns lifecycle. Next: WP12 HUD (parallel-trackable with WP13–WP16 mission content).)
+updated: 2026-05-12 (WP10 + WP10.5 + WP11 + WP12 DONE — Phase 2 arch revision, β5 schema, mission framework, and HUD all shipped same day. HUD now live in-mission: alt/airspeed/throttle readouts, objective text, status banner, waypoint arrow (projection-ready for WP14). Next: WP13–WP16 mission content (parallel-trackable; WP14/WP15/WP16 are S/M/L).)
 ---
 
 # Work Breakdown Structure
@@ -239,17 +239,20 @@ T-shirt sizing: **XS** ≤ 2h · **S** ≤ half day · **M** ≤ 1 day · **L** 
 - [x] verify-auto + verify-self + verify-codify all green per phase. Phase 3 integration boundary covered by both updated `casual-flight.spec.ts` (WP9.6 regression anchor preserved) and new `mission-select.spec.ts`. Live browser subagent confirmed all 4 Phase 3 browser outcomes PASS.
 - [x] Dev dep added: `jsdom` (vitest peer-dep for DOM tests; additive only).
 
-### WP12: HUD
-**Description:** In-mission HUD per **D12** (DOM overlay, CSS-absolute `<div>` over the canvas). Live `src/hud/dom-hud.ts` implementing the `HUD` interface (`setAircraftState`, `setObjective`, `setWaypointArrow`, `setStatus`, `show`/`hide`). Waypoint arrow positioned each frame via `THREE.Vector3.project()`. The interface boundary is the Phase 3 swap point.
+### WP12: HUD — DONE 2026-05-12
+**Description:** In-mission HUD per **D12** (DOM overlay, CSS-absolute `<div>` over the canvas). `src/hud/dom-hud.ts` implements the `HUD` interface (`setAircraftState`, `setThrottle`, `setObjective`, `setWaypointArrow`, `setStatus`, `show`/`hide`). Waypoint arrow positioned each frame via `THREE.Vector3.project()` with allocation-free module-scoped scratch. The interface boundary is the Phase 3 swap point per arch.md. Plan-time decision: `setThrottle` is a separate setter (not part of `AircraftState`) to keep physics-readout and controls-input layers cleanly separated. Shipped in commit `dd9c0ed`.
 **Phase:** 2
 **Dependencies:** WP10
-**Size:** S
+**Size:** S (actual: ~S — three phases, single-pass build, no back-loops)
 **Tasks:**
-- [ ] `src/hud/HUD.ts`: interface declaration per arch.md Rev 2026-05-12 D12.
-- [ ] `src/hud/dom-hud.ts`: implementation — creates and owns DOM nodes for altitude, airspeed, throttle, objective text, status banner, waypoint arrow.
-- [ ] `setWaypointArrow(worldPos)`: project world position via the active camera; if behind camera → hide arrow; else position the arrow DOM node at the projected screen coords.
-- [ ] CSS in `src/hud/hud.css` (or a single stylesheet under `src/hud/`); HUD is hidden until `show()`.
-- [ ] Tests: lightweight DOM-mode tests (jsdom or stub `document`) — assert `setAircraftState` updates the right text nodes, `setWaypointArrow(null)` hides the arrow, `setStatus('won', '...')` populates the banner.
+- [x] `src/hud/HUD.ts`: interface declaration per arch.md Rev 2026-05-12 D12 + `HudStatus = 'flying' | 'won' | 'failed'` union + separate `setThrottle` setter.
+- [x] `src/hud/dom-hud.ts`: `DomHud` class — cached DOM nodes for altitude/airspeed/throttle/objective/status-banner/waypoint-arrow. Constructor `(camera, canvasEl, opts?)`. Inline-CSS injection on first `show()` (mirrors `mission/select.ts` pattern). Idempotent show/hide. No-op-before-show contract. Number formatting: rounded integers (alt/airspeed in m, throttle in %).
+- [x] `setWaypointArrow(worldPos)`: module-scoped scratch `THREE.Vector3` projects worldPos to NDC; `ndc.z > 1` (behind camera) OR `|ndc.x|>1` OR `|ndc.y|>1` (off-screen) → hide; otherwise compute screen-px via `(ndc.x*0.5+0.5)*canvasW` / `(-ndc.y*0.5+0.5)*canvasH`. Allocation-free.
+- [x] CSS inline-injected at first `show()` (no separate stylesheet) — bare-bones layout per WP20 deferral; HUD hidden until `show()` per interface contract.
+- [x] Tests: 21 jsdom tests on `dom-hud.test.ts` (set-method DOM effects, show/hide idempotency, no-op-before-show, 8 projection cases against real `PerspectiveCamera`). 8 unit tests on `format.test.ts` for `formatActiveObjective` (3 objective kinds, completed-destroy-target null, zero/all-complete/missing-state).
+- [x] `src/main.ts` wired: per-frame `setAircraftState` + `setThrottle` + `setWaypointArrow(null)` gated on running mission; `objectiveChange`/`statusChange` listeners drive `setObjective`/`setStatus`; `startMission` calls `show` + initial setters; outcome flow calls `hide` before mission-select re-renders.
+- [x] `tests/e2e/hud.spec.ts` (Playwright): 2 specs — HUD absent on mission-select page, HUD shows numeric alt/airspeed/throttle and hides banner/arrow/objective during free-flight.
+- [x] All four verify-* gates passed each phase. 374/374 Vitest (was 345, +29 hud) + 6/6 Playwright (was 4, +2 hud) + tsc strict + build clean. Live browser subagent at `/` and `/?mission=free-flight` confirmed HUD lifecycle works end-to-end (alt=62, airspeed=15, throttle=0, banner/arrow/objective hidden, console clean).
 
 ### WP13: Free flight mission
 **Description:** No objectives — just fly around the map. Baseline mission type; validates the framework with the simplest case.
@@ -421,4 +424,7 @@ Mission framework — declarative-JSON missions + DOM mission-select + MissionRu
 
 ## Session Pause — 2026-05-12 09:55
 Paused at the post-WP11 fork. WP10 + WP10.5 + WP11 all shipped this session (full-autopilot). Operator chose to pause rather than continue. See `workflow/.session.md` to resume — live options listed there (WP12 HUD next is the natural pick).
+
+## WP12 Shipped — 2026-05-12
+HUD (DOM overlay per D12) — `src/hud/HUD.ts` interface + `src/hud/dom-hud.ts` implementation + `src/hud/format.ts` helper + main.ts wiring — landed in commit `dd9c0ed`. Three phases, single-pass build, no back-loops. 8 files changed (+712 LOC). 374/374 Vitest (was 345, +29 hud) + 6/6 Playwright (was 4, +2 hud) + tsc strict + build clean. Live browser subagent verified HUD lifecycle end-to-end at `/` + `/?mission=free-flight`. Next: WP13 (free flight, XS — could be a small task or WBS mark-done; framework already validates), WP14 (waypoint, S — needs WP12 ✓ now), WP15 (takeoff/landing, M), WP16 (combat, L). Phase 2 verification (WP17) blocked until all four mission types playable.
 
