@@ -1,7 +1,7 @@
 ---
 stage: roadmap
 state: in-progress
-updated: 2026-05-11 (WP7 — flight-feel infrastructure + tuning disposition; only WP9 remaining for Phase 1)
+updated: 2026-05-11 (WP9 — Phase 1 verification closed via WP9.5 collider fix + WP9.6 Playwright regression anchor; cross-browser FPS sweep deferred to WP21 by design)
 ---
 
 # Roadmap
@@ -14,7 +14,7 @@ updated: 2026-05-11 (WP7 — flight-feel infrastructure + tuning disposition; on
 - [x] 6DOF rigid-body aircraft with plausible lift/drag/thrust/stall (WP2 loop, WP4 aerosurface, WP5 composition)
 - [x] Keyboard flight controls (WP6 — keyboard only; mouse deferred to Phase 3 polish; "feel natural" dispositioned in WP7 Phase F as PASS at the "bounded, controllable, non-tumbling" bar via operator-as-tester; the original "external casual player finds it natural" bar from Q4 research was not met — the descending-glide gameplay survives single-pilot operator review but has not been validated by an external tester. If external feedback rejects the descending-glide in Phase 3 playtesting, SURFACE-2026-05-11-04 — phugoid undamped — is the escalation path)
 - [x] Single aircraft rendered in a minimal 3D world (terrain + sky) (WP8 — flat 4000m terrain, procedural skybox, runway, control tower)
-- [ ] Runs at 60fps on a mid-range laptop in Chrome/Safari/Firefox (WP8 evidences 60fps for the world-rendering layer; full Phase 1 perf check is WP9 with cross-browser sweep)
+- [~] Runs at 60fps on a mid-range laptop in Chrome/Safari/Firefox — Chromium PASS (WP9 Phase 2: 60.01 fps avg, 56.82 min, 0 spikes). WebKit + Firefox deferred to WP21 cross-browser QA (Playwright runner now adopted at WP9.6 supports all three engines natively, so WP21 is a config-only expansion).
 - [x] Camera follows the aircraft (chase + cockpit view)
 
 **Exit Criteria:** A developer can open the dev URL, take off, fly around, and crash — and it feels right. No missions, no UI chrome required.

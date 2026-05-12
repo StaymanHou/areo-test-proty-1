@@ -1,7 +1,8 @@
 ---
 workflow: feature
-state: plan (complete)
+state: ship (complete)
 created: 2026-05-11
+shipped: 2026-05-11 (commit 70b2c2b)
 wp: WP9.6
 drive_mode: full-autopilot
 parent_phase: 1
@@ -71,6 +72,13 @@ Scope is intentionally tight: Chromium engine only (WebKit/Firefox stays at WP21
 - **Why exclude `tests/e2e/` from Vitest?** Vitest's default glob is `**/*.{test,spec}.?(c|m)[jt]s?(x)` which WOULD pick up `tests/e2e/*.spec.ts`. They use different test APIs (Playwright vs Vitest) so collision is real. P1.4 step explicitly handles this — likely needs `exclude: ['tests/e2e/**']` added to `vitest.config.ts` (create one if it doesn't exist) or to vite.config.ts's test field.
 - **Why verify-codify still in the tree if the deliverable IS a test?** Trivially complete — the feature codifies itself. verify-codify will note "regression anchored by the feature deliverable itself" and pass through.
 - **verify-human SKIPPED:** full-autopilot mode per drive_mode field. verify-self gates acceptance.
+
+## Retrospect
+
+- **What changed in our understanding:** A `@playwright/test`-style adoption in a Vite + Vitest project has one trap that wasn't in the plan: Vitest's default glob `**/*.{test,spec}.?(c|m)[jt]s?(x)` happily picks up `tests/e2e/*.spec.ts` even though those use Playwright's API. The fix (creating `vitest.config.ts` with an `exclude`) is mechanical, but if missed it would have caused a non-obvious Vitest failure on the next CI run. The plan flagged this (P1.4) and the build step caught it cleanly.
+- **Assumptions that held:** The `window.__aircraft.getState()` hook (codified by WP7 / SURFACE-2026-05-09-03) was directly load-bearing — the smoke test consumes it as-is, no changes needed. The descending-glide attractor produced a passing trajectory at 5s with the loose bounds (|x|<1000, |z+150|<1000) the plan picked.
+- **Assumptions that were wrong:** I didn't anticipate needing `@types/node`. `playwright.config.ts` references `process.env.CI`, and the project's `tsconfig.json` doesn't include `"node"` in `types`. Caught at verify-auto, added in-flight. Cost: one extra `npm install` step. No behavioral impact.
+- **Approach delta:** Implementation matched the plan exactly across P1.1–P1.7; the only deviation was the unplanned `@types/node` install at verify-auto. The 7-task decomposition turned out about right — none of the tasks were skippable, none needed sub-decomposition. Verify-auto caught the type-check issue early (cheap), verify-self surfaced no further issues (the test was green first time), verify-codify was trivially complete (the feature deliverable IS the codified test). All gates passed first time.
 
 ## Risk register (single-phase, kept brief)
 

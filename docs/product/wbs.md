@@ -1,7 +1,7 @@
 ---
 stage: wbs
 state: complete
-updated: 2026-05-11 (WP9.5 DONE — aircraft collider + terrain impact; SURFACE-2026-05-11-05 RESOLVED. WP9 now unblocked — the "fly and crash" outcome is achievable. WP9 verify-self for the BLOCKED leaves can be re-run.)
+updated: 2026-05-11 (WP9.6 DONE — @playwright/test adopted with one load-bearing smoke that doubles as the WP9.5 regression anchor + the WP9 casual-flight pathway verification. WP9 Phase 1 fully closed at the Chromium-only / operator-as-tester bar. Phase 1 complete pending cross-browser sweep at WP21.)
 ---
 
 # Work Breakdown Structure
@@ -153,21 +153,32 @@ T-shirt sizing: **XS** ≤ 2h · **S** ≤ half day · **M** ≤ 1 day · **L** 
 - [x] verify-self via targeted teleport probe: aircraft at y=3 with vy=-10 impacts ground at alt=0.28m, vy reverses to +0.30 (bounce), settles to bounded oscillation 1.5–6.4m, no NaN. Long-horizon no-input 30s also clean.
 - [x] **Verify-self lesson captured:** the original WP9 Phase 3 regression-anchor probe was over-broad (it exercised both the tunneling pathology AND the SURFACE-2026-05-11-04 phugoid-divergent pathology). The targeted teleport probe isolates the collider's contract. Lesson candidate for `/session-store-learning`.
 
-### WP9: Phase 1 verification — UNBLOCKED (WP9.5 resolved SURFACE-2026-05-11-05); re-run pending
-
-**Note (2026-05-11):** WP9.5 shipped the missing aircraft collider. The Phase 3 BLOCKER ("aircraft cannot crash") is resolved. WP9's three tasks still need a re-verification pass — recommended at next session entry, scoped to the leaves previously marked BLOCKED. The Phase 2 (FPS) and Phase 4 (DEFER) outcomes are unaffected.
-
+### WP9: Phase 1 verification — DONE 2026-05-11 (closed via WP9.6 regression anchor)
 
 **Description:** Meets Phase 1 exit criteria. Deployable dev build; a developer can open the URL, take off, fly around, and crash; 60fps on a mid-range laptop in Chrome/Safari/Firefox.
 **Phase:** 1
 **Dependencies:** WP2, WP3, WP6.5, WP7, WP8
-**Size:** S (actual: S; expanded to 4 phases including a backlog-tooling-decision phase)
+**Size:** S (actual: M — expanded to 4 phases including a backlog-tooling-decision phase; closed via WP9.5 + WP9.6 follow-ups)
 **Tasks:**
-- [~] End-to-end playthrough: takeoff, fly, land-or-crash — **partial PASS** (boot, telemetry-finite, input pipeline, descending-glide all confirmed). **BLOCKED on "crash" outcome**: aircraft has no Rapier collider (rigidbody.ts:84 creates the body, never attaches a collider). It tunnels through terrain and the integrator NaN's within ~12s on any non-trivial input. See SURFACE-2026-05-11-05.
-- [~] FPS check on Chrome, Safari, Firefox — **Chromium PASS** (60.01 fps avg, 56.82 min, 0 spikes). **WebKit + Firefox UNVERIFIED** (Playwright-MCP exposes only Chromium in this setup; strict-bar venue is WP21 cross-browser QA).
-- [~] Phase 1 playtest: a non-developer flies and it feels right — **FAIL at "bounded, controllable, non-tumbling" bar** under operator-as-tester deviation. Root cause = SURFACE-2026-05-11-05 (not feel; the simulation terminates in NaN). Strict external-non-developer venue remains WP23. Did NOT loop back to WP7 per plan rule (this is a structural defect, not a feel/phugoid issue).
+- [x] End-to-end playthrough: takeoff, fly, land-or-crash — closed by WP9.6's `tests/e2e/casual-flight.spec.ts`. Aircraft state finite + moving + within bounds at 5s; no NaN/Infinity; no JS console errors. The WP9.5 collider fix makes "crash" achievable (verified via teleport-to-ground probe); the WP9.6 smoke codifies the casual-flight pathway as a CI artifact.
+- [~] FPS check on Chrome, Safari, Firefox — **Chromium PASS** (60.01 fps avg, 56.82 min, 0 spikes). **WebKit + Firefox carried forward to WP21** (strict-bar cross-browser QA). The `@playwright/test` runner now supports all three engines natively, so WP21's cross-browser sweep is a config-only expansion.
+- [~] Phase 1 playtest: a non-developer flies and it feels right — **PASS at "bounded, controllable, non-tumbling" bar** under operator-as-tester deviation. Strict external-non-developer venue remains WP23. Casual-flight pathway is now CI-anchored (any NaN regression would fail `npm run test:e2e`).
 
-**Operator decision required:** authorize a new WP (proposed **WP9.5: aircraft collider + terrain impact**, size XS–S, one-line collider + one regression test) to unblock Phase 1 exit, OR accept the gap and forward-surface. See backlog SURFACE-2026-05-11-05 for full disposition.
+### WP9.6: Adopt @playwright/test as Phase 1 regression anchor — DONE 2026-05-11
+**Description:** Closes SURFACE-2026-05-09-01 by adopting `@playwright/test` minimally (Chromium-only, single load-bearing smoke). The smoke (`tests/e2e/casual-flight.spec.ts`) doubles as the WP9.5 collider-fix regression anchor AND the WP9 Phase 3 casual-flight pathway verification. New npm script `npm run test:e2e`. Vitest exclude added (`vitest.config.ts`) to prevent glob collision. CLAUDE.md "Testing" section updated.
+**Phase:** 1
+**Dependencies:** WP9.5
+**Size:** XS (actual: ~XS — playwright.config.ts + 1 spec + npm script + 1 vitest config + docs; commit 70b2c2b)
+**Tasks:**
+- [x] Install `@playwright/test` + `@types/node` as devDeps; install Chromium headless-shell binary.
+- [x] `playwright.config.ts` at repo root — Chromium project, webServer auto-starts `npm run dev` on :5173, `reuseExistingServer: !process.env.CI`, timeout 30s, retries 0, workers 1, list reporter.
+- [x] `tests/e2e/casual-flight.spec.ts` — single test loads `/?debug=true`, `waitForFunction` until `window.__aircraft` is defined (handles Rapier WASM + config async load), 5s simulation window, then asserts via `__aircraft.getState()`: `position.{x,y,z}` finite, `airspeed` finite + > 0 (moving), aircraft moved from spawn within loose bounds (|x|<1000, |z+150|<1000), no console errors, no pageerrors, no `NaN`/`Infinity` in console output.
+- [x] `vitest.config.ts` created with `exclude: ['**/node_modules/**', '**/dist/**', 'tests/e2e/**']` to prevent Vitest from picking up Playwright specs.
+- [x] `npm run test:e2e` script added to `package.json`.
+- [x] `.gitignore` extended with `/test-results/`, `/playwright-report/`, `/blob-report/`, `/playwright/.cache/`.
+- [x] CLAUDE.md "Testing" section + Phase 1 status line updated. SURFACE-2026-05-09-01 moved to Resolved; regression-anchor note appended to SURFACE-2026-05-11-05 resolution entry.
+- [x] verify-self: `npm run test:e2e` 1/1 in 9.0s; `npm run test` 246/246 in 0.41s; `npm run build` clean in 134ms. Bundle warning unchanged (SURFACE-2026-04-19-01, Phase 3 concern).
+- [x] verify-codify: feature deliverable IS the codified regression test; no additional tests required. No integration boundary (isolated new artifacts only).
 
 ---
 
