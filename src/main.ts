@@ -62,7 +62,7 @@ async function bootstrap() {
       onPhysics: (dt) => {
         controls.update(dt);
         flightModel.applyControls(controls);
-        flightModel.applyForces(controls.throttle);
+        flightModel.applyForces(controls.throttle, dt);
         world.timestep = dt;
         world.step();
       },

@@ -65,6 +65,7 @@ export class FlightModel {
         maxDeflectionRad: s.maxDeflectionRad,
         incidenceRad: s.incidenceRad,
         clQ: s.clQ,
+        clAlphaDot: s.clAlphaDot,
       }),
     );
 
@@ -102,15 +103,18 @@ export class FlightModel {
    * Gravity is handled by Rapier's world gravity setting.
    *
    * @param throttle Normalized throttle [0..1]. Clamped internally.
+   * @param dt Physics timestep in seconds. Optional — only used to enable
+   *           β5 (`clAlphaDot`) AoA-rate damping in `computeAeroForce`.
+   *           Test fixtures that don't exercise β5 may omit it.
    */
-  applyForces(throttle: number): void {
+  applyForces(throttle: number, dt?: number): void {
     const t = throttle < 0 ? 0 : throttle > 1 ? 1 : throttle;
     const state = this.aircraft.readBodyState();
 
     // 1. Per-surface aerodynamic force at world application point.
     for (let i = 0; i < this.surfaces.length; i++) {
       const surface = this.surfaces[i]!;
-      const result = computeAeroForce(surface, state);
+      const result = computeAeroForce(surface, state, dt);
       // computeAeroForce returns shared Vector3s — consume immediately.
       _forceBuf.x = result.force.x;
       _forceBuf.y = result.force.y;

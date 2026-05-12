@@ -39,6 +39,19 @@ export interface AeroSurfaceConfig {
    * SURFACE-2026-05-11-03.
    */
   clQ?: number;
+  /**
+   * AoA-rate damping coefficient (β5). When non-zero AND a physics `dt` is
+   * supplied to `computeAeroForce`, the lift coefficient is augmented by
+   * `clAlphaDot · dα/dt`, where `dα/dt = (α_now − α_prev) / dt` is the
+   * finite-difference rate of change of local angle-of-attack between
+   * consecutive ticks. Positive `clAlphaDot` produces additional lift in
+   * the +α direction during rising α — damping the AoA oscillation that
+   * drives the phugoid mode. Default 0 (no augmentation — pre-β5 behavior
+   * preserved). First call has no augmentation (no previous AoA reference);
+   * `setGeometry` resets the previous-AoA cache. See CONVENTIONS.md,
+   * arch.md Revision 2026-05-12 (D13), and SURFACE-2026-05-11-04.
+   */
+  clAlphaDot?: number;
 }
 
 export const DEFAULT_MAX_DEFLECTION_RAD = (25 * Math.PI) / 180;
@@ -104,6 +117,15 @@ export class AeroSurface {
   incidenceRad: number;
   /** Pitch-rate damping coefficient. 0 = no damping. */
   clQ: number;
+  /** AoA-rate damping coefficient (β5). 0 = no augmentation. */
+  clAlphaDot: number;
+  /**
+   * Previous-tick local AoA cache for the β5 finite difference. `undefined`
+   * means "no previous reading" — augmentation is skipped and the current
+   * AoA is recorded. Reset to `undefined` by `setGeometry` because a
+   * rest-frame change invalidates AoA continuity.
+   */
+  prevAoA: number | undefined = undefined;
 
   constructor(config: AeroSurfaceConfig) {
     this.position = config.position.clone();
@@ -115,6 +137,7 @@ export class AeroSurface {
     this.maxDeflectionRad = config.maxDeflectionRad ?? DEFAULT_MAX_DEFLECTION_RAD;
     this.incidenceRad = config.incidenceRad ?? 0;
     this.clQ = config.clQ ?? 0;
+    this.clAlphaDot = config.clAlphaDot ?? 0;
 
     // Span axis = (pre-incidence) normal × chord. If parallel, surface geometry is degenerate.
     const span = new Vector3().crossVectors(this.normal, this.chord);
@@ -209,6 +232,11 @@ export class AeroSurface {
       this.restNormal.copy(this.normal);
       this.restChord.copy(this.chord);
       this.deflection = 0;
+      // β5: rest-frame change invalidates AoA continuity (the next call's
+      // α_now is measured against a different rest frame than the cached
+      // α_prev would have been). Clear the cache so the next call behaves
+      // as a fresh first-tick — no augmentation, then record the new α.
+      this.prevAoA = undefined;
     }
   }
 
@@ -399,6 +427,7 @@ const _result: AeroForceResult = { force: _outForce, applicationPoint: _outAppPo
 export function computeAeroForce(
   surface: AeroSurface,
   bodyState: BodyState,
+  dt?: number,
 ): AeroForceResult {
   // 1. Application point in world frame: bodyPos + bodyQuat·position.
   _scratchAppOffset.copy(surface.position).applyQuaternion(bodyState.quaternion);
@@ -432,8 +461,30 @@ export function computeAeroForce(
   const alpha = computeAngleOfAttack(_scratchLocalFlow, surface.normal, surface.chord);
 
   // 4. Curve lookup.
-  const cl = lookupLiftDragCurve(surface.clCurve, alpha);
+  let cl = lookupLiftDragCurve(surface.clCurve, alpha);
   const cd = lookupLiftDragCurve(surface.cdCurve, alpha);
+
+  // 4b. β5 — AoA-rate damping. Gated on BOTH clAlphaDot ≠ 0 AND a physics
+  // dt being supplied AND a previous-tick AoA being cached. The triple
+  // gate keeps test fixtures that call computeAeroForce(surface, body)
+  // without dt — and surfaces with default clAlphaDot=0 — at bit-for-bit
+  // pre-β5 behavior. Sign: positive clAlphaDot adds lift in the +α
+  // direction on a rising α, which produces a damping moment on the AoA
+  // oscillation that drives the phugoid mode. See arch.md Rev 2026-05-12
+  // (D13), CONVENTIONS.md, and SURFACE-2026-05-11-04.
+  if (
+    surface.clAlphaDot !== 0 &&
+    dt !== undefined &&
+    dt > 0 &&
+    surface.prevAoA !== undefined
+  ) {
+    const dAlphaDt = (alpha - surface.prevAoA) / dt;
+    cl += surface.clAlphaDot * dAlphaDt;
+  }
+  // Unconditionally cache α_now for the next call's finite difference.
+  // Even when augmentation is skipped, the cache must be primed so the
+  // following tick can compute a valid dα/dt.
+  surface.prevAoA = alpha;
 
   // 5. Magnitudes.
   const q = 0.5 * AIR_DENSITY * v2 * surface.area;

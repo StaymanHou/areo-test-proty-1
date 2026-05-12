@@ -1045,3 +1045,165 @@ describe('AeroSurface — WP6.5: per-surface incidence (D10)', () => {
   });
 });
 
+describe('AeroSurface — WP10.5: AoA-rate damping (β5, D13)', () => {
+  // Build a wing-like surface with a lifting CL curve so dα/dt has a numeric
+  // effect on the lift coefficient. (FLAT_CL is identically zero — useful for
+  // isolating α math but useless for β5 augmentation visibility.)
+  function makeLiftingWing(extra?: { clAlphaDot?: number }): AeroSurface {
+    const { cl, cd } = createSymmetricFlatPlateCurves();
+    return createAeroSurface({
+      position: new Vector3(0, 0, 0),
+      normal: new Vector3(0, 1, 0),
+      chord: new Vector3(0, 0, -1),
+      area: 1.5,
+      clCurve: cl,
+      cdCurve: cd,
+      ...extra,
+    });
+  }
+
+  // Two body states with different positive AoA. The first call records α₀ as
+  // prevAoA; the second call sees α₁ > α₀ → dα/dt > 0 → positive augmentation.
+  // We construct different α via different linvel directions (the body sees
+  // airflow from below when descending forward, which is +AoA on a top-up
+  // wing). Larger downward component → larger +AoA.
+  function bodyWithDescendingFlow(downwardComponent: number): BodyState {
+    return {
+      position: new Vector3(),
+      quaternion: new Quaternion(),
+      // Forward at 30 m/s + downward at `downwardComponent` m/s. Airflow at the
+      // wing = −linvel = (0, +downwardComponent, +30), which has a +Y
+      // component → positive AoA on a normal=+Y wing.
+      linvel: new Vector3(0, -downwardComponent, -30),
+      angvel: new Vector3(),
+    };
+  }
+
+  it('default clAlphaDot=0 / omitted preserves bit-for-bit force output (regression baseline for the existing 246 tests)', () => {
+    const baseline = makeLiftingWing();
+    const explicitZero = makeLiftingWing({ clAlphaDot: 0 });
+
+    const body = bodyWithDescendingFlow(2);
+    // Call each surface twice with a non-zero dt and a positive clAlphaDot
+    // would normally NOT fire here (both are 0) — but we exercise the same
+    // code path to make sure the gating is correct.
+    const dt = 1 / 60;
+    computeAeroForce(baseline, body, dt);
+    const fBaseline = computeAeroForce(baseline, bodyWithDescendingFlow(4), dt);
+    const fbX = fBaseline.force.x;
+    const fbY = fBaseline.force.y;
+    const fbZ = fBaseline.force.z;
+    computeAeroForce(explicitZero, body, dt);
+    const fExplicit = computeAeroForce(explicitZero, bodyWithDescendingFlow(4), dt);
+    expect(fExplicit.force.x).toBeCloseTo(fbX, 12);
+    expect(fExplicit.force.y).toBeCloseTo(fbY, 12);
+    expect(fExplicit.force.z).toBeCloseTo(fbZ, 12);
+  });
+
+  it('first-tick contract: no augmentation on the first call even with large clAlphaDot', () => {
+    const surface = makeLiftingWing({ clAlphaDot: 5 });
+    const baseline = makeLiftingWing({ clAlphaDot: 0 });
+
+    // First call to each — prevAoA is undefined on the augmented surface, so
+    // the augmentation is skipped. The two forces must match.
+    const body = bodyWithDescendingFlow(3);
+    const dt = 1 / 60;
+    const fAug = computeAeroForce(surface, body, dt);
+    const yAug = fAug.force.y;
+    const fBase = computeAeroForce(baseline, body, dt);
+    expect(yAug).toBeCloseTo(fBase.force.y, 12);
+    // And prevAoA has been recorded.
+    expect(surface.prevAoA).not.toBeUndefined();
+  });
+
+  it('constant α produces zero augmentation (dα/dt = 0 → no CL delta)', () => {
+    const surface = makeLiftingWing({ clAlphaDot: 5 });
+    const baseline = makeLiftingWing({ clAlphaDot: 0 });
+
+    const body = bodyWithDescendingFlow(3);
+    const dt = 1 / 60;
+    // Prime both: first call records prevAoA on the augmented surface.
+    computeAeroForce(surface, body, dt);
+    computeAeroForce(baseline, body, dt);
+    // Second call with bit-identical body — α_now === α_prev → dα/dt = 0.
+    const fAug = computeAeroForce(surface, body, dt);
+    const yAug = fAug.force.y;
+    const fBase = computeAeroForce(baseline, body, dt);
+    expect(yAug).toBeCloseTo(fBase.force.y, 12);
+  });
+
+  it('rising α with positive clAlphaDot produces additional lift (sign-convention regression anchor)', () => {
+    const surface = makeLiftingWing({ clAlphaDot: 2 });
+    const baseline = makeLiftingWing({ clAlphaDot: 0 });
+
+    // First call primes prevAoA on the augmented surface at low α.
+    const bodyLow = bodyWithDescendingFlow(1);
+    const bodyHigh = bodyWithDescendingFlow(5);
+    const dt = 1 / 60;
+    computeAeroForce(surface, bodyLow, dt);
+    computeAeroForce(baseline, bodyLow, dt);
+
+    // Second call at higher α. Augmented surface sees dα/dt > 0 → +CL delta.
+    const fAug = computeAeroForce(surface, bodyHigh, dt);
+    const yAug = fAug.force.y;
+    const fBase = computeAeroForce(baseline, bodyHigh, dt);
+    // Augmented lift is greater than baseline at the same α.
+    expect(yAug).toBeGreaterThan(fBase.force.y);
+  });
+
+  it('falling α with positive clAlphaDot produces reduced lift (sign-convention mirror)', () => {
+    const surface = makeLiftingWing({ clAlphaDot: 2 });
+    const baseline = makeLiftingWing({ clAlphaDot: 0 });
+
+    // First call primes prevAoA on the augmented surface at high α.
+    const bodyHigh = bodyWithDescendingFlow(5);
+    const bodyLow = bodyWithDescendingFlow(1);
+    const dt = 1 / 60;
+    computeAeroForce(surface, bodyHigh, dt);
+    computeAeroForce(baseline, bodyHigh, dt);
+
+    // Second call at lower α. Augmented surface sees dα/dt < 0 → −CL delta.
+    const fAug = computeAeroForce(surface, bodyLow, dt);
+    const yAug = fAug.force.y;
+    const fBase = computeAeroForce(baseline, bodyLow, dt);
+    expect(yAug).toBeLessThan(fBase.force.y);
+  });
+
+  it('omitting dt at the call site disables augmentation even with non-zero clAlphaDot (back-compat gate)', () => {
+    const surface = makeLiftingWing({ clAlphaDot: 5 });
+    const baseline = makeLiftingWing({ clAlphaDot: 0 });
+
+    // Two calls without dt → augmentation gated off → matches baseline exactly.
+    const bodyLow = bodyWithDescendingFlow(1);
+    const bodyHigh = bodyWithDescendingFlow(5);
+    computeAeroForce(surface, bodyLow);
+    computeAeroForce(baseline, bodyLow);
+    const fAug = computeAeroForce(surface, bodyHigh);
+    const yAug = fAug.force.y;
+    const fBase = computeAeroForce(baseline, bodyHigh);
+    expect(yAug).toBeCloseTo(fBase.force.y, 12);
+  });
+
+  it('setGeometry resets prevAoA — next call behaves as a fresh first-tick', () => {
+    const surface = makeLiftingWing({ clAlphaDot: 5 });
+
+    const body = bodyWithDescendingFlow(3);
+    const dt = 1 / 60;
+    // Prime prevAoA.
+    computeAeroForce(surface, body, dt);
+    expect(surface.prevAoA).not.toBeUndefined();
+
+    // Re-set normal/chord (any rest-frame change) → prevAoA must clear.
+    surface.setGeometry({ normal: new Vector3(0, 1, 0), chord: new Vector3(0, 0, -1) });
+    expect(surface.prevAoA).toBeUndefined();
+
+    // Next call is a first-tick: no augmentation, prevAoA gets recorded.
+    const baseline = makeLiftingWing({ clAlphaDot: 0 });
+    const fAug = computeAeroForce(surface, body, dt);
+    const yAug = fAug.force.y;
+    const fBase = computeAeroForce(baseline, body, dt);
+    expect(yAug).toBeCloseTo(fBase.force.y, 12);
+    expect(surface.prevAoA).not.toBeUndefined();
+  });
+});
+

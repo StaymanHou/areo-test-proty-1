@@ -166,6 +166,37 @@ describe('parseAircraftConfig', () => {
     expect(() => parseAircraftConfig(bad2)).toThrow(/clQ/);
   });
 
+  // --- Per-surface AoA-rate damping (WP10.5 / β5 / D13) ---
+
+  it('clAlphaDot is undefined when absent (AeroSurface default 0 takes over downstream)', () => {
+    const cfg = parseAircraftConfig(validBaseline());
+    expect(cfg.surfaces[0]!.clAlphaDot).toBeUndefined();
+  });
+
+  it('parses an explicit numeric clAlphaDot (positive and negative)', () => {
+    const raw = validBaseline();
+    (raw.surfaces[0] as unknown as { clAlphaDot: number }).clAlphaDot = 1.5;
+    const cfg = parseAircraftConfig(raw);
+    expect(cfg.surfaces[0]!.clAlphaDot).toBe(1.5);
+
+    const raw2 = validBaseline();
+    (raw2.surfaces[0] as unknown as { clAlphaDot: number }).clAlphaDot = -0.25;
+    const cfg2 = parseAircraftConfig(raw2);
+    expect(cfg2.surfaces[0]!.clAlphaDot).toBe(-0.25);
+  });
+
+  it('rejects non-finite or non-numeric clAlphaDot', () => {
+    const bad = validBaseline();
+    (bad.surfaces[0] as unknown as { clAlphaDot: unknown }).clAlphaDot = '1.5';
+    expect(() => parseAircraftConfig(bad)).toThrow(/clAlphaDot/);
+    const bad2 = validBaseline();
+    (bad2.surfaces[0] as unknown as { clAlphaDot: number }).clAlphaDot = NaN;
+    expect(() => parseAircraftConfig(bad2)).toThrow(/clAlphaDot/);
+    const bad3 = validBaseline();
+    (bad3.surfaces[0] as unknown as { clAlphaDot: number }).clAlphaDot = Infinity;
+    expect(() => parseAircraftConfig(bad3)).toThrow(/clAlphaDot/);
+  });
+
   // --- Parametric curve schema (WP7 Phase A) ---
 
   const validParametricCurve = () => ({

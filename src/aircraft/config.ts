@@ -46,6 +46,13 @@ export interface AircraftSurfaceConfig {
    * See arch.md Revision 2026-05-11 ("Fallback path"/β4 hedge) and CONVENTIONS.md.
    */
   clQ?: number;
+  /**
+   * AoA-rate damping coefficient (β5). When non-zero AND the runtime supplies
+   * a physics dt to `computeAeroForce`, lift is augmented by `clAlphaDot · dα/dt`,
+   * damping the phugoid mode. Default undefined → no augmentation.
+   * See arch.md Revision 2026-05-12 (D13), CONVENTIONS.md, and SURFACE-2026-05-11-04.
+   */
+  clAlphaDot?: number;
 }
 
 export interface AircraftConfig {
@@ -204,6 +211,15 @@ export function parseAircraftConfig(raw: unknown): AircraftConfig {
       }
       clQ = s.clQ;
     }
+    let clAlphaDot: number | undefined;
+    if (s.clAlphaDot !== undefined) {
+      if (typeof s.clAlphaDot !== 'number' || !Number.isFinite(s.clAlphaDot)) {
+        throw new Error(
+          `aircraft config: surfaces[${i}].clAlphaDot must be a finite number`,
+        );
+      }
+      clAlphaDot = s.clAlphaDot;
+    }
     return {
       name: s.name,
       position: asVec3(s.position, `surfaces[${i}].position`),
@@ -217,6 +233,7 @@ export function parseAircraftConfig(raw: unknown): AircraftConfig {
       maxDeflectionRad,
       incidenceRad,
       clQ,
+      clAlphaDot,
     };
   });
 
