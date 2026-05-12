@@ -4,6 +4,38 @@ Surface-notes from workflow runs. Consumed and resolved by higher-level workflow
 
 ## Open
 
+### SURFACE-2026-05-12-03 — β5 (`clAlphaDot`) mechanism diverges at any tuning value — needs arch revision (likely D14)
+- **Source:** task:act (WP14.5 tuning attempts 1-3, 2026-05-12)
+- **Target level:** product:arch (analogous to D13 → D14 mechanism revision; or WP10.5-style schema fix WP)
+- **Type:** arch-gap / mechanism-design-bug
+- **Priority:** high (blocks WP14.5 tuning side; blocks any sustained-throttle Phase 2 mission per SURFACE-2026-05-12-01; gates WP15 takeoff/landing and WP16 combat for non-trivial flight envelopes)
+- **Summary:** WP14.5 attempted 3 tuning passes against the β5 mechanism at `src/aircraft/aerosurface.ts:475-483` (`cl += clAlphaDot · dα/dt` — raw rate, no V-normalization, no magnitude clamp). All three diverged catastrophically (alt to ±10³ to ±10¹² m, AS to 10⁵ to 10¹⁵ m/s within ~6s) at every tuning value tried:
+  - **Attempt 1 (wings=+5, h-stab=+10):** SURFACE-2026-05-12-01's suggested starting range. ALL three throttle bands (0.05, 0.15, 0.4) diverged within 1-2s — not just the high-throttle target. The "no-op in working regime" goal from `feedback_asymmetric_fix_no_op.md` was violated catastrophically.
+  - **Attempt 2 (wings=+1, h-stab=+2):** 5× smaller. Even worse — low/mid diverged in <2s; high diverged to 6.6e12 m alt, 8.4e14 m/s AS (vs pre-tune 6e10 m, 9e12 m/s — i.e. moving "with the wind" made divergence worse).
+  - **Attempt 3 (wings=-1, h-stab=-2):** Tested the sign-convention hypothesis (sign-flipped tuning). Still diverges, but with reversed direction (alt → -26533 instead of +10⁹). Both signs blow up; the magnitude is the issue, not the sign alone.
+- **Root cause (hypothesized):**
+  1. The β5 mechanism uses **raw `dα/dt`** in rad/s without non-dimensionalization. At physics-tick scale (dt=1/60s), even 1° of AoA change per tick produces dα/dt ≈ 1.05 rad/s. Multiplied by clAlphaDot=1, that's a CL augmentation of 1.05 — comparable to the entire steady-state CL. Startup transients amplify this further (the aircraft settles into glide attitude in the first few ticks, producing large dα/dt).
+  2. The mechanism creates a **positive-feedback loop** at certain sign/magnitude combinations: more lift → more pitch up → more α → more dα/dt → more lift.
+  3. **Sign convention is documented but not physically validated.** The β5 unit test at `aerosurface.test.ts:1135` literally asserts that positive clAlphaDot + rising α produces additional lift — but additional lift on a rising α is **destabilizing**, not damping (analogous to the SURFACE-2026-05-10-01 AoA sign-convention bug lesson). The arch.md D13 description claims "positive clAlphaDot dampens" but does not derive this from physics.
+- **Suggested action (arch-revision candidate D14):**
+  - **Option A — non-dimensional form:** change the mechanism to `cl += clAlphaDot · (dα/dt) · c̄ / (2V)`, where c̄ is a reference chord length and V is body airspeed. This matches the standard aerodynamic form of cl_α̇ damping coefficients (Etkin/Reid). Adds a floor `max(V, V_REF)` analogous to WP6.6's β4 fix to avoid 1/V singularity at low V.
+  - **Option B — magnitude clamp:** clamp `dα/dt` to [-DALPHA_MAX, DALPHA_MAX] (e.g., ±0.5 rad/s) before applying. Crude but kills the startup transient pathology.
+  - **Option C — physics-side fix:** revisit the sign convention. If the test at `aerosurface.test.ts:1135` is wrong about which sign damps, flip the sign in `aerosurface.ts:482` and update the assertion. Then re-test tuning with positive values.
+- **Verification approach when fixed:** the ≥30s Playwright probe at `tests/e2e/phugoid-probe.spec.ts` is already in place (3 test missions in `public/missions/`); just remove the `test.skip(...)` line at the top of the file. The probe exercises throttle ∈ {0.05, 0.15, 0.4}. The probe also serves as the "regression: descending-glide must still work" check (low throttle = the WP14 waypoint-patrol regime).
+- **Why we accept it for WP14.5 close:** Per `feedback_retune_attempt_budget.md`, three attempts refuted decisively. The mechanism is unsuitable for direct tuning. Continuing to tune would be wasted budget — the real fix is an arch-level revision of the mechanism (D13 → D14, analogous to how WP6.6 added V-scaling to β4 after WP6.5). WP14.5 closes as "tuning refuted; surfaced arch revision." The pre-WP14.5 baseline (clAlphaDot=0 everywhere) is unchanged — current behavior preserved.
+- **Memory anchors used during this task:** `feedback_retune_attempt_budget.md` (3-attempt cap held; option-c accepted); `feedback_surface_or_means_or.md` (single-knob changes per attempt — magnitude shrink, then sign flip); `feedback_asymmetric_fix_no_op.md` (revealed by violation: the mechanism is *not* a no-op in the working regime even at small coefficients, which is itself the diagnostic); `feedback_verify_self_envelope.md` (probed all three throttle bands — caught that Attempt 1 broke low-throttle too, not just high).
+- **Status:** pending — arch revision needed
+
+### SURFACE-2026-05-12-02 — Test-only probe missions are listed on player-facing mission-select
+- **Source:** task:act (WP14.5 T1, 2026-05-12)
+- **Target level:** feature:plan (small UX cleanup) or task
+- **Type:** test-fixture / UX-papercut
+- **Priority:** low
+- **Summary:** The three `phugoid-probe-{low,mid,high}` JSON files (test fixtures for WP14.5's ≥30s probe) had to be added to `public/missions/index.json` because `src/main.ts:353` gates `?mission=<id>` deep-link auto-start on manifest membership (`missionManifest.some(m => m.id === requestedMissionId)`). They now appear on the mission-select screen alongside Free Flight and Waypoint Patrol.
+- **Context:** Two clean fixes possible — (a) make the deep-link permissive: drop the manifest check, try to load the JSON directly, show error screen on fetch failure (the load already has the error path); (b) add a `hidden?: boolean` field to manifest entries and filter on render. Option (a) is smaller and also enables direct-URL access to any mission JSON that exists, which is useful for dev/test. Option (b) preserves manifest-as-allow-list discipline. Don't pick until someone asks.
+- **Suggested action:** Pick (a) or (b) after WP14.5 is closed; tiny task workflow.
+- **Status:** pending
+
 ### SURFACE-2026-05-12-01 — Phase 2 waypoint missions need non-zero `clAlphaDot` tuning to support sustained non-zero-throttle flight
 - **Source:** feature:build (WP14 Phase 1 verify-self, 2026-05-12)
 - **Target level:** product:wbs (likely a new WP14.5 — `clAlphaDot` tuning pass — analogous to WP10.5's schema-extension WP)
@@ -16,7 +48,8 @@ Surface-notes from workflow runs. Consumed and resolved by higher-level workflow
 - **Verification approach:** ≥30s Playwright probe at throttle values 0.05, 0.15, 0.4 — assert no NaN, bounded altitude/airspeed/pitch oscillation. Same probe planned for WP17 phase-2 verification per arch.md.
 - **Why we accept it for WP14 ship:** The mission framework + HUD + waypoint mechanics + objective ordering ALL get end-to-end coverage with the reduced-scope patrol. The arch limitation (phugoid undamped at non-zero throttle) is honestly documented. Without this surface, we'd either ship a NaN'ing mission or stall WP14 indefinitely.
 - **Memory anchors used:** `feedback_asymmetric_fix_no_op.md` (mission-local change is no-op for free-flight); `feedback_surface_or_means_or.md` (try ONE option — picked mission-geometry, not shared-config tuning); `feedback_retune_attempt_budget.md` (do not burn this WP's budget on shared-config tuning — escalate as separate WP).
-- **Status:** pending
+- **Update 2026-05-12 (WP14.5 task):** **Tuning side cannot close via parameter sweep — escalated to SURFACE-2026-05-12-03 (mechanism revision needed).** WP14.5 attempted 3 tuning passes (+5/+10, +1/+2, -1/-2 on wings/h-stab); all diverged catastrophically. The β5 mechanism at `aerosurface.ts:475-483` uses raw `dα/dt` (rad/s) with no V-normalization or magnitude clamp, producing CL augmentations comparable to steady-state CL at typical startup transients. WP14.5 closed via option-c (revert config to pre-tune defaults; skip the new phugoid-probe spec). This SURFACE remains open as the *mission-side* anchor; SURFACE-2026-05-12-03 is the *mechanism-side* anchor and is now the actual blocker.
+- **Status:** pending — blocked by SURFACE-2026-05-12-03 (β5 mechanism revision)
 
 ### SURFACE-2026-05-11-04 — Phugoid (long-period) mode is undamped at Phase 1 airframe
 - **Source:** feature:build (WP7 Phase E retune attempts 1 + 2, 2026-05-11)

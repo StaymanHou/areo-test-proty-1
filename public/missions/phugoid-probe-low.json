@@ -1,0 +1,11 @@
+{
+  "id": "phugoid-probe-low",
+  "name": "Phugoid Probe (throttle=0.05)",
+  "type": "free-flight",
+  "spawn": {
+    "position": { "x": 0, "y": 50, "z": 0 },
+    "linvel": { "x": 0, "y": 0, "z": -30 },
+    "throttle": 0.05
+  },
+  "objectives": []
+}

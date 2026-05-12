@@ -7,3 +7,4 @@
 - **Milestone:** Free flight mission (Phase 2 roadmap).
 - **Feature shipped:** WP14 waypoint patrol mission — 2-waypoint glide-reachable patrol with ordered objective tracking + HUD waypoint-arrow wiring + 30s timeout fail; reduced scope from planned 4-waypoint loop because SURFACE-2026-05-12-01 (phugoid tuning side) gates sustained-throttle flight.
 - **Milestone:** Waypoint navigation mission (Phase 2 roadmap).
+- **Task closed:** WP14.5 `clAlphaDot` tuning pass — option-c disposition; 3 tuning attempts (+5/+10, +1/+2, -1/-2) all diverged catastrophically, surfacing SURFACE-2026-05-12-03 (β5 mechanism in `aerosurface.ts` is dimensionally mismatched and needs arch-level revision); no config change shipped, phugoid-probe spec landed under `test.skip` for re-use after the mechanism revision.
