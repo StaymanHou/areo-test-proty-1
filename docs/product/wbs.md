@@ -1,7 +1,7 @@
 ---
 stage: wbs
 state: in-progress
-updated: 2026-05-12 (Phase 2 arch revision — D11/D12/D13 landed in arch.md. Phase 2 WBS updated: WP10 description reflects decisions taken; new WP10.5 inserts β5 clAlphaDot schema extension between WP10 and WP11; WP11/WP12 specs locked to D11/D12; WP17 augmented with ≥30s phugoid-damping probe. Phase 1 entries unchanged.)
+updated: 2026-05-12 (WP10 + WP10.5 DONE — Phase 2 arch revision landed and β5 schema-extension shipped. WP10.5 closes the architectural side of SURFACE-2026-05-11-04. Phase 2 continues with WP11/WP12 next.)
 ---
 
 # Work Breakdown Structure
@@ -202,20 +202,22 @@ T-shirt sizing: **XS** ≤ 2h · **S** ≤ half day · **M** ≤ 1 day · **L** 
 - [x] Update D11/D12/D13 highlights into `arch.md` "Key Decisions" list for discoverability.
 - [x] Bump `wbs.md` Phase 2: insert WP10.5; lock WP11/WP12 specs to D11/D12; augment WP17 with phugoid probe.
 
-### WP10.5: β5 (`clAlphaDot`) schema extension
-**Description:** Implements arch revision D13 — adds `clAlphaDot?: number` to `AircraftSurfaceConfig` and `AeroSurfaceConfig`, plumbs it through `parseAircraftConfig` → `AeroSurface` constructor, and augments `computeAeroForce`'s CL by `clAlphaDot · dα/dt` (finite difference over the fixed physics timestep). Default 0 → bit-for-bit parity with current 246-test suite. First-tick handling skips the augmentation (no previous-AoA reference). Same shape as WP6.5/WP6.6 schema extensions. Closes the architectural side of SURFACE-2026-05-11-04 (tuning is a downstream Phase 2 concern, expected per WP14/WP16).
+### WP10.5: β5 (`clAlphaDot`) schema extension — DONE 2026-05-12
+**Description:** Implements arch revision D13 — adds `clAlphaDot?: number` to `AircraftSurfaceConfig` and `AeroSurfaceConfig`, plumbs it through `parseAircraftConfig` → `AeroSurface` constructor, and augments `computeAeroForce`'s CL by `clAlphaDot · dα/dt` (finite difference over the fixed physics timestep). Default 0 → bit-for-bit parity with current 246-test suite. First-tick handling skips the augmentation (no previous-AoA reference). Same shape as WP6.5/WP6.6 schema extensions. Closes the **architectural** side of SURFACE-2026-05-11-04 (tuning side remains open per WP14/WP16/WP17). Shipped in commit `7b2018d` (arch revision commit `1410fb2`).
 **Phase:** 2
 **Dependencies:** WP10
-**Size:** XS
+**Size:** XS (actual: ~XS — single-pass build, no back-loops)
 **Tasks:**
-- [ ] Add `clAlphaDot?: number` to `AircraftSurfaceConfig` and `AeroSurfaceConfig`; finite-number validation in `parseAircraftConfig`.
-- [ ] Thread through `flightmodel.ts` and `AeroSurface` constructor; add `prevAoA: number | undefined` field on the surface instance.
-- [ ] In `computeAeroForce`: on first call (prevAoA undefined) → baseline behavior, store current AoA as prevAoA; on subsequent calls → compute `dα/dt = (α_now − α_prev) / dt_physics`, augment CL by `clAlphaDot · dα/dt`, update prevAoA. Allocation-free.
-- [ ] Update CONVENTIONS.md with the β5 sign convention (positive `clAlphaDot` damps AoA rise) and the first-tick contract.
-- [ ] Tests: (a) default `clAlphaDot=0` → bit-for-bit parity (existing 246 cases unchanged); (b) constant-α with non-zero `clAlphaDot` → zero augmentation; (c) increasing α with positive `clAlphaDot` → augmented lift in +α direction; (d) first-tick → baseline only; (e) config-parse: absent / numeric / non-finite.
-- [ ] `aircraft.json` ships unchanged (no `clAlphaDot` set → default 0). Non-zero tuning is deferred to whichever Phase 2 mission first surfaces the need.
-- [ ] verify-auto: full Vitest suite green (target 250+/250+), tsc clean, `npm run test:e2e` 1/1 green.
-- [ ] verify-self: confirm `clAlphaDot=0` regression — `npm run test:e2e` smoke passes (no behavior change vs current Phase 1 baseline).
+- [x] Add `clAlphaDot?: number` to `AircraftSurfaceConfig` and `AeroSurfaceConfig`; finite-number validation in `parseAircraftConfig`.
+- [x] Thread through `flightmodel.ts` and `AeroSurface` constructor; add `prevAoA: number | undefined` field on the surface instance.
+- [x] In `computeAeroForce`: triple-gated on `clAlphaDot !== 0` AND `dt !== undefined` AND `prevAoA !== undefined` — augmentation `CL += clAlphaDot · dα/dt`; `prevAoA` updated every call so the next finite difference is primed; first call always skips augmentation. Allocation-free.
+- [x] `computeAeroForce(surface, body, dt?)` and `FlightModel.applyForces(throttle, dt?)` — dt threaded from `src/main.ts:65`. Optional argument preserves all existing test fixtures.
+- [x] CONVENTIONS.md β5 paragraph appended after the β4 block — sign convention, physics-dt requirement, first-tick contract, setGeometry-resets-prevAoA invariant.
+- [x] Tests: 7 new aero (default-zero parity, first-tick contract, constant-α zero augmentation, rising/falling α sign convention, dt-omitted gate, setGeometry resets prevAoA) + 3 new config-parse (absent / numeric / non-finite).
+- [x] `aircraft.json` ships unchanged — default 0 → bit-for-bit Phase 1 parity preserved.
+- [x] verify-auto: scoped vitest aerosurface.test + config.test 99/99 in 149ms; tsc strict clean.
+- [x] verify-self: full Vitest 256/256 (was 246, +10 new β5); `npm run build` 152ms clean; `npm run test:e2e` 1/1 in 7.5s (WP9.5+9.6 regression anchor preserved); browser at `?debug=true` boots clean, `window.__aircraft.getState()` finite at 5s (position z=-157, aircraft moved 157m from spawn), zero NaN/Infinity in 128 console messages.
+- [x] verify-codify: feature deliverable IS the codified regression suite; integration-boundary anchor is `tests/e2e/casual-flight.spec.ts` (already covers the consuming surface end-to-end).
 
 ### WP11: Mission framework
 **Description:** Core mission runner per **D11** (declarative JSON + optional script hook). `src/mission/loader.ts` loads `public/missions/<id>.json`; `src/mission/runner.ts` owns the lifecycle (load → start → tick → complete/fail) and reads aircraft state via the typed `AircraftState` interface (not via `window.__aircraft`). Emits objective state changes to the HUD. Script-hook registry under `src/mission/hooks/` (empty in WP11; WP16 registers `combat-ai`).
@@ -404,4 +406,7 @@ Paused after WP9.6 shipped + finalized (commits 70b2c2b + d6d1c0e). Phase 1 clos
 
 ## WBS Update — 2026-05-12 (Phase 2 arch revision)
 WP10 closed under operator-as-architect (full-autopilot deviation per `feedback_operator_as_external.md`). Three architectural decisions landed in `arch.md` Revision 2026-05-12: **D11** (declarative-JSON missions + optional script hook), **D12** (DOM-overlay HUD), **D13** (β5 `clAlphaDot` AoA-rate damping — closes SURFACE-2026-05-11-04 architecturally). WBS updates: WP10 marked DONE; **new WP10.5** inserted as the β5 schema-extension WP (XS); WP11/WP12/WP14/WP16/WP17 task lists locked to the binding D11/D12/D13 specs; WP17 augmented with a ≥30s phugoid probe per D13. Critical path now: `... → WP10 → WP10.5 → WP11 → WP16 → ...`. Phase 1 entries (WP1–WP9.6) unchanged.
+
+## WP10.5 Shipped — 2026-05-12
+β5 `clAlphaDot` schema extension landed in commits `1410fb2` (arch revision) + `7b2018d` (code + tests). Single-pass build with no back-loops. 256/256 Vitest + 1/1 Playwright + tsc strict + build clean. Default 0 preserves Phase 1 bit-for-bit parity. SURFACE-2026-05-11-04 moved to "partial — architectural side resolved; tuning side pending Phase 2 (WP14/WP16/WP17)". Next WP: **WP11** (mission framework, D11) or **WP12** (HUD, D12) — parallel-trackable.
 
