@@ -1,7 +1,7 @@
 ---
 stage: wbs
 state: in-progress
-updated: 2026-05-12 (WP10 + WP10.5 + WP11 + WP12 DONE — Phase 2 arch revision, β5 schema, mission framework, and HUD all shipped same day. HUD now live in-mission: alt/airspeed/throttle readouts, objective text, status banner, waypoint arrow (projection-ready for WP14). Next: WP13–WP16 mission content (parallel-trackable; WP14/WP15/WP16 are S/M/L).)
+updated: 2026-05-12 (WP10 + WP10.5 + WP11 + WP12 + WP13 + WP14 DONE — Phase 2 arch revision, β5 schema, mission framework, HUD, free-flight close, and waypoint patrol all shipped same day. Two mission types playable end-to-end with HUD overlay and Escape-to-menu. Next: WP14.5 clAlphaDot tuning (SURFACE-2026-05-12-01 — unblocks high-energy patrols + WP15 + WP16), WP15 takeoff/landing M, WP16 combat L.)
 ---
 
 # Work Breakdown Structure
@@ -263,17 +263,28 @@ T-shirt sizing: **XS** ≤ 2h · **S** ≤ half day · **M** ≤ 1 day · **L** 
 - [x] Mission definition: free-flight.json (shipped at WP11 — zero objectives, infinite duration via no timeout/oob bounds).
 - [x] Exit condition: Escape key triggers `runner.abort()`; main.ts skips the outcome banner when `wasAborted()` is true; mission-select re-renders silently.
 
-### WP14: Waypoint mission
-**Description:** Ordered checkpoints in 3D space, timer, objective shows next waypoint + distance. HUD shows waypoint arrow.
+### WP14: Waypoint mission — DONE 2026-05-12 (reduced scope per SURFACE-2026-05-12-01)
+**Description:** Ordered reach-waypoint navigation with timeout fail. Two ordered waypoints at descending altitude (y=30→y=20, z=-150→z=-250, radius=100m each), spawn throttle=0, timeoutSec=30. Glide-reachable mission scope. The original plan (4-waypoint patrol loop with spawn throttle=0.4 for sustained flight) hit SURFACE-2026-05-11-04 phugoid-NaN within ~3s of mission start — the two-SURFACE dual (cannot mitigate descending-glide without surfacing phugoid divergence at this airframe) forced a back-loop. Ship-side close: mission within the working envelope; tuning-side close (non-zero `clAlphaDot`) is the new SURFACE-2026-05-12-01 → likely WP14.5 (analogous to WP10.5 schema-extension WP). Shipped in commit `a64b115`.
 **Phase:** 2
 **Dependencies:** WP11, WP12
-**Size:** S
+**Size:** S (actual: ~S — F9b back-loop after initial verify-self NaN; 2-phase build; 1 SURFACE event escalated to WBS)
 **Tasks:**
-- [ ] Mission JSON: ordered `reach-waypoint` objectives per D11 schema; `timeoutSec` for fail-on-timeout.
-- [ ] Runner already handles ordering via `Objective.order`; verify enforcement.
-- [ ] HUD: current waypoint distance + directional arrow (driven by `setWaypointArrow(worldPos)` per D12).
-- [ ] Win: last waypoint cleared. Fail: timer expires.
-- [ ] First Phase 2 candidate for non-zero `clAlphaDot` tuning if the descending-glide attractor proves unplayable for sustained waypoint runs (per D13 — verify against ≥30s probe).
+- [x] Mission JSON: 2 ordered `reach-waypoint` objectives per D11 schema; `failCondition: 'timeout'`, `timeoutSec: 30`. Spawn throttle=0 (glide envelope, post-back-loop).
+- [x] Runner ordering enforcement: verified end-to-end at /?mission=waypoint-patrol (HUD shows "Fly to waypoint (1/2)" → "(2/2)" as the player progresses).
+- [x] HUD waypoint-arrow: `getActiveWaypointPosition(objectives, states)` in `src/hud/format.ts` feeds `hud.setWaypointArrow` each frame in `main.ts onRender`. 6 unit tests. E2E asserts arrow element renders in DOM at /?mission=waypoint-patrol.
+- [x] Win/fail wiring: runner already handles all-objectives win + timeout fail (WP11). End-to-end works via existing statusChange listener.
+- [ ] (Deferred to WP14.5) Non-zero `clAlphaDot` tuning — SURFACE-2026-05-12-01 logged. WP14 ships within the glide envelope; sustained-throttle patrols wait on the tuning pass.
+
+### WP14.5: `clAlphaDot` tuning pass — pending
+**Description:** Tuning-side close of SURFACE-2026-05-11-04 + SURFACE-2026-05-12-01. Set non-zero `clAlphaDot` on wings (try starting ~5-10) and h-stab (try ~10-15) in `aircraft.json`; verify against ≥30s Playwright probe at non-zero throttle values 0.05, 0.15, 0.4 per arch D13. If tuning works, follow-up may amend `waypoint-patrol.json` to a longer/higher patrol or seed a fresh ambitious-patrol mission. Analogous to WP10.5 in shape (schema landed there with default 0; this is the values pass).
+**Phase:** 2
+**Dependencies:** WP10.5 (schema), WP14 (first mission that needs it)
+**Size:** XS-S (tuning iteration with bounded attempt budget per `feedback_retune_attempt_budget.md`)
+**Tasks:**
+- [ ] Set `clAlphaDot` on `aircraft.json` wings + h-stab (one knob each per surface; default 0 ships unchanged for surfaces not tuned).
+- [ ] Verify-self via 30s Playwright probe at throttle ∈ {0.05, 0.15, 0.4} — assert no NaN, bounded altitude/airspeed/pitch.
+- [ ] If tuning fits inside 2-3 attempts: amend WP14 mission to longer patrol OR add a separate ambitious-patrol mission.
+- [ ] If tuning does not converge: surface as a deeper arch concern (would need WP10-style arch revision).
 
 ### WP15: Takeoff/landing mission
 **Description:** Airfield with a runway. Detect wheels-down on runway within bounds + safe vertical speed. Objective: take off, pattern around, land.
@@ -428,3 +439,13 @@ Paused at the post-WP11 fork. WP10 + WP10.5 + WP11 all shipped this session (ful
 ## WP12 Shipped — 2026-05-12
 HUD (DOM overlay per D12) — `src/hud/HUD.ts` interface + `src/hud/dom-hud.ts` implementation + `src/hud/format.ts` helper + main.ts wiring — landed in commit `dd9c0ed`. Three phases, single-pass build, no back-loops. 8 files changed (+712 LOC). 374/374 Vitest (was 345, +29 hud) + 6/6 Playwright (was 4, +2 hud) + tsc strict + build clean. Live browser subagent verified HUD lifecycle end-to-end at `/` + `/?mission=free-flight`. Next: WP13 (free flight, XS — could be a small task or WBS mark-done; framework already validates), WP14 (waypoint, S — needs WP12 ✓ now), WP15 (takeoff/landing, M), WP16 (combat, L). Phase 2 verification (WP17) blocked until all four mission types playable.
 
+
+## WP13 Shipped — 2026-05-12
+Free flight closure via task workflow — Escape-key player-initiated abort path. Mission JSON shipped at WP11; HUD at WP12; this is the missing player exit per WBS task list. New `'returnToMenu'` ActionName mapped to Escape; `MissionRunner.abort()` + `wasAborted()`; main.ts statusChange listener branches on wasAborted to bypass the "MISSION FAILED" banner. Commit `cdeb77a`. 379/379 Vitest (+5) + 7/7 Playwright (+1) + tsc strict + build clean. Roadmap milestone "Free flight mission" now checked off.
+
+## WP14 Shipped — 2026-05-12 (reduced-scope; WP14.5 logged)
+Waypoint patrol mission — 2 ordered reach-waypoints at descending altitude, glide-reachable from spawn, 30s timeout. Helper `getActiveWaypointPosition` in `src/hud/format.ts` feeds the HUD waypoint-arrow each frame in main.ts onRender. Commit `a64b115`. 385/385 Vitest (+6 helper) + 9/9 Playwright (+2 WP14) + tsc strict + build clean.
+
+**Back-loop captured:** initial plan set spawn throttle=0.4 to mitigate SURFACE-2026-05-11-02 descending-glide. Verify-self at /?mission=waypoint-patrol hit NaN within ~3s — the SURFACE-2026-05-11-04 phugoid divergence under non-zero throttle forcing. The two open SURFACE items are dual at this airframe (cannot mitigate -11-02 without surfacing -11-04). Ship-side response: mission scope reduced to a glide-reachable short patrol; tuning-side close (non-zero `clAlphaDot`) logged as new SURFACE-2026-05-12-01 → **WP14.5** inserted into WBS as the tuning-pass WP (analogous to WP10.5 schema-extension). High-energy/longer patrols wait on WP14.5.
+
+Next: **WP14.5** (clAlphaDot tuning — unblocks WP15 takeoff/landing + WP16 combat too), then WP15 (takeoff/landing, M), WP16 (combat, L), WP17 (Phase 2 verification).

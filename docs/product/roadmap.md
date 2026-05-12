@@ -1,7 +1,7 @@
 ---
 stage: roadmap
 state: in-progress
-updated: 2026-05-12 (WP10–WP13 — Phase 2 arch revision + β5 schema + mission framework + HUD + free-flight all shipped 2026-05-12. Mission framework + free-flight + Mission select/HUD milestones complete; 3 mission-content WPs remaining: WP14 waypoint, WP15 takeoff/landing, WP16 combat.)
+updated: 2026-05-12 (WP10–WP14 — Phase 2 arch revision + β5 schema + mission framework + HUD + free-flight + waypoint all shipped 2026-05-12. Mission framework + free-flight + waypoint + Mission select/HUD milestones complete; 2 mission-content WPs remaining: WP15 takeoff/landing, WP16 combat. WP14.5 clAlphaDot tuning pass inserted to unblock sustained-throttle missions.)
 ---
 
 # Roadmap
@@ -27,7 +27,7 @@ updated: 2026-05-12 (WP10–WP13 — Phase 2 arch revision + β5 schema + missio
 **Milestones:**
 - [x] Mission framework: load mission definition, track objectives, win/lose states — WP11 (2026-05-12, commit `690788a`)
 - [x] Free flight mission (no objectives, just a map) — WP13 (mission JSON shipped at WP11; Escape-to-menu abort closed it 2026-05-12)
-- [ ] Waypoint navigation mission (fly through ordered checkpoints, timer) — WP14
+- [x] Waypoint navigation mission (fly through ordered checkpoints, timer) — WP14 (reduced-scope glide-reachable patrol shipped 2026-05-12, commit `a64b115`; high-energy patrol awaits WP14.5 clAlphaDot tuning)
 - [ ] Takeoff/landing mission (airfield with runway, touchdown detection) — WP15
 - [ ] Combat mission: basic weapons, one AI enemy (air or ground), damage model — WP16
 - [x] Mission select screen and in-mission HUD (altitude, speed, objective) — WP11 mission-select + WP12 HUD (2026-05-12, commits `690788a` + `dd9c0ed`)
