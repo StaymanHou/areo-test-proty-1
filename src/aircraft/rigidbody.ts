@@ -10,6 +10,7 @@ import {
 } from 'three';
 import type { AircraftConfig } from './config';
 import type { BodyState } from './aerosurface';
+import type { Vec3Plain } from './state';
 
 // Visual placeholder: fuselage box + L/R wing slabs (purely cosmetic; physics is single body).
 function buildPlaceholderMesh(config: AircraftConfig): Group {
@@ -119,6 +120,25 @@ export class Aircraft {
   /** Convenience: shared scratch state. Reused across calls — copy if retaining. */
   get bodyState(): BodyState {
     return this._state;
+  }
+
+  /**
+   * Teleport the body to a spawn pose: position + linear velocity + identity
+   * rotation + zeroed angular velocity. Used by the mission runner on mission
+   * start / restart (return-to-select flow). Wakes the body if it was sleeping.
+   *
+   * The accompanying `FlightModel.resetSurfaceState()` call resets per-surface
+   * deflection + the WP10.5 β5 `prevAoA` cache — without that the first tick
+   * after restart would compute `dα/dt` against a stale α from the prior
+   * mission run. Both must be called together for a clean restart; this
+   * separation is deliberate (single-responsibility — Aircraft owns the rigid
+   * body, FlightModel owns the aerosurface state).
+   */
+  reset(position: Vec3Plain, linvel: Vec3Plain): void {
+    this.body.setTranslation({ x: position.x, y: position.y, z: position.z }, true);
+    this.body.setRotation(_identityRot, true);
+    this.body.setLinvel({ x: linvel.x, y: linvel.y, z: linvel.z }, true);
+    this.body.setAngvel({ x: 0, y: 0, z: 0 }, true);
   }
 
   /**

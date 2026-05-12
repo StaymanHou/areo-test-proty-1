@@ -13,6 +13,11 @@ import { attachFlightModelTuning } from './engine/tuning';
 import { FlatTerrain } from './world/terrain';
 import { createProceduralSkybox } from './world/skybox';
 import { createRunway, createTower } from './world/landmarks';
+import { createAircraftState, toAircraftState } from './aircraft/state';
+import { loadMission, loadMissionList } from './mission/loader';
+import { MissionRunner } from './mission/runner';
+import { MissionSelectScreen } from './mission/select';
+import type { Mission, MissionManifestEntry } from './mission/types';
 
 async function bootstrap() {
   const mount = document.querySelector<HTMLDivElement>('#app');
@@ -48,14 +53,24 @@ async function bootstrap() {
   scene.add(tower.mesh);
   world.createCollider(tower.colliderDesc);
 
+  // Aircraft spawns at a placeholder (0,0,0). Aircraft.reset(spawn) is called
+  // by startMission() before the loop unpauses, so the placeholder is never
+  // visually observed during normal play.
   const aircraft = new Aircraft(world, config, {
-    position: new Vector3(0, 50, 0),
-    linvel: new Vector3(0, 0, -30),
+    position: new Vector3(0, 0, 0),
+    linvel: new Vector3(0, 0, 0),
   });
   scene.add(aircraft.mesh);
 
   const flightModel = new FlightModel(aircraft);
   const controls = new Controls(input);
+
+  // WP11 mission framework wiring.
+  const missionSelect = new MissionSelectScreen();
+  const missionRunner = new MissionRunner();
+  const aircraftStateBuf = createAircraftState();
+  let activeMission: Mission | null = null;
+  let missionManifest: MissionManifestEntry[] = [];
 
   const loop = new GameLoop(
     {
@@ -65,6 +80,12 @@ async function bootstrap() {
         flightModel.applyForces(controls.throttle, dt);
         world.timestep = dt;
         world.step();
+        // Tick the mission runner AFTER the physics step so it observes
+        // post-step aircraft state for objective/win/fail evaluation.
+        if (missionRunner.getStatus() === 'running') {
+          toAircraftState(aircraft.readBodyState(), aircraftStateBuf);
+          missionRunner.tick(aircraftStateBuf, dt);
+        }
       },
       onRender: () => {
         aircraft.syncMesh();
@@ -213,7 +234,74 @@ async function bootstrap() {
     };
   }
 
+  // WP11 boot flow: load the manifest, then either auto-start a mission named
+  // in `?mission=<id>` or render the mission-select screen. The loop starts
+  // paused; `startMission` unpauses it once the mission is ready.
+  loop.setPaused(true);
   loop.start();
+
+  async function startMission(id: string): Promise<void> {
+    let mission: Mission;
+    try {
+      mission = await loadMission(id);
+    } catch (err) {
+      console.error(`Failed to load mission "${id}":`, err);
+      // Re-show the select screen with the error state.
+      missionSelect.show(missionManifest, { errorForId: id });
+      return;
+    }
+    activeMission = mission;
+    aircraft.reset(mission.spawn.position, mission.spawn.linvel);
+    flightModel.resetSurfaceState();
+    // Reset live control state (avoids the prior mission's stick deflections
+    // carrying over into a fresh start).
+    controls.aileron = 0;
+    controls.elevator = 0;
+    controls.rudder = 0;
+    controls.throttle = mission.spawn.throttle;
+    missionRunner.start(mission);
+    missionSelect.hide();
+    loop.setPaused(false);
+  }
+
+  // Status-change listener — on terminal state (won/failed), pause the loop,
+  // briefly show the outcome banner, then return to the select screen.
+  missionRunner.on('statusChange', () => {
+    const status = missionRunner.getStatus();
+    if (status !== 'won' && status !== 'failed') return;
+    if (activeMission === null) return;
+    const missionName = activeMission.name;
+    loop.setPaused(true);
+    void missionSelect.showOutcome(status, missionName).then(() => {
+      activeMission = null;
+      missionSelect.show(missionManifest);
+    });
+  });
+
+  missionSelect.onSelect((id) => {
+    void startMission(id);
+  });
+
+  try {
+    missionManifest = await loadMissionList();
+  } catch (err) {
+    console.error('Failed to load mission manifest:', err);
+    missionManifest = [];
+  }
+
+  // `?mission=<id>` deep-link: if present, try auto-start. If the id is not in
+  // the manifest, fall back to the select screen with an error.
+  const params = new URLSearchParams(window.location.search);
+  const requestedMissionId = params.get('mission');
+  if (requestedMissionId !== null) {
+    if (missionManifest.some((m) => m.id === requestedMissionId)) {
+      await startMission(requestedMissionId);
+    } else {
+      missionSelect.show(missionManifest, { errorForId: requestedMissionId });
+    }
+  } else {
+    missionSelect.show(missionManifest);
+  }
 }
 
 bootstrap().catch((err) => {

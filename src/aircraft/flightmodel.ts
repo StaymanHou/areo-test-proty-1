@@ -86,6 +86,22 @@ export class FlightModel {
   }
 
   /**
+   * Reset every surface's per-tick state to its post-construction baseline:
+   * deflection zeroed (via `setDeflection(0)` which restores the rest-frame
+   * normal/chord), and the WP10.5 β5 `prevAoA` cache cleared so the first
+   * tick after this reset has no stale α reference. Used by the mission
+   * runner on mission start / restart, paired with `Aircraft.reset`.
+   * Allocation-free.
+   */
+  resetSurfaceState(): void {
+    for (let i = 0; i < this.surfaces.length; i++) {
+      const s = this.surfaces[i]!;
+      s.setDeflection(0);
+      s.prevAoA = undefined;
+    }
+  }
+
+  /**
    * Translate normalized control inputs into per-surface deflections.
    * Each routed surface receives `controls[axis] * sign * surface.maxDeflectionRad`.
    * Surfaces not in any route are left at deflection 0.

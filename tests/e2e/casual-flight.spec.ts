@@ -27,7 +27,13 @@ test('casual flight: aircraft remains finite, moves from spawn, no NaN/Infinity 
     if (/NaN|Infinity/i.test(text)) consoleNaN.push(text);
   });
 
-  await page.goto('/?debug=true');
+  // WP11 compat path: `?mission=free-flight` auto-starts the free-flight
+  // mission, skipping the mission-select screen. The free-flight mission's
+  // spawn matches WP9.6's hardcoded baseline bit-for-bit, so this test's
+  // assertions (finite state at 5s, moved from spawn, no NaN) continue to
+  // pass unchanged. `?debug=true` keeps the `__aircraft` telemetry global
+  // available for the assertions below.
+  await page.goto('/?mission=free-flight&debug=true');
 
   await page.waitForFunction(
     () => typeof window.__aircraft !== 'undefined' && typeof window.__aircraft.getState === 'function',

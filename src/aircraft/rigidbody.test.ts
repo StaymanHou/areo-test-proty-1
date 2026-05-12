@@ -207,3 +207,63 @@ describe('Aircraft (rigidbody)', () => {
     expect(aircraft.body.isSleeping()).toBe(false);
   });
 });
+
+describe('Aircraft — WP11: reset() for mission restart', () => {
+  it('teleports body to the supplied position', () => {
+    const world = new RAPIER.World({ x: 0, y: -9.81, z: 0 });
+    const aircraft = new Aircraft(world, config, {
+      position: new Vector3(100, 200, -50),
+      linvel: new Vector3(1, 2, 3),
+    });
+    aircraft.reset({ x: 0, y: 50, z: 0 }, { x: 0, y: 0, z: -30 });
+    const t = aircraft.body.translation();
+    expect(t.x).toBe(0);
+    expect(t.y).toBe(50);
+    expect(t.z).toBe(0);
+  });
+
+  it('sets linear velocity to the supplied value', () => {
+    const world = new RAPIER.World({ x: 0, y: 0, z: 0 });
+    const aircraft = new Aircraft(world, config);
+    aircraft.reset({ x: 0, y: 50, z: 0 }, { x: 5, y: -2, z: -30 });
+    const lv = aircraft.body.linvel();
+    expect(lv.x).toBe(5);
+    expect(lv.y).toBe(-2);
+    expect(lv.z).toBe(-30);
+  });
+
+  it('zeros angular velocity', () => {
+    const world = new RAPIER.World({ x: 0, y: 0, z: 0 });
+    const aircraft = new Aircraft(world, config);
+    aircraft.body.setAngvel({ x: 1, y: 2, z: 3 }, true);
+    aircraft.reset({ x: 0, y: 50, z: 0 }, { x: 0, y: 0, z: -30 });
+    const av = aircraft.body.angvel();
+    expect(av.x).toBe(0);
+    expect(av.y).toBe(0);
+    expect(av.z).toBe(0);
+  });
+
+  it('resets rotation to identity', () => {
+    const world = new RAPIER.World({ x: 0, y: 0, z: 0 });
+    const aircraft = new Aircraft(world, config);
+    // Rotate the body to a non-identity quaternion (90° about X — nose up).
+    aircraft.body.setRotation(
+      { x: Math.sin(Math.PI / 4), y: 0, z: 0, w: Math.cos(Math.PI / 4) },
+      true,
+    );
+    aircraft.reset({ x: 0, y: 50, z: 0 }, { x: 0, y: 0, z: -30 });
+    const r = aircraft.body.rotation();
+    expect(r.x).toBe(0);
+    expect(r.y).toBe(0);
+    expect(r.z).toBe(0);
+    expect(r.w).toBe(1);
+  });
+
+  it('does not add additional colliders (no aircraft-state leakage on restart)', () => {
+    const world = new RAPIER.World({ x: 0, y: 0, z: 0 });
+    const aircraft = new Aircraft(world, config);
+    const colliderCountBefore = aircraft.body.numColliders();
+    aircraft.reset({ x: 0, y: 50, z: 0 }, { x: 0, y: 0, z: -30 });
+    expect(aircraft.body.numColliders()).toBe(colliderCountBefore);
+  });
+});

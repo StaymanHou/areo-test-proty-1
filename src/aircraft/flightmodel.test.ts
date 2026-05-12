@@ -367,4 +367,32 @@ describe('FlightModel', () => {
     const elapsed = performance.now() - start;
     expect(elapsed).toBeLessThan(50);
   });
+
+  // --- WP11: resetSurfaceState for mission restart ---
+
+  it('resetSurfaceState zeros every surface deflection', () => {
+    const world = new RAPIER.World({ x: 0, y: 0, z: 0 });
+    const aircraft = new Aircraft(world, config);
+    const fm = new FlightModel(aircraft);
+    fm.applyControls({ aileron: 0.5, elevator: 0.5, rudder: 0.5 });
+    // Confirm deflections are non-zero before reset.
+    expect(fm.surfaces.some((s) => s.deflection !== 0)).toBe(true);
+    fm.resetSurfaceState();
+    for (const s of fm.surfaces) {
+      expect(s.deflection).toBe(0);
+    }
+  });
+
+  it('resetSurfaceState clears the β5 prevAoA cache on every surface', () => {
+    const world = new RAPIER.World({ x: 0, y: -9.81, z: 0 });
+    const aircraft = new Aircraft(world, config, { linvel: new Vector3(0, 0, -30) });
+    const fm = new FlightModel(aircraft);
+    // Prime prevAoA with a tick that exercises the live path.
+    fm.applyForces(0.5, 1 / 60);
+    expect(fm.surfaces.some((s) => s.prevAoA !== undefined)).toBe(true);
+    fm.resetSurfaceState();
+    for (const s of fm.surfaces) {
+      expect(s.prevAoA).toBeUndefined();
+    }
+  });
 });
