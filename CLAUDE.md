@@ -73,7 +73,8 @@ No Docker. No backend.
 - **Write code for a casual-gamer audience.** "Feels right" beats "is accurate." When tuning a constant, the test is whether a non-pilot player says "yeah, that's how a plane should behave."
 
 ### Testing
-- Unit tests for pure physics math (aerosurface lift/drag at known α, stall behavior). Test framework: Vitest (default with Vite, TBD at WP1).
+- Unit tests for pure physics math (aerosurface lift/drag at known α, stall behavior). Test framework: Vitest (default with Vite, TBD at WP1). Run via `npm run test`.
+- End-to-end browser tests: `@playwright/test` (adopted WP9.6). Run via `npm run test:e2e`. Lives under `tests/e2e/`. Currently a single load-bearing smoke (`casual-flight.spec.ts`) — the WP9.5 collider-fix regression anchor; loads `?debug=true`, waits 5s, asserts via `window.__aircraft.getState()` that altitude/airspeed are finite, aircraft moved from spawn, no NaN/Infinity in console. Chromium-only at this phase (cross-browser is WP21). Keep this suite tiny per the "Playwright tests are flaky" trap noted in SURFACE-2026-05-09-01.
 - No integration tests for the render loop — validation is playtesting.
 
 ## Current Phase
@@ -84,7 +85,7 @@ No Docker. No backend.
 
 **Exit criteria:** A developer can open the dev URL, take off, fly around, and crash — and it feels right. 60fps on a mid-range laptop in Chrome / Safari / Firefox.
 
-**Status (2026-05-11, post-WP9.5):** WP1–WP8 all shipped. **WP9.5 DONE — collider fix shipped.** SURFACE-2026-05-11-05 RESOLVED: aircraft now impacts the terrain plane (verified via targeted teleport-to-ground probe — impacts at y=0.28m with velocity reversal, settles to bounded bounce; behavioral integration test added in `rigidbody.test.ts`). 246/246 tests green. WP9 is **UNBLOCKED** but its three BLOCKED leaves need a re-verification pass at next session — Phase 2 (FPS Chromium PASS) and Phase 4 (Playwright/test DEFER) outcomes carry forward unaffected. Remaining open SURFACE items: **SURFACE-2026-05-11-04** (phugoid is divergent under non-zero forcing — Phase 2 candidate, NOT gating Phase 1); SURFACE-2026-05-09-01 (`@playwright/test` adoption — recommended next, would compound nicely with WP9 re-verification); SURFACE-2026-05-11-02 (descending-glide vs level cruise — Phase 2 feel-tuning); SURFACE-2026-04-19-01 (bundle size — Phase 3). Prior WP7 disposition: empirically refuted single-knob improvements over WP6.5 baseline; shipped descending-glide attractor + operator-as-tester feel-check.
+**Status (2026-05-11, post-WP9.6):** WP1–WP8 + WP9.5 + WP9.6 all shipped. **WP9.6 DONE — `@playwright/test` adopted with one load-bearing smoke test (`tests/e2e/casual-flight.spec.ts`) that doubles as the WP9.5 collider-fix regression anchor AND the WP9 Phase 3 casual-flight pathway verification.** SURFACE-2026-05-09-01 RESOLVED. 246/246 Vitest + 1/1 Playwright green. WP9 Phase 1 is now fully verified (boot, telemetry, input pipeline, FPS-Chromium, finite-and-moving casual-flight pathway). Remaining open SURFACE items: **SURFACE-2026-05-11-04** (phugoid is divergent under non-zero forcing — Phase 2 candidate, NOT gating Phase 1); SURFACE-2026-05-11-02 (descending-glide vs level cruise — Phase 2 feel-tuning); SURFACE-2026-04-19-01 (bundle size — Phase 3). Prior WP7 disposition: empirically refuted single-knob improvements over WP6.5 baseline; shipped descending-glide attractor + operator-as-tester feel-check.
 
 ## Key Decisions
 

@@ -27,5 +27,11 @@ dist-ssr
 .playwright-mcp/
 /*.png
 
+# Playwright test runner artifacts
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
+
 # Claude Code local state (auto-memory, etc.)
 .claude/

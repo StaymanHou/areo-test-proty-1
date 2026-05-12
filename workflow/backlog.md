@@ -27,22 +27,7 @@ Surface-notes from workflow runs. Consumed and resolved by higher-level workflow
 - **Suggested action:** At WP7 Phase E entry: experiment with (a) baseline `throttle = 0.4` at spawn (cheapest — `Controls` class might need a constructor option), (b) `mass = 500–700 kg` (changes ground feel), (c) `area = 9–10 m²` per wing (changes visual feel of wing size). Iterate via lil-gui live; export preset to `aircraft.json` when it feels right. The strong physical priors (incidence 0–4°, clQ 0–16, lift/weight ratio ~1 at cruise speed) make this a bounded search — likely 1–2 lil-gui sessions.
 - **Status:** WP7 Phase E disposition 2026-05-11 — the "level cruise" goal is **not closable within Phase 1 scope** due to SURFACE-2026-05-11-04 (phugoid undamped). Phase E shipped option (c) (accept descending glide). This entry stays open as a candidate for Phase 2 if the casual-player feel-check (Phase F AC #7) rejects the descending glide as unplayable.
 
-### SURFACE-2026-05-09-01 — End-to-end browser test infrastructure not configured
-- **Source:** feature:verify-codify (WP6 Phase 4)
-- **Target level:** product:wbs (re-targeted 2026-05-11 — see Update below)
-- **Type:** gap / tech-debt
-- **Summary:** The project tests via Vitest (unit/integration only). Browser-driven end-to-end verification is performed ad-hoc via Playwright MCP during workflow `verify-self` runs but is not codified into a runnable test suite. The `.playwright-mcp/` directory in the working tree is MCP scratch state, not a configured Playwright test runner.
-- **Context:** Phase 4 of WP6 wired flight controls into the dev page. The integration-boundary check at verify-codify wanted to write a "consuming-surface" test, but the codebase has no harness to host it. Live Playwright via MCP served the codification role this iteration. As phases multiply (mission, HUD, combat), one-shot MCP runs won't scale — eventually we want CI-runnable browser tests for at least the critical input-→-motion path.
-- **Suggested action:** At WP9 (Phase 1 verification), evaluate adding `@playwright/test` as a dev dep with one CI smoke: load page, dispatch a roll keypress, assert the aircraft body's yaw/pitch/roll changed via a debug-only `window.__aircraft` hook. Keep the suite tiny — single happy-path test per critical input — to avoid the "Playwright tests are flaky" trap.
-- **Priority:** low (live verification is sufficient for now; the gap becomes real at Phase 2+)
-- **Update 2026-05-11 (WP9 Phase 4 decision — DEFER):** Evaluated at WP9 Phase 4. Decision = **DEFER adoption to immediately post-WP9.5** (the proposed collider-fix WP per SURFACE-2026-05-11-05). Reasoning:
-  - The natural first smoke test is "after 5s of casual flight, aircraft state is finite and altitude is in expected range" — exactly the regression-anchor SURFACE-2026-05-11-05 (collider gap) needs.
-  - Adopting TODAY would either commit a failing test (anti-pattern) or commit a test scoped around the known defect (also bad — wouldn't catch the very defect it's meant to anchor).
-  - Adopting AFTER WP9.5 (collider added) lets the smoke test land green AND immediately serves as the regression anchor for the collider fix.
-  - Adopting also resolves WP9 Phase 2's WebKit/Firefox gap (Playwright test runner supports all three engines natively), so re-validating the FPS check across engines becomes a CI artifact rather than an operator-as-tester deviation. Strong compounding rationale.
-- **Re-targeted:** if WP9.5 is authorized, fold this adoption into WP9.5 (collider + smoke test in one WP). Otherwise, surface as **WP10.5** or **a Phase 2 tooling WP** to land before mission framework work begins.
-- **Priority:** **medium** (upgraded 2026-05-11 — the Phase 3 BLOCKER finding showed how a tiny smoke would have caught a structural defect; the gap is no longer "theoretical Phase 2+ concern" but "would have caught a known Phase 1 blocker").
-- **Status:** pending — re-targeted to post-WP9.5
+<!-- SURFACE-2026-05-09-01 moved to Resolved (closed by WP9.6) -->
 
 ### SURFACE-2026-04-19-01 — Bundle size: Rapier WASM dominates build
 - **Source:** feature:build (WP1 verify-auto)
@@ -56,12 +41,20 @@ Surface-notes from workflow runs. Consumed and resolved by higher-level workflow
 
 ## Resolved
 
+### SURFACE-2026-05-09-01 — End-to-end browser test infrastructure not configured
+- **Source:** feature:verify-codify (WP6 Phase 4)
+- **Resolution:** Resolved by WP9.6 (2026-05-11). Adopted `@playwright/test` as a devDependency; minimal config at `playwright.config.ts` (Chromium-only, webServer auto-starts `npm run dev`, retries=0, workers=1, list reporter). Single load-bearing smoke test at `tests/e2e/casual-flight.spec.ts` — loads `/?debug=true`, waits for `window.__aircraft` to be defined, simulates 5s, asserts via `__aircraft.getState()` that `position.{x,y,z}` and `airspeed` are finite, `airspeed > 0` (aircraft moving), aircraft moved from spawn within loose bounds, and no `NaN`/`Infinity` in console or `pageerror` events. Doubles as the regression anchor for SURFACE-2026-05-11-05 (collider fix). New npm script `npm run test:e2e`. Vitest's exclude updated (`vitest.config.ts` created with `tests/e2e/**` excluded) to prevent Vitest/Playwright glob collision. CLAUDE.md "Testing" section updated.
+  - **Cross-browser deferred to WP21** (Phase 3 polish) per the original re-target plan.
+  - **Suite is intentionally tiny** (one test, one assertion cluster) to avoid the "Playwright tests are flaky" anti-pattern.
+- **Status:** resolved 2026-05-11
+
 ### SURFACE-2026-05-11-05 — Aircraft has no collider; tunnels through terrain and NaN's the simulation under any non-trivial input
 - **Source:** feature:build (WP9 Phase 3 operator-as-tester probe, 2026-05-11)
 - **Resolution:** Resolved-with-test by WP9.5 (2026-05-11). One-line addition in `src/aircraft/rigidbody.ts` constructor: `world.createCollider(ColliderDesc.cuboid(0.5, 0.3, 3.0).setDensity(0), this.body)` — matching the fuselage placeholder geometry (`BoxGeometry(1, 0.6, 6)`). `setDensity(0)` keeps the existing `setAdditionalMassProperties` configuration authoritative (otherwise the collider's auto-computed mass would stack on top).
   - **Test coverage:** two new tests in `src/aircraft/rigidbody.test.ts` — (1) structural anchor "attaches at least one collider to the body so it can interact with terrain" (`numColliders() > 0`), (2) behavioral integration "aircraft body collides with a static ground plane (does not tunnel through)" (creates a Rapier world with a static ground collider, drops the aircraft from y=3 with vy=-10, steps 60 ticks, asserts final y > 0). Total 246/246 tests green; tsc clean.
   - **Verification (verify-self):** targeted teleport-to-ground probe via Playwright-MCP — body to y=3 with vy=-10, observed impact at t=0.3 (alt=0.28m, vy reversed to +0.30), then bounded bouncing motion in 1.5–6.4m range. `anyNaN=false`, `collisionDetected=true`. Long-horizon no-input 30s also clean.
   - **Lesson captured (verify-self method):** the original WP9 Phase 3 regression-anchor probe (the gentle casual-input session) was over-broad. It exercised BOTH the tunneling pathology this WP fixes AND the SURFACE-2026-05-11-04 phugoid-divergent-under-forcing pathology that's explicitly out-of-scope. Running it post-fix produced a misleading FAIL signal because the now-stable aircraft climbs to ~110m where it hits the unrelated divergent mode. The targeted teleport probe isolates the collider's contract directly. **General lesson candidate for `/session-store-learning`:** when a regression-anchor exercises multiple defect zones, isolate each zone with a targeted probe; broad probes mask success on one fix when a different defect lights up.
+  - **Codified regression anchor:** WP9.6 (2026-05-11) added `tests/e2e/casual-flight.spec.ts` — a `npm run test:e2e` smoke that watches `window.__aircraft.getState()` for 5s and fails on NaN/Infinity. This is the durable regression-anchor for the collider fix; the targeted teleport probe served as the one-shot verify-self proof.
 - **Status:** resolved 2026-05-11
 
 ### SURFACE-2026-05-09-05 — Phase 4 verify-self required WP7 trim to fully validate (resolved by disposition)
