@@ -275,20 +275,21 @@ T-shirt sizing: **XS** ≤ 2h · **S** ≤ half day · **M** ≤ 1 day · **L** 
 - [x] Win/fail wiring: runner already handles all-objectives win + timeout fail (WP11). End-to-end works via existing statusChange listener.
 - [ ] (Deferred to WP14.5) Non-zero `clAlphaDot` tuning — SURFACE-2026-05-12-01 logged. WP14 ships within the glide envelope; sustained-throttle patrols wait on the tuning pass.
 
-### WP14.6: Physics-core extraction + harness↔browser parity test
+### WP14.6: Physics-core extraction + harness↔browser parity test — DONE 2026-05-12 (afternoon)
 **Description:** First WP in the D14 cascade (arch.md Rev 2026-05-12 afternoon §D14.2 + §D14.3). File-move reorg: extract framework-agnostic flight model into `src/aircraft/physics-core/` so the same code can run in Node and the browser. `rigidbody.ts` stays in `src/aircraft/` as the Three.js-mesh-binding wrapper; the Rapier-only `rigidbody-core.ts` lives under `physics-core/`. Add a harness↔browser **parity test** that asserts bit-identical trajectories (`|Δ|<1e-6` per scalar) across the WASM boundary for the WP14.5 throttle fixtures (0.05/0.15/0.4 from `(0,50,0)` linvel `(0,0,-30)` for 1800 ticks). Parity test runs in CI; protects against drift between harness (Node) and shipped (browser) physics. **No behavioral change** in the browser — pure file moves + new test artifacts.
 **Phase:** 2
 **Dependencies:** WP10.5 (β5 schema — physics-core depth-locks the surface schema we extract); WP14 (last mission shipped before the pause)
 **Size:** M
 **Tasks:**
-- [ ] Decide split criterion mechanically: does the file import `three`? If no AND it currently runs in browser only via incidental coupling → move under `physics-core/`. If yes (Three.js mesh ownership) → stay outside.
-- [ ] Move `aerosurface.ts`, `flightmodel.ts`, `state.ts`, `config.ts` (parser only — fetch-loader stays in browser-side wrapper) into `src/aircraft/physics-core/`. Add new `rigidbody-core.ts` (Rapier-only) and `step.ts` (composable single-tick driver).
-- [ ] Update `src/aircraft/rigidbody.ts` to delegate Rapier ops to `rigidbody-core.ts`; keep `syncMesh()` here as the Three.js boundary.
-- [ ] Update all importers across `src/` to the new paths. Verify 385/385 existing Vitest cases pass post-move with no behavioral changes (file-move reorg only).
-- [ ] Add `tests/e2e/parity.spec.ts`: loads `/?debug=true`, fetches a known fixture set, runs N ticks at fixed-dt (no render interpolation), emits trajectory CSV via a new `window.__aircraft.getTrajectory()` hook.
-- [ ] Add `tests/parity-diff.test.ts` (Vitest): runs the same fixtures via the harness driver (preview from WP14.7; can land as a tiny synthetic stub here if WP14.7 not yet shipped, but real-harness coverage gates close), diffs against the Playwright-emitted CSV, fails on `|Δ|≥1e-6` per scalar (use shortest-arc distance for angles).
-- [ ] CONVENTIONS.md: short note documenting the `physics-core/` boundary and the "imports `three`?" split rule.
-- [ ] Acceptance: 385/385 Vitest pass; parity test green; `npm run test:e2e` 9/9+1 (existing + parity); tsc strict + build clean.
+- [x] Split criterion refined intent-based ("requires a browser API to run", not literal "imports three") — Vector3/Quaternion math-only allowed under physics-core/. Operator-approved at plan-time.
+- [x] Moved 4 source files + their tests into `src/aircraft/physics-core/` via `git mv` (blame preserved). Added `rigidbody-core.ts` (Rapier-only `AircraftBody`) and `step.ts` (composable single-tick driver).
+- [x] `src/aircraft/rigidbody.ts` `Aircraft extends AircraftBody`; keeps Three.js mesh ownership + `syncMesh`. Public API surface bit-identical.
+- [x] Updated all importers across `src/`. Plan-time grep missed `src/mission/hooks/registry.ts` (one level deeper) — caught by `tsc --noEmit`, fixed. 385/385 Vitest post-move.
+- [x] Added `tests/e2e/parity.spec.ts` driving `window.__aircraft.runFixture()`; produces `test-results/browser-trajectory-<id>.csv` (1800 rows + header in 1.1s wall-clock — 27× browser-side preview of harness speedup).
+- [x] Added `tests/parity-diff.test.ts` (Vitest) with in-process synthetic stub (Rapier-WASM in Node, `AircraftBody` directly without Three.js). Bit-identical across 1800 ticks at `|Δ|<1e-6`. Caught a real production bug (`Aircraft.reset()` not clearing Rapier force/torque accumulators) — fixed in same WP.
+- [x] CONVENTIONS.md: new `### src/aircraft/physics-core/ boundary` subsection documents the intent-based split rule, allowed/disallowed class lists, and the parity test as enforcement mechanism.
+- [x] Acceptance: 402/402 Vitest (was 385, +17 — step.test.ts 4 + trajectory-buffer.test.ts 12 + parity-diff.test.ts 1) · 10/10 Playwright (was 9, +1 parity emitter) · tsc strict · build clean.
+- [x] Bonus: widened `FlightModel`'s constructor parameter from `Aircraft` to `AircraftBody` so the harness can construct it without the Three.js wrapper.
 
 ### WP14.7: Node harness — single-probe driver
 **Description:** Second WP in the D14 cascade (arch.md Rev 2026-05-12 afternoon §D14.1). `tools/tune/harness.ts` boots Rapier-WASM in Node, loads `aircraft.json`, takes initial conditions + parameter overrides + tick-count from CLI args, steps the physics-core `step.ts` in a tight loop, emits a trajectory CSV. No optimizer — this is the deterministic inner loop the optimizer will call repeatedly. Acceptance gate is parity (WP14.6's test must keep passing using the harness as the Node-side trajectory source — i.e., the WP14.6 parity-diff test consumes harness output, not a synthetic stub).
@@ -532,3 +533,17 @@ Operator on resume reframed the WP14.5 close: not just "the β5 mechanism is wro
 **Why this is the right detour cost.** Three attempts in WP14.5 burned ~hours and produced 3 sparse points in a 2-knob × 3-regime space. The harness will eval hundreds of points in seconds-to-minutes per `npm run tune` invocation, with deterministic gradient signal for the optimizer and regression evidence for the human reviewer. Net amortization: every future physics-tuning WP (WP14.5-retry, WP15 if it surfaces tuning needs, any future βN coefficients, Phase 3 polish) gains the same speed-up. The operator-as-architect deviation per `feedback_operator_as_external.md` continues with Phase 3 re-validation hook recorded in arch.md.
 
 **Open SURFACE items unchanged in priority:** SURFACE-2026-05-12-03 (high — β5 mechanism revision; now downstream of WP14.5-retry outcome, not blocking it); SURFACE-2026-05-12-01 (medium — blocked-by -03); SURFACE-2026-05-11-04 (partial — arch side resolved); SURFACE-2026-05-11-02 (medium); SURFACE-2026-05-12-02 (low — test-mission pollution); SURFACE-2026-04-19-01 (Phase 3 — bundle).
+
+## WP14.6 Shipped — 2026-05-12 (afternoon)
+
+D14 cascade step 1 of 3 — physics-core extraction + harness↔browser parity test landed in commits `fb54c65` (Phase 1, file-move + AircraftBody + step.ts, 29 files / +728 / -148) + `cf6254a` (Phase 2+3, parity test + bug fix + CONVENTIONS.md, 10 files / +624 / -34). Three phases, three commits-worth of work, two back-loops handled in-flight.
+
+**Headline result:** the `tests/parity-diff.test.ts` Vitest spec runs a synthetic Node-side stub through `physics-core/step()` in-process (Rapier-WASM in Node, no Three.js mesh) and asserts bit-identical trajectories to the live browser across 1800 fixed-dt ticks at `|Δ|<1e-6`. This is the structural foundation the WP14.7 Node harness inherits: the same Rapier-WASM binary, the same `step()` entry point, the same fixture format — only the surrounding driver changes.
+
+**Production bug caught + fixed in-flight:** `Aircraft.reset()` was leaving stale Rapier force/torque accumulators on the rigid body. Mission restart (return-to-menu → start new mission) would have inherited forces from the previous mission's final tick. Subtle enough that no prior test caught it — the parity test caught it on its first real run, exactly as the arch revision predicted. Fix in `physics-core/rigidbody-core.ts`: `AircraftBody.reset()` now calls `body.resetForces(true) + body.resetTorques(true)`. Permanently regression-anchored by the parity diff.
+
+**Numbers:** 402/402 Vitest (was 385, +17 new — step.test.ts 4 + trajectory-buffer.test.ts 12 + parity-diff.test.ts 1); 10/10 Playwright (was 9, +1 parity emitter); tsc strict clean; build clean (only pre-existing SURFACE-2026-04-19-01 bundle warning). 1800-tick browser-side `runFixture` runs in 1.1s wall-clock — a 27× speedup preview of what WP14.7's full Node harness will deliver in a tighter loop without browser overhead.
+
+**Forward nudge for WP14.7:** the synthetic stub in `tests/parity-diff.test.ts` duplicates world-construction (ground + tower colliders) from `src/main.ts`. WP14.7's Node harness should consolidate this into a shared "world fixture" helper that both the parity test and the harness consume. Comment in `parity-diff.test.ts:50-56` already nudges this. No SURFACE-to-backlog — just a forward-WP nudge.
+
+**Next:** **WP14.7** — Node Rapier-WASM harness single-probe driver. Then WP14.8 (score function + Nelder-Mead optimizer), then rescoped WP14.5 (β5 tuning via harness).
