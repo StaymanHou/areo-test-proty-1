@@ -72,6 +72,14 @@ export class AircraftBody {
     this.body.setRotation(_identityRot, true);
     this.body.setLinvel({ x: linvel.x, y: linvel.y, z: linvel.z }, true);
     this.body.setAngvel({ x: 0, y: 0, z: 0 }, true);
+    // Clear any pending force/torque accumulators left over from the previous
+    // tick. Without this, forces queued by an earlier `applyForces()` would
+    // be applied on the next `world.step()` even though we've teleported the
+    // body — causing a non-deterministic first tick after reset. The WP14.6
+    // parity test surfaces this: without the clear, the browser's "fixture
+    // start" inherits residual forces from the live game loop.
+    this.body.resetForces(true);
+    this.body.resetTorques(true);
   }
 
   setMassProperties(mass: number, inertia: Vector3): void {

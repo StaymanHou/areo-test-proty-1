@@ -4,7 +4,7 @@ import {
   computeAeroForce,
   createAeroSurface,
 } from './aerosurface';
-import type { Aircraft } from '../rigidbody';
+import type { AircraftBody } from './rigidbody-core';
 
 // Body-local thrust direction = nose forward = −Z (per CONVENTIONS.md).
 const _thrustLocal = new Vector3(0, 0, -1);
@@ -45,13 +45,16 @@ const _rudderSign = +1;
 
 export class FlightModel {
   readonly surfaces: AeroSurface[];
-  readonly aircraft: Aircraft;
+  // Typed as the framework-agnostic AircraftBody so the harness in WP14.7 can
+  // construct a FlightModel directly. The browser-side Aircraft extends
+  // AircraftBody (see ../rigidbody.ts) and is a valid substitution.
+  readonly aircraft: AircraftBody;
   /** Mutable for WP7 live tuning; do not mutate during the per-tick hot path. */
   maxThrustN: number;
 
   private readonly routes: ControlRoute[];
 
-  constructor(aircraft: Aircraft) {
+  constructor(aircraft: AircraftBody) {
     this.aircraft = aircraft;
     this.maxThrustN = aircraft.config.thrust.maxN;
     this.surfaces = aircraft.config.surfaces.map((s) =>

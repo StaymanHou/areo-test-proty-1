@@ -31,7 +31,21 @@ Every file in `src/` has a home dictated by `docs/product/arch.md`. Don't invent
 - **engine/** — runtime mechanics that don't know about aircraft (loop, input, assets, debug)
 - **world/** — what's rendered (scene, terrain, camera)
 - **aircraft/** — the flying thing (rigidbody, aerosurface, flightmodel, controls)
+- **aircraft/physics-core/** — the framework-agnostic subset of aircraft/ (see below)
 - **mission/**, **hud/** — empty in Phase 1 (arch D5). Don't put Phase 2 code there yet.
+
+### `src/aircraft/physics-core/` boundary
+
+Per arch.md Revision 2026-05-12 (afternoon) §D14.2, modules under `src/aircraft/physics-core/` must be **importable from Node** — they run in the WP14.7 harness without any browser environment.
+
+**Split criterion (intent, not literal):** a file belongs under `physics-core/` if and only if it does **not require a browser API to run**. The naive "imports `three`?" rule is wrong — Three.js exports `Vector3` and `Quaternion` as pure-math classes that work fine in Node. The actual constraint is:
+
+- ✅ Allowed inside `physics-core/`: `Vector3`, `Quaternion`, `Euler` (math primitives); Rapier; standard JS math.
+- ❌ Not allowed inside `physics-core/`: `Scene`, `Mesh`, `Group`, `BoxGeometry`, `MeshStandardMaterial`, `Camera`, any DOM, `window.*`, `requestAnimationFrame`, `fetch` to relative paths (use `fs.readFile` or pass the parsed object in).
+
+Modules outside `physics-core/` (e.g., `src/aircraft/rigidbody.ts`) may freely use Three.js rendering primitives. The browser-side `Aircraft` class wraps `AircraftBody` from `physics-core/rigidbody-core.ts` to add Three.js mesh ownership; the harness uses `AircraftBody` directly.
+
+The boundary is enforced by the `tests/parity-diff.test.ts` parity test: any code path under `physics-core/` is exercised in both the browser (via `tests/e2e/parity.spec.ts`) and Node (via the Vitest synthetic stub, soon the WP14.7 harness), and the two trajectories must remain bit-identical to `|Δ|<1e-6`. A drift between the two surfaces a real bug — including the `Aircraft.reset()` force-accumulator bug that the parity test caught during WP14.6 build.
 
 ## Debug UI
 

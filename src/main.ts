@@ -14,6 +14,8 @@ import { FlatTerrain } from './world/terrain';
 import { createProceduralSkybox } from './world/skybox';
 import { createRunway, createTower } from './world/landmarks';
 import { createAircraftState, toAircraftState } from './aircraft/physics-core/state';
+import { TrajectoryBuffer } from './aircraft/physics-core/trajectory-buffer';
+import { step as physicsStep } from './aircraft/physics-core/step';
 import { loadMission, loadMissionList } from './mission/loader';
 import { MissionRunner } from './mission/runner';
 import { MissionSelectScreen } from './mission/select';
@@ -77,6 +79,12 @@ async function bootstrap() {
   // WP12 HUD wiring (D12 DOM-overlay).
   const hud = new DomHud(camera, renderer.domElement);
 
+  // WP14.6 trajectory buffer — allocated only under ?debug=true. Records one
+  // row per fixed physics tick from `onPhysics` for the parity-test hook
+  // `window.__aircraft.getTrajectory()`. Null in production (no allocation
+  // on the hot path for end-user play).
+  let trajectoryBuffer: TrajectoryBuffer | null = null;
+
   const loop = new GameLoop(
     {
       onPhysics: (dt) => {
@@ -85,6 +93,10 @@ async function bootstrap() {
         flightModel.applyForces(controls.throttle, dt);
         world.timestep = dt;
         world.step();
+        // Record post-step state into the trajectory buffer (debug-only).
+        if (trajectoryBuffer !== null) {
+          trajectoryBuffer.record(aircraft.readBodyState());
+        }
         // Tick the mission runner AFTER the physics step so it observes
         // post-step aircraft state for objective/win/fail evaluation.
         if (missionRunner.getStatus() === 'running') {
@@ -241,6 +253,11 @@ async function bootstrap() {
     setInterval(telemetryLog, 100);
     telemetryLog();
 
+    // WP14.6 trajectory recording (debug-only). Capacity 1800 = 30s @ 60Hz —
+    // enough for the WP14.5 phugoid-probe envelope. Records post-step state
+    // each physics tick (see `onPhysics` in the GameLoop config above).
+    trajectoryBuffer = new TrajectoryBuffer(1800);
+
     (window as unknown as { __aircraft: unknown }).__aircraft = {
       body: aircraft.body,
       flightModel,
@@ -259,6 +276,36 @@ async function bootstrap() {
           airspeed: s.linvel.length(),
           throttle: controls.throttle,
         };
+      },
+      // WP14.6 — defensive snapshot of the trajectory ring buffer (debug-only).
+      // Each call returns a fresh array of copied rows in chronological order.
+      // Returns `[]` if no ticks have been recorded yet.
+      getTrajectory: () => (trajectoryBuffer === null ? [] : trajectoryBuffer.getRows()),
+      // WP14.6 — deterministic-replay hook for the parity test. Pauses the
+      // game loop, resets the body to the fixture state (zero control surface
+      // deflections + β5 prev-AoA cache via FlightModel.resetSurfaceState),
+      // clears the trajectory buffer, then advances exactly `ticks` fixed-dt
+      // physics steps via `physicsStep`. Returns the resulting trajectory.
+      // Does NOT unpause afterwards — caller can either resume or leave paused.
+      runFixture: (fixture: {
+        position: { x: number; y: number; z: number };
+        linvel: { x: number; y: number; z: number };
+        throttle: number;
+        ticks: number;
+      }) => {
+        loop.setPaused(true);
+        aircraft.reset(fixture.position, fixture.linvel);
+        flightModel.resetSurfaceState();
+        if (trajectoryBuffer === null) {
+          throw new Error('runFixture: trajectoryBuffer not allocated (debug-only)');
+        }
+        trajectoryBuffer.reset();
+        const dt = 1 / 60;
+        for (let i = 0; i < fixture.ticks; i++) {
+          physicsStep(world, aircraft, flightModel, { throttle: fixture.throttle }, dt);
+          trajectoryBuffer.record(aircraft.readBodyState());
+        }
+        return trajectoryBuffer.getRows();
       },
     };
   }
