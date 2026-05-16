@@ -1,7 +1,7 @@
 ---
 stage: wbs
 state: in-progress
-updated: 2026-05-12 (afternoon — D14 cascade: WP14.5 rescoped via arch revision; new WP14.6/14.7/14.8 inserted as physics-tuning-harness infrastructure. WP10 + WP10.5 + WP11 + WP12 + WP13 + WP14 DONE earlier today. WP14.5 first attempt closed via option-c — surfaced as SURFACE-2026-05-12-03 + arch revision D14. Phase 2 mission content paused at post-WP14 line; resumes after harness lands and WP14.5-retry either ships or escalates to mechanism revision.)
+updated: 2026-05-16 (WP14.7 DONE — Node Rapier-WASM harness shipped as commit 8bca32c; D14 cascade step 2 of 3 complete; throttle-high envelope fixture surfaced SURFACE-2026-05-16-01 β4 explicit-Euler instability above V_REF, captured for WP14.5-retry joint (clQ, clAlphaDot) search via WP14.8 optimizer. WP14.8 is next.)
 ---
 
 # Work Breakdown Structure
@@ -291,21 +291,21 @@ T-shirt sizing: **XS** ≤ 2h · **S** ≤ half day · **M** ≤ 1 day · **L** 
 - [x] Acceptance: 402/402 Vitest (was 385, +17 — step.test.ts 4 + trajectory-buffer.test.ts 12 + parity-diff.test.ts 1) · 10/10 Playwright (was 9, +1 parity emitter) · tsc strict · build clean.
 - [x] Bonus: widened `FlightModel`'s constructor parameter from `Aircraft` to `AircraftBody` so the harness can construct it without the Three.js wrapper.
 
-### WP14.7: Node harness — single-probe driver
+### WP14.7: Node harness — single-probe driver — DONE 2026-05-16
 **Description:** Second WP in the D14 cascade (arch.md Rev 2026-05-12 afternoon §D14.1). `tools/tune/harness.ts` boots Rapier-WASM in Node, loads `aircraft.json`, takes initial conditions + parameter overrides + tick-count from CLI args, steps the physics-core `step.ts` in a tight loop, emits a trajectory CSV. No optimizer — this is the deterministic inner loop the optimizer will call repeatedly. Acceptance gate is parity (WP14.6's test must keep passing using the harness as the Node-side trajectory source — i.e., the WP14.6 parity-diff test consumes harness output, not a synthetic stub).
 **Phase:** 2
 **Dependencies:** WP14.6 (physics-core split must land first)
 **Size:** M
 **Tasks:**
-- [ ] Add `tsx` as devDep (zero-config TS-on-Node). Add `tsconfig.tools.json` extending the root tsconfig but targeting Node module resolution if Vite's tsconfig doesn't reach `tools/`.
-- [ ] `tools/tune/harness.ts`: imports from `src/aircraft/physics-core/`; constructs a Rapier world; steps fixed-dt=1/60s; emits CSV columns `tick, posX, posY, posZ, vX, vY, vZ, pitch, yaw, roll, airspeed`.
-- [ ] CLI argument shape: `--fixture <name>` (selects one of the seeded fixtures), `--ticks <N>`, optional `--params <k=v,...>` for parameter overrides on `aircraft.json` knobs (deep-paths like `surfaces.wings.clAlphaDot=5`), optional `--out <path>` (default stdout).
-- [ ] Fixture set seeded: at minimum `throttle-low` (0.05), `throttle-mid` (0.15), `throttle-high` (0.4), all spawning at `(0,50,0)` linvel `(0,0,-30)`. Same initial conditions as the existing WP14.5 phugoid-probe missions.
-- [ ] `package.json`: `"harness": "tsx tools/tune/harness.ts"`. Sanity smoke: `npm run harness -- --fixture throttle-mid --ticks 60 --out -` produces a 61-row CSV (tick 0..60).
-- [ ] Determinism check: run the same fixture twice, diff output — must be byte-identical.
-- [ ] Wire WP14.6's `tests/parity-diff.test.ts` to consume harness output (replace synthetic stub if used). Parity must hold.
-- [ ] Vitest covers: CLI arg parsing, parameter-override deep-path application, CSV row format, determinism (same inputs → byte-identical output across runs).
-- [ ] `.gitignore` extension: `tools/tune/results/`.
+- [x] Add `tsx` as devDep (zero-config TS-on-Node). Add `tsconfig.tools.json` extending the root tsconfig but targeting Node module resolution if Vite's tsconfig doesn't reach `tools/`.
+- [x] `tools/tune/harness.ts`: imports from `src/aircraft/physics-core/`; constructs a Rapier world; steps fixed-dt=1/60s; emits CSV columns `tick, posX, posY, posZ, vX, vY, vZ, pitch, yaw, roll, airspeed`.
+- [x] CLI argument shape: `--fixture <name>` (selects one of the seeded fixtures), `--ticks <N>`, optional `--params <k=v,...>` for parameter overrides on `aircraft.json` knobs (deep-paths like `surfaces.wings.clAlphaDot=5`), optional `--out <path>` (default stdout).
+- [x] Fixture set seeded: at minimum `throttle-low` (0.05), `throttle-mid` (0.15), `throttle-high` (0.4), all spawning at `(0,50,0)` linvel `(0,0,-30)`. Same initial conditions as the existing WP14.5 phugoid-probe missions.
+- [x] `package.json`: `"harness": "tsx tools/tune/harness.ts"`. Sanity smoke: `npm run harness -- --fixture throttle-mid --ticks 60 --out -` produces a 61-row CSV (tick 0..60).
+- [x] Determinism check: run the same fixture twice, diff output — must be byte-identical.
+- [x] Wire WP14.6's `tests/parity-diff.test.ts` to consume harness output (replace synthetic stub if used). Parity must hold.
+- [x] Vitest covers: CLI arg parsing, parameter-override deep-path application, CSV row format, determinism (same inputs → byte-identical output across runs).
+- [x] `.gitignore` extension: `tools/tune/results/`.
 - [ ] Acceptance: harness produces deterministic CSV; parity test still green; 385/385+ Vitest green; tsc strict clean.
 
 ### WP14.8: Score function + Nelder-Mead optimizer + CLI
@@ -547,3 +547,21 @@ D14 cascade step 1 of 3 — physics-core extraction + harness↔browser parity t
 **Forward nudge for WP14.7:** the synthetic stub in `tests/parity-diff.test.ts` duplicates world-construction (ground + tower colliders) from `src/main.ts`. WP14.7's Node harness should consolidate this into a shared "world fixture" helper that both the parity test and the harness consume. Comment in `parity-diff.test.ts:50-56` already nudges this. No SURFACE-to-backlog — just a forward-WP nudge.
 
 **Next:** **WP14.7** — Node Rapier-WASM harness single-probe driver. Then WP14.8 (score function + Nelder-Mead optimizer), then rescoped WP14.5 (β5 tuning via harness).
+
+## WP14.7 Shipped — 2026-05-16
+
+D14 cascade step 2 of 3 — promotes the WP14.6 synthetic Vitest stub into a real CLI harness (`tools/tune/harness.ts`) that boots Rapier-WASM in Node, loads `aircraft.json`, accepts deep-path parameter overrides, and emits trajectory CSVs the browser path will diff to within `|Δ|<1e-6`. Becomes the inner loop for the WP14.8 Nelder-Mead optimizer.
+
+**Headline results:**
+- **Harness ships.** `tools/tune/harness.ts` exports pure helpers (`parseArgs`, `applyParamOverrides`, `lookupFixture`, `runHarness`) for in-process testing plus a `main()` dispatch on `import.meta.url`. CLI shape: single-probe mode (`--fixture <id> --ticks <N> [--params ...] [--out path|-]`) or batch mode (`--all-fixtures --out-dir <dir>`). Two 1800-tick subprocess invocations are byte-identical (codified in `harness.determinism.test.ts`).
+- **World-fixture helper consolidates ground + tower collider construction** into `src/aircraft/physics-core/world-fixture.ts`. `FlatTerrain.getColliderDesc()` and `createTower()` re-import the shape constants. Eliminates the latent `(2000, 0.001, 2000)` vs `(2000, 0.1, 2000)` drift in the WP14.6 parity test that was invisible only because the WP14.6 fixture never touched the ground.
+- **Envelope-coverage gap closed.** `PARITY_FIXTURES` now ships three throttles — low/mid/high — at the same initial conditions. The throttle-high fixture (0.4 throttle, sustained) takes body |v| above V_REF=30 m/s for the first time in the parity test suite.
+- **SURFACE-2026-05-16-01 surfaced (high priority).** Throttle-high exposes a **β4 explicit-Euler instability above V_REF**: h-stab's `clQ=8` produces a discrete-time damping stiffness that exceeds what `dt=1/60` can integrate stably. Aircraft flips 180° in one tick, |v| → 10¹³ in 4 ticks, NaN by tick 417. Browser and synthetic stub diverge identically — parity is intact, the *simulator* is not. Captured with full tick-by-tick diagnostic in `workflow/backlog.md` for WP14.5-retry to address via joint (clQ, clAlphaDot) search through the WP14.8 optimizer.
+- **Parity-of-divergence semantics** (P1.7): `parity-diff.test.ts` rewritten with a `nonFiniteKind()` helper so the assertion handles "both runners exploded identically" as parity-success, while still requiring `|Δ|<1e-6` on every finite row. Honest contract: bit-identity preserved through and beyond explosion. Without this, a future fix to β4 would have been able to pass the parity test without producing finite trajectories — codifying the existing failure mode rather than catching the fix. With it, throttle-high parity is a precise statement about determinism, not stability.
+- **`parity-diff.test.ts` precedence wired** (Phase 3): browser→(harness | synthetic) via extracted `pickNodeSource()` helper used on the live path AND unit-codified across all 4 corners of the (browser-present, harness-present) truth table. The synthetic-stub fallback is preserved for the WP14.6 single-tool Vitest contract.
+
+**Numbers:** **448/448 Vitest** (was 402, +46 new — 6 world-fixture + 5 nonFiniteKind unit + 4 pickNodeSource unit + 26 harness + 3 harness-determinism, plus 2 incidental fixture additions); 12/12 Playwright (3 phugoid-probes still skipped per SURFACE-2026-05-12-03); tsc strict clean across both `tsconfig.json` and the new `tsconfig.tools.json`; build clean (only pre-existing SURFACE-2026-04-19-01 bundle warning). Commit `8bca32c` on `main`: 17 files, +1612 / -63.
+
+**Lesson reinforced:** `feedback_verify_self_envelope.md` ("probe envelope boundaries, not a single nominal initial condition") earned its keep this WP. The envelope-widening that Phase 1.4 added — adding throttle-low and throttle-high to a fixture set that was previously mid-only — is precisely what surfaced SURFACE-2026-05-16-01. Pure-math tests at clQ=8 would have passed forever. Live observation at the envelope boundary surfaced a real numerical-stiffness bug. This is the second time on this WP (and the third time in the broader physics work) that the same memory anchor has caught what unit tests missed; the rule continues to do load-bearing work.
+
+**Next:** **WP14.8** — score function + Nelder-Mead optimizer with K=4 random restarts and local quadratic regression on the best simplex. The optimizer's joint-search space is now demonstrably (clQ, clAlphaDot) per surface, not clAlphaDot alone — SURFACE-2026-05-16-01 forced that finding before WP14.8 even started. Then rescoped WP14.5 (β5 tuning via harness; now genuinely a joint-β-coefficient search).

@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-05-16
+
+- **Feature shipped:** WP14.7 Node Rapier-WASM harness — `tools/tune/harness.ts` boots Rapier-WASM in Node, accepts deep-path parameter overrides + fixture id + tick count via CLI, emits trajectory CSVs the browser path diffs to within `|Δ|<1e-6`; `parity-diff.test.ts` rewired with browser→(harness | synthetic) precedence and parity-of-divergence semantics; second of 3 WPs in the D14 cascade.
+
 ## 2026-05-12
 
 - **Feature shipped:** WP12 HUD — DOM overlay renders alt/airspeed/throttle, objective text, status banner, and projection-ready waypoint arrow in-mission per arch.md D12.

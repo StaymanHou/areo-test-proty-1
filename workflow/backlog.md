@@ -4,6 +4,18 @@ Surface-notes from workflow runs. Consumed and resolved by higher-level workflow
 
 ## Open
 
+### SURFACE-2026-05-16-02 — Wall-clock perf assertion in `flightmodel.test.ts:368` is load-flaky
+- **Source:** feature:verify-codify (WP14.7 Phases 1/2/3, 2026-05-16)
+- **Target level:** task (small test-refactor)
+- **Type:** test-design / flake
+- **Priority:** low (does not affect ship readiness; full-suite reliably passes within 1-3 runs; pre-existing — not introduced by any WP14.7 change)
+- **Summary:** The Phase 1 codify cycle, Phase 2 codify cycle, and Phase 3 verify-self cycle all observed at least one failure of `src/aircraft/physics-core/flightmodel.test.ts:368` (`expect(elapsed).toBeLessThan(50)` after 1000 `applyForces` calls). Failure values were ~50.8ms, ~52.0ms — 1.6%-4% over a 50ms wall-clock threshold. The same test passes 19/19 in isolation consistently; the flake only manifests under full-suite parallelism. Triaged each occurrence as load-induced under the codify discipline; no code or test modification was made (triage hard rule). No occurrence affected ship — every full-suite run that flaked was followed by a clean re-run.
+- **Suggested action:** rework the perf assertion. Two reasonable shapes:
+  - **(a) Relative baseline:** measure a known-cheap reference op (e.g. 1000 empty `for` iterations) at the start of the test, scale the threshold proportionally. Removes the absolute wall-clock dependency.
+  - **(b) Move to a perf-only test invocation:** tag the test with a Vitest tag like `@perf` and exclude from `npm run test`; run only via `npm run test:perf`. Keeps the regression signal for explicit perf-monitoring runs without flaking CI.
+- **Rationale for low priority:** the flake is observed about 1 in 3 full-suite runs and is always resolved by a single re-run. It does not block any feature. The perf-proxy intent (catch a regression that would 10× the per-tick cost) is still useful but a 50ms threshold at 1000 calls = 50 μs/call is too tight a margin for wall-clock measurement on a loaded CPU.
+- **Status:** pending
+
 ### SURFACE-2026-05-16-01 — β4 (`clQ`) explicit-Euler instability above V_REF — h-stab drives runaway in ~7s at 0.4 throttle
 - **Source:** feature:verify-auto (WP14.7 Phase 1, 2026-05-16)
 - **Target level:** product:arch (mechanism revision — analogous to D14 surfacing β5; this surfaces β4 stability hole)
@@ -53,7 +65,8 @@ Surface-notes from workflow runs. Consumed and resolved by higher-level workflow
 - **Why we accept it for WP14.5 close:** Per `feedback_retune_attempt_budget.md`, three attempts refuted decisively. The mechanism is unsuitable for direct tuning. Continuing to tune would be wasted budget — the real fix is an arch-level revision of the mechanism (D13 → D14, analogous to how WP6.6 added V-scaling to β4 after WP6.5). WP14.5 closes as "tuning refuted; surfaced arch revision." The pre-WP14.5 baseline (clAlphaDot=0 everywhere) is unchanged — current behavior preserved.
 - **Memory anchors used during this task:** `feedback_retune_attempt_budget.md` (3-attempt cap held; option-c accepted); `feedback_surface_or_means_or.md` (single-knob changes per attempt — magnitude shrink, then sign flip); `feedback_asymmetric_fix_no_op.md` (revealed by violation: the mechanism is *not* a no-op in the working regime even at small coefficients, which is itself the diagnostic); `feedback_verify_self_envelope.md` (probed all three throttle bands — caught that Attempt 1 broke low-throttle too, not just high).
 - **Update 2026-05-12 (afternoon):** Operator routed to `/product-arch` → **D14** landed (physics tuning harness + Nelder-Mead optimizer). Cascade WPs in WBS: WP14.6 (physics-core extraction + parity test) → WP14.7 (Node harness) → WP14.8 (optimizer) → rescoped WP14.5 (β5 tuning via harness). **WP14.6 shipped this afternoon** (`fb54c65` + `cf6254a`): `src/aircraft/physics-core/` is framework-agnostic Node-runnable; `tests/parity-diff.test.ts` asserts bit-identical browser↔Node-stub trajectories at `|Δ|<1e-6`. Cascade is unblocked but this SURFACE remains open — resolution requires WP14.7 + WP14.8 to ship, then rescoped WP14.5 to either tune β5 successfully (best case) or escalate to mechanism revision Options A/B/C with regression-gradient evidence (still open case).
-- **Status:** pending — arch revision (D14) landed; cascade step 1 of 3 (WP14.6) shipped; resolution downstream at WP14.5-retry
+- **Update 2026-05-16:** **WP14.7 shipped** (commit `8bca32c`). Node harness CLI is live (`npm run harness`, `npm run harness:parity`); harness-vs-browser parity holds at `|Δ|<1e-6` on finite rows. **Search-space scope expanded:** the throttle-high parity fixture surfaced SURFACE-2026-05-16-01 (β4 explicit-Euler instability above V_REF), which means the WP14.8 optimizer must search **(clQ, clAlphaDot) jointly per surface**, not clAlphaDot alone. Resolution path for this SURFACE now reads: WP14.8 lands → WP14.5-retry searches the joint space → tunes either both coefficients in tandem, or escalates to mechanism revision Options A/B/C with regression-gradient evidence from the harness/optimizer's empirical results.
+- **Status:** pending — arch revision (D14) landed; cascade steps 1+2 of 3 done (WP14.6 + WP14.7 shipped); resolution downstream at WP14.5-retry via WP14.8 optimizer over the joint (clQ, clAlphaDot) parameter space
 
 ### SURFACE-2026-05-12-02 — Test-only probe missions are listed on player-facing mission-select
 - **Source:** task:act (WP14.5 T1, 2026-05-12)
