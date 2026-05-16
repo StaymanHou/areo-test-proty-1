@@ -11,7 +11,8 @@
     "test:watch": "vitest",
     "test:e2e": "playwright test",
     "harness": "tsx tools/tune/harness.ts",
-    "harness:parity": "tsx tools/tune/harness.ts --all-fixtures --out-dir test-results"
+    "harness:parity": "tsx tools/tune/harness.ts --all-fixtures --out-dir test-results",
+    "tune": "tsx tools/tune/tune.ts"
   },
   "devDependencies": {
     "@playwright/test": "^1.60.0",

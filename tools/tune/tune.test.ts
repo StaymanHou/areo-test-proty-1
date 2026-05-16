@@ -1,0 +1,290 @@
+import { describe, it, expect } from 'vitest';
+import { parseArgs, buildObjective, composeResults, type TuneArgs, type HarnessFn } from './tune';
+import { trajectoryToCsv, type TrajectoryRow } from '../../src/aircraft/physics-core/trajectory-buffer';
+import type { OptimizeResult } from './optimizer';
+
+// WP14.8 Phase 3 — tune CLI coverage. Tests use a mocked harness function so
+// they run without Rapier WASM init (which would be expensive and is already
+// covered by harness.test.ts). The mocked harness emits a deterministic CSV
+// shaped by the input parameters — we can therefore assert that the optimizer
+// receives the right inputs and the results-JSON shape is correct.
+
+describe('parseArgs — happy path', () => {
+  it('parses a minimal smoke command', () => {
+    const args = parseArgs([
+      '--knobs', 'surfaces.wings.clAlphaDot',
+      '--bounds', '0..1',
+      '--regimes', 'mid',
+      '--restarts', '1',
+      '--seed', '42',
+    ]);
+    expect(args.knobs).toEqual(['surfaces.wings.clAlphaDot']);
+    expect(args.bounds).toEqual([[0, 1]]);
+    expect(args.regimes).toEqual(['mid']);
+    expect(args.restarts).toBe(1);
+    expect(args.seed).toBe(42);
+    expect(args.ticks).toBe(1800); // default
+    expect(args.out).toBeUndefined(); // default
+  });
+
+  it('parses a multi-knob command per SURFACE-2026-05-16-01', () => {
+    const args = parseArgs([
+      '--knobs', 'surfaces.wings.clQ,surfaces.wings.clAlphaDot,surfaces.hstab.clQ,surfaces.hstab.clAlphaDot',
+      '--bounds', '0..20,-10..20,0..20,-10..20',
+      '--regimes', 'low,mid,high',
+      '--restarts', '4',
+      '--seed', '42',
+    ]);
+    expect(args.knobs).toHaveLength(4);
+    expect(args.bounds).toEqual([[0, 20], [-10, 20], [0, 20], [-10, 20]]);
+    expect(args.regimes).toEqual(['low', 'mid', 'high']);
+  });
+
+  it('uses defaults for restarts/seed/ticks/out when omitted', () => {
+    const args = parseArgs(['--knobs', 'a.b', '--bounds', '0..1', '--regimes', 'mid']);
+    expect(args.restarts).toBe(4);
+    expect(args.seed).toBe(42);
+    expect(args.ticks).toBe(1800);
+    expect(args.out).toBeUndefined();
+  });
+
+  it('parses --out and --ticks overrides', () => {
+    const args = parseArgs([
+      '--knobs', 'a.b',
+      '--bounds', '0..1',
+      '--regimes', 'mid',
+      '--out', '/tmp/results.json',
+      '--ticks', '600',
+    ]);
+    expect(args.out).toBe('/tmp/results.json');
+    expect(args.ticks).toBe(600);
+  });
+
+  it('supports negative bounds (e.g., -10..20)', () => {
+    const args = parseArgs(['--knobs', 'a.b', '--bounds', '-10..20', '--regimes', 'mid']);
+    expect(args.bounds).toEqual([[-10, 20]]);
+  });
+
+  it('supports decimal bounds', () => {
+    const args = parseArgs(['--knobs', 'a.b', '--bounds', '-0.5..2.5', '--regimes', 'mid']);
+    expect(args.bounds).toEqual([[-0.5, 2.5]]);
+  });
+});
+
+describe('parseArgs — error paths', () => {
+  it('throws when --knobs is missing', () => {
+    expect(() => parseArgs(['--bounds', '0..1', '--regimes', 'mid']))
+      .toThrow(/--knobs/);
+  });
+
+  it('throws when --bounds is missing', () => {
+    expect(() => parseArgs(['--knobs', 'a.b', '--regimes', 'mid']))
+      .toThrow(/--bounds/);
+  });
+
+  it('throws when --regimes is missing', () => {
+    expect(() => parseArgs(['--knobs', 'a.b', '--bounds', '0..1']))
+      .toThrow(/--regimes/);
+  });
+
+  it('throws when --bounds count mismatches --knobs', () => {
+    expect(() => parseArgs(['--knobs', 'a.b,c.d', '--bounds', '0..1', '--regimes', 'mid']))
+      .toThrow(/--bounds count/);
+  });
+
+  it('throws on malformed bound', () => {
+    expect(() => parseArgs(['--knobs', 'a.b', '--bounds', 'abc', '--regimes', 'mid']))
+      .toThrow(/malformed bound/);
+  });
+
+  it('throws on bound where lo ≥ hi', () => {
+    expect(() => parseArgs(['--knobs', 'a.b', '--bounds', '5..5', '--regimes', 'mid']))
+      .toThrow(/lo must be less than hi/);
+  });
+
+  it('throws on unknown regime', () => {
+    expect(() => parseArgs(['--knobs', 'a.b', '--bounds', '0..1', '--regimes', 'extreme']))
+      .toThrow(/unknown regime/);
+  });
+
+  it('throws on unknown CLI arg', () => {
+    expect(() => parseArgs(['--knobs', 'a.b', '--bounds', '0..1', '--regimes', 'mid', '--bogus', 'x']))
+      .toThrow(/unknown argument/);
+  });
+
+  it('throws when --restarts is not a positive integer', () => {
+    expect(() => parseArgs(['--knobs', 'a.b', '--bounds', '0..1', '--regimes', 'mid', '--restarts', '0']))
+      .toThrow(/positive integer/);
+    expect(() => parseArgs(['--knobs', 'a.b', '--bounds', '0..1', '--regimes', 'mid', '--restarts', '1.5']))
+      .toThrow(/positive integer/);
+  });
+});
+
+// Build a synthetic level-cruise CSV for a given throttle regime so the score
+// function returns ~0 (a clean run). The exact parameter values are recorded
+// for assertion.
+function makeCleanCsv(_throttle: number): string {
+  const rows: TrajectoryRow[] = [];
+  for (let i = 0; i < 60; i++) {
+    rows.push({
+      tick: i,
+      posX: 0, posY: 50, posZ: 0,
+      vX: 0, vY: 0, vZ: -30,
+      pitch: 0, yaw: 0, roll: 0,
+      airspeed: 30,
+    });
+  }
+  return trajectoryToCsv(rows);
+}
+
+describe('buildObjective', () => {
+  it('calls the harness once per regime and aggregates the score', async () => {
+    const calls: Array<{ ticks: number; params: readonly string[]; fixtureId: string }> = [];
+    const mock: HarnessFn = ({ fixture, ticks, params }) => {
+      calls.push({ ticks, params, fixtureId: fixture.id });
+      return makeCleanCsv(fixture.throttle);
+    };
+    const obj = buildObjective(
+      ['surfaces.wings.clAlphaDot'],
+      ['low', 'mid', 'high'],
+      60,
+      mock,
+    );
+    const result = await obj([0.5]);
+    // Three regimes → 3 harness calls
+    expect(calls).toHaveLength(3);
+    expect(calls.map((c) => c.fixtureId)).toEqual(['throttle-low', 'throttle-mid', 'throttle-high']);
+    // Each call gets the right parameter string
+    for (const c of calls) {
+      expect(c.params).toEqual(['surfaces.wings.clAlphaDot=0.5']);
+      expect(c.ticks).toBe(60);
+    }
+    // Clean trajectories → score ~ 0; objective is -score → ~ 0
+    expect(Math.abs(result)).toBeLessThan(1e-9);
+  });
+
+  it('builds the right parameter strings for multi-knob calls', async () => {
+    const seen: Array<readonly string[]> = [];
+    const mock: HarnessFn = ({ fixture, params }) => {
+      seen.push(params);
+      return makeCleanCsv(fixture.throttle);
+    };
+    const obj = buildObjective(
+      ['surfaces.wings.clQ', 'surfaces.wings.clAlphaDot'],
+      ['mid'],
+      60,
+      mock,
+    );
+    await obj([3.5, -2.1]);
+    expect(seen).toHaveLength(1);
+    expect(seen[0]).toEqual([
+      'surfaces.wings.clQ=3.5',
+      'surfaces.wings.clAlphaDot=-2.1',
+    ]);
+  });
+
+  it('throws when param length mismatches knob count', async () => {
+    const mock: HarnessFn = ({ fixture }) => makeCleanCsv(fixture.throttle);
+    const obj = buildObjective(['a.b', 'c.d'], ['mid'], 60, mock);
+    await expect(obj([1])).rejects.toThrow(/param length/);
+  });
+});
+
+describe('composeResults — JSON shape per spec acceptance #4', () => {
+  function makeFakeOptimizeResult(): OptimizeResult {
+    return {
+      params: [3.5],
+      score: 10, // optimizer-space score (negative of higher-is-better)
+      convergenceTrace: [
+        { iter: 0, bestScore: 100, simplexDiameter: 0.5 },
+        { iter: 1, bestScore: 80, simplexDiameter: 0.3 },
+        { iter: 2, bestScore: 10, simplexDiameter: 0.05 },
+      ],
+      regression: {
+        centroid: [3.5],
+        gradient: [0.1],
+        hessian: [[2]],
+        conditionNumber: 1,
+        samples: 3,
+      },
+      restarts: [
+        {
+          seed: 1234,
+          finalScore: 10,
+          finalParams: [3.5],
+          finalSimplex: [[3.5], [3.6]],
+          finalSimplexScores: [10, 12],
+          trace: [],
+          stoppedBy: 'param-tol',
+        },
+      ],
+    };
+  }
+
+  const baseArgs: TuneArgs = {
+    knobs: ['surfaces.wings.clAlphaDot'],
+    bounds: [[-10, 20]],
+    regimes: ['mid'],
+    restarts: 1,
+    seed: 42,
+    out: undefined,
+    ticks: 1800,
+  };
+
+  it('produces the documented top-level keys', () => {
+    const r = composeResults(baseArgs, makeFakeOptimizeResult(), 123, '2026-05-16T12:34:56.789Z');
+    expect(Object.keys(r).sort()).toEqual(['convergenceTrace', 'meta', 'params', 'regression', 'restarts', 'score'].sort());
+  });
+
+  it('keys params by deep-path knob name', () => {
+    const r = composeResults(baseArgs, makeFakeOptimizeResult(), 0, 'ts');
+    expect(r.params).toEqual({ 'surfaces.wings.clAlphaDot': 3.5 });
+  });
+
+  it('flips score sign back to higher-is-better at the JSON boundary', () => {
+    const r = composeResults(baseArgs, makeFakeOptimizeResult(), 0, 'ts');
+    // optimizer.score = 10 (which is -score_higher_better = -(-10) = 10)
+    // so user-facing score = -10
+    expect(r.score).toBe(-10);
+    // Same flip applies to convergenceTrace.bestScore
+    expect(r.convergenceTrace[0].bestScore).toBe(-100);
+    expect(r.convergenceTrace[2].bestScore).toBe(-10);
+  });
+
+  it('passes through regression unchanged when present', () => {
+    const r = composeResults(baseArgs, makeFakeOptimizeResult(), 0, 'ts');
+    expect(r.regression).not.toBeNull();
+    expect(r.regression?.hessian).toEqual([[2]]);
+    expect(r.regression?.conditionNumber).toBe(1);
+    expect(r.regression?.samples).toBe(3);
+  });
+
+  it('emits null regression when optimizer returned null', () => {
+    const opt = makeFakeOptimizeResult();
+    opt.regression = null;
+    const r = composeResults(baseArgs, opt, 0, 'ts');
+    expect(r.regression).toBeNull();
+  });
+
+  it('records meta fields with wallClockMs + timestamp + reproducibility inputs', () => {
+    const r = composeResults(baseArgs, makeFakeOptimizeResult(), 12345, '2026-05-16T12:34:56.789Z');
+    expect(r.meta).toEqual({
+      knobs: ['surfaces.wings.clAlphaDot'],
+      bounds: [[-10, 20]],
+      regimes: ['mid'],
+      restartsCount: 1,
+      seed: 42,
+      ticks: 1800,
+      wallClockMs: 12345,
+      timestamp: '2026-05-16T12:34:56.789Z',
+    });
+  });
+
+  it('records each restart with its seed, final score (flipped), and keyed params', () => {
+    const r = composeResults(baseArgs, makeFakeOptimizeResult(), 0, 'ts');
+    expect(r.restarts).toHaveLength(1);
+    expect(r.restarts[0].seed).toBe(1234);
+    expect(r.restarts[0].finalScore).toBe(-10);
+    expect(r.restarts[0].finalParams).toEqual({ 'surfaces.wings.clAlphaDot': 3.5 });
+  });
+});

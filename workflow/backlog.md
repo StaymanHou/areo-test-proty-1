@@ -4,12 +4,23 @@ Surface-notes from workflow runs. Consumed and resolved by higher-level workflow
 
 ## Open
 
+### SURFACE-2026-05-16-03 — arch.md §D14.4 NaN-penalty formula has wrong sign vs stated intent
+- **Source:** feature:build (WP14.8 Phase 1, 2026-05-16)
+- **Target level:** product:arch (doc-typo level — one character)
+- **Type:** doc-bug / arch-text-typo
+- **Priority:** low (does not affect any code; intent is unambiguous and was followed)
+- **Summary:** arch.md §D14.4 literally writes the NaN penalty as `-1e9 - tick_of_first_NaN` while the surrounding text says "Higher is better" AND "the optimizer can move *toward* later-NaN regions" (prefer-failing-later). Under higher-is-better, `-1e9 - tick` makes EARLIER NaN score higher (better), which is the opposite of the stated intent. The correct formula honoring the intent is `-1e9 + tick_of_first_NaN`. WP14.8 Phase 1's `tools/tune/score.ts` implements the intent-correct formula; the file header documents the discrepancy.
+- **Suggested action:** One-character edit to arch.md §D14.4 — change `-1e9 - tick_of_first_NaN` to `-1e9 + tick_of_first_NaN`. No code change needed (score.ts already correct).
+- **Verification approach:** N/A — text edit.
+- **Status:** pending
+
 ### SURFACE-2026-05-16-02 — Wall-clock perf assertion in `flightmodel.test.ts:368` is load-flaky
 - **Source:** feature:verify-codify (WP14.7 Phases 1/2/3, 2026-05-16)
 - **Target level:** task (small test-refactor)
 - **Type:** test-design / flake
 - **Priority:** low (does not affect ship readiness; full-suite reliably passes within 1-3 runs; pre-existing — not introduced by any WP14.7 change)
 - **Summary:** The Phase 1 codify cycle, Phase 2 codify cycle, and Phase 3 verify-self cycle all observed at least one failure of `src/aircraft/physics-core/flightmodel.test.ts:368` (`expect(elapsed).toBeLessThan(50)` after 1000 `applyForces` calls). Failure values were ~50.8ms, ~52.0ms — 1.6%-4% over a 50ms wall-clock threshold. The same test passes 19/19 in isolation consistently; the flake only manifests under full-suite parallelism. Triaged each occurrence as load-induced under the codify discipline; no code or test modification was made (triage hard rule). No occurrence affected ship — every full-suite run that flaked was followed by a clean re-run.
+- **Update 2026-05-16 (WP14.8 Phase 3 codify):** Worst-case sustained-flake run observed — 3 consecutive full-suite failures at 86.68ms / 79+ms (vs the prior 50-75ms range), then a 4th full-suite run came back 516/516 green. Isolation run of the same test consistently passes in ~38ms (well under the 50ms threshold). The widened tail confirms the flake is system-load-induced — running multiple `npm run test` invocations in close succession during a single agent session can stack CPU contention. **Action recommendation reaffirmed:** option (a) relative-baseline rework or option (b) move to a perf-only invocation. Priority remains low but the heavier-tail observation suggests the fix should land sooner than later if codify cycles continue to take 4+ retries.
 - **Suggested action:** rework the perf assertion. Two reasonable shapes:
   - **(a) Relative baseline:** measure a known-cheap reference op (e.g. 1000 empty `for` iterations) at the start of the test, scale the threshold proportionally. Removes the absolute wall-clock dependency.
   - **(b) Move to a perf-only test invocation:** tag the test with a Vitest tag like `@perf` and exclude from `npm run test`; run only via `npm run test:perf`. Keeps the regression signal for explicit perf-monitoring runs without flaking CI.
