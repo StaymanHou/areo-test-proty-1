@@ -1,7 +1,7 @@
 ---
 stage: wbs
 state: in-progress
-updated: 2026-05-16 (WP14.5-retry DONE — joint (clQ, clAlphaDot) optimizer search executed; shipped as commit 5fa06d1; outcome = escalation: SURFACE-2026-05-16-04 filed as consolidated mechanism-revision driver; recommended fix Option A on both β4 (implicit-Euler) and β5 (non-dim form); aircraft.json + phugoid-probe.spec.ts unchanged. Next: D15+D16 arch-revision cascade (analogous to D14 for β5). Phase 2 mission content remains paused at post-WP14 line. SURFACE-2026-05-12-03 + SURFACE-2026-05-16-01 superseded by -16-04 but remain "open" as origin records.)
+updated: 2026-05-16 (D15+D16 cascade added — WP14.9 β4 implicit-Euler integration + WP14.10 β5 non-dimensional form + WP14.11 joint tuning retry; entered via P12 SURFACE-IN from WP14.5-retry / SURFACE-2026-05-16-04; cascade is the numerical-integration analog of the D14 cascade, fixing the discretization layer rather than the model or parameter layer; Phase 2 mission content (WP15/WP16/WP17) remains paused at post-WP14 line until WP14.11 closes either way.)
 ---
 
 # Work Breakdown Structure
@@ -342,6 +342,53 @@ T-shirt sizing: **XS** ≤ 2h · **S** ≤ half day · **M** ≤ 1 day · **L** 
 - [x] Update SURFACE-2026-05-12-01 + SURFACE-2026-05-11-04 status in `workflow/backlog.md` based on outcome (Resolved if shipped; updated-pending if escalated to mechanism revision). **(Done — SURFACE-2026-05-12-03 and SURFACE-2026-05-16-01 cross-linked to -16-04 with "Update 2026-05-16 (final)" notes.)**
 
 **Shipped 2026-05-16 (commit `5fa06d1`).** Joint 4D (clQ, clAlphaDot) optimizer search executed: 4 random restarts + 4 hand-picked probes (8 distinct points covering the [0..20]×[-10..20]×[0..20]×[-10..20] box). **All 8 points hit the NaN floor** at score = -2,999,999,985 (= 3 × -1e9 + ~15). Regression Hessian came back null (degenerate) — no gradient direction exists in the searched 4D box. The current `aircraft.json` baseline itself NaN's in high-throttle at tick 417 (reproducing SURFACE-2026-05-16-01's diagnostic exactly). Tiny-clAD probe (0.1 magnitude) NaN's within 85-199 ticks across regimes (confirms SURFACE-2026-05-12-03's "raw dα/dt dimensionally wrong" hypothesis). **Outcome: branch 2B (escalate).** Filed SURFACE-2026-05-16-04 as the consolidated mechanism-revision driver; recommended fix is **Option A on both mechanisms** (implicit-Euler form for β4; non-dimensional `cl_α̇ · c̄ / (2V)` for β5). `aircraft.json` + `tests/e2e/phugoid-probe.spec.ts` unchanged per Phase 2B observable outcomes. Tally: 516/516 Vitest + 12/12 Playwright (3 phugoid-probe specs intentionally skipped) + tsc strict (both configs) + build clean. **This WP is a successful-close, not a partial-close** — the harness cascade (WP14.6+WP14.7+WP14.8) did its job: empirical evidence in 7.24s of wall-clock refuted Option D (parameter selection) decisively and produced concrete recommendations for the next arch revision. The "next arch revision" is now the D15 (β4 implicit-Euler) + D16 (β5 non-dim) cascade. Phase 2 mission content (WP15 takeoff/landing, WP16 combat) remains paused at post-WP14 line until that cascade lands.
+
+### WP14.9: β4 implicit-Euler integration (D15)
+**Description:** Implement D15 from arch.md Revision 2026-05-16 — replace the explicit-Euler-shaped pitch-rate damping at `src/aircraft/physics-core/aerosurface.ts:445-450` with a semi-implicit form so the discrete-time damping pole stays inside the unit circle for any positive `clQ` at dt=1/60s. The current `(1 + clQ · vScale)` amplification of the `ω × r` contribution becomes unstable above V_REF=30 m/s and produces the SURFACE-2026-05-16-01 sign-flip cascade (NaN by tick 417 at baseline `clQ=8` h-stab, throttle=0.4). Form A from arch.md preferred: closed-form per-axis `ω_{n+1} = (ω_n + dt · M_un_damped / I) / (1 + dt · k / I)` correction applied to angvel before the Rapier step. Adds one scalar division per surface per tick to the hot path. Cache `chordLength = surface.chord.length()` at AeroSurface construction (shared with WP14.10).
+**Phase:** 2
+**Dependencies:** WP14.6 (physics-core layer), WP14.7 (harness for verify-self), WP14.8 (optimizer for non-default verify-self if needed)
+**Size:** S
+**Tasks:**
+- [ ] Plan-time: pick between arch.md Form A (semi-implicit ω closed-form) and Form B (damping-moment magnitude clamp). Form A is the preferred and documented choice; Form B is the fallback if hot-path cost surprises. Default: Form A.
+- [ ] Locate per-surface rotation axis (β4 dampens pitch on h-stab via Y-axis, roll on wings via Z-axis — derivable from `normal × chord`). If the derivation is non-obvious, surface as SURFACE — may require a `clQAxis` schema field per arch.md "Open questions".
+- [ ] Implement Form A in `computeAeroForce`: compute the un-amplified `ω × r` contribution, separately compute the damping moment from `clQ`, solve the closed-form `ω_{n+1}` correction, apply to the appropriate Rapier integration path (pre-step ω adjust OR moment-input adjust — pick one, document at close).
+- [ ] Cache `chordLength` at AeroSurface construction. Allocate-free hot path contract preserved (no `new` per tick).
+- [ ] Vitest: discrete-time pole stability check at `clQ=8, v=60` — post-fix bounded `ω_{n+1}` over many ticks given a fixed external moment.
+- [ ] Vitest: default-clQ parity (existing 516/516 must continue to pass at `clQ=3` wings, `clQ=8` h-stab).
+- [ ] Harness-vs-browser parity test `tests/parity-diff.test.ts` MUST stay green at baseline `clQ=3,8` (low-V regime — Risk 1 of D15).
+- [ ] verify-self via harness: `throttle-high` parity fixture stays finite through 1800 ticks at baseline `clQ=3,8`. **(CLAUDE.md physics-mechanism discipline Rule #2 — non-default verify-self at the SURFACE-2026-05-16-01 regime.)** A non-default verify-self also means: re-run with `clQ` raised to something the optimizer might find (e.g., `clQ=12`) and confirm trajectory stays finite there too — proves the fix isn't a "default-only" patch.
+- [ ] verify-self in browser at `?debug=true`: spawn at v=30, throttle=0.4; confirm no NaN through 30s in console. Optional but cheap.
+- [ ] Update SURFACE-2026-05-16-01 status in `workflow/backlog.md` — resolved-by-implementation once parity-high stays finite. SURFACE-2026-05-16-04 partially closes (β4 side).
+
+### WP14.10: β5 non-dimensional form (D16)
+**Description:** Implement D16 from arch.md Revision 2026-05-16 — replace the raw-rate `cl += clAlphaDot · dAlphaDt` at `src/aircraft/physics-core/aerosurface.ts:475-483` with the standard non-dimensional form `cl += clAlphaDot · dAlphaDt · referenceChord / (2 · max(V, V_REF))` using the cached `chordLength` from WP14.9. The non-dim form is the textbook unsteady-aero convention (Etkin & Reid §5.10–5.12) and makes `clAlphaDot` a dimensionless `O(1)` coefficient instead of a dimensional one that depends on tick rate. The current raw-rate code produces CL augmentations comparable to steady-state CL at typical startup transients (the tiny-clAD=0.1 probe NaN's within 85-199 ticks per SURFACE-2026-05-16-04 evidence); the non-dim form scales those augmentations down 3 orders of magnitude into the physically tunable range.
+**Phase:** 2
+**Dependencies:** WP14.9 (cached `chordLength` field — D16 depends on the constructor-cache D15 introduces)
+**Size:** S
+**Tasks:**
+- [ ] Use the `chordLength` field cached by WP14.9 (no need to re-cache; D16 only consumes).
+- [ ] Replace the raw `cl += surface.clAlphaDot * dAlphaDt` line with `cl += surface.clAlphaDot * dAlphaDt * surface.chordLength / (2 * Math.max(vBody, BETA4_V_REF))`. Use the existing `BETA4_V_REF = 30` constant per arch.md "shared reference airspeed" rationale.
+- [ ] Preserve the existing β5 augmentation gate (`clAlphaDot !== 0 && dt !== undefined && dt > 0 && prevAoA !== undefined`) and the `surface.prevAoA = alpha` cache update — D16 changes the formula, not the gate.
+- [ ] Vitest: non-dim formula sanity check — at `c̄=1, V=30, dα/dt=1, clAlphaDot=1`, CL augmentation = `1 · 1 / 60 ≈ 0.0167`. Closed-form.
+- [ ] Vitest: default-zero parity (existing 516/516 must continue to pass with `clAlphaDot=0` — augmentation block returns same zero contribution as before by construction).
+- [ ] Harness-vs-browser parity test `tests/parity-diff.test.ts` MUST stay green at baseline `clAlphaDot=0,0,0,0`.
+- [ ] verify-self via harness: re-run a Playwright probe at non-zero clAlphaDot (e.g., 5 on wings + 8 on h-stab — within the post-D16 expected tunable range of 1-10) in at least TWO operating regimes (low-V + high-V, or low-throttle + high-throttle); ≥10s window each; confirm no NaN, bounded altitude/airspeed. **(CLAUDE.md physics-mechanism discipline Rule #1 — live observation at a non-zero coefficient before relying on any sign-convention test.)**
+- [ ] Re-confirm the existing WP10.5 sign-convention test at `aerosurface.test.ts:1135` ("positive clAlphaDot + rising α produces +lift") under the non-dim form. Multiplication by `c̄/(2V) > 0` preserves sign, so the test continues to pass — but only NOW is it authoritative, per CLAUDE.md Rule #1.
+- [ ] Update SURFACE-2026-05-12-03 status in `workflow/backlog.md` — partial close (mechanism revised; awaiting tuning). SURFACE-2026-05-16-04 partially closes (β5 side).
+
+### WP14.11: Joint (clQ, clAlphaDot) tuning retry post-D15+D16
+**Description:** WP14.5-retry-2. Re-run the WP14.5-retry tune command after D15 + D16 land. The diagnostic prediction from SURFACE-2026-05-16-04 + the physics literature is that both fixes together SHOULD produce a stable region somewhere in the joint (clQ, clAlphaDot) space — D15 by removing the integrator instability above V_REF, D16 by making the β5 mechanism dimensionally correct. If the optimizer finds a cross-threshold point, commit `aircraft.json` values and un-skip `tests/e2e/phugoid-probe.spec.ts`. If it does not, file a new SURFACE — at that point we have a third mechanism layer we haven't surfaced yet, and Phase 2 mission content may need re-scoping to the descending-glide envelope.
+**Phase:** 2
+**Dependencies:** WP14.9 (D15), WP14.10 (D16)
+**Size:** XS-S
+**Tasks:**
+- [ ] Plan-time: define acceptance threshold — same as WP14.5-retry: all 3 regimes finite through 1800 ticks AND total score ≥ -300. Threshold sits in the WIP file. Per CLAUDE.md physics-mechanism discipline Rule #3, the threshold MUST be set before running the optimizer, not after.
+- [ ] Run the canonical tune command (same shape as WP14.5-retry): `npm run tune -- --knobs surfaces.0.clQ,surfaces.0.clAlphaDot,surfaces.2.clQ,surfaces.2.clAlphaDot --bounds 0..20,0..15,0..20,0..15 --regimes low,mid,high --restarts 4 --seed 42`. **Note bounds change:** clAlphaDot upper bound drops from 20 to 15 (post-D16 textbook range is 1–10, so 15 leaves headroom; also drop the negative half since the sign convention is now physically validated). clQ bounds unchanged.
+- [ ] Inspect results JSON. Extract global best, per-regime breakdown, regression Hessian (it SHOULD be non-null this time — informative gradient means the parameter space is no longer uniform-NaN-floor).
+- [ ] If cross-threshold: write the optimizer's best (clQ, clAlphaDot) values into `aircraft.json` (mirror wing-left to wing-right; v-stab untouched). Un-skip `tests/e2e/phugoid-probe.spec.ts` (delete line 18 `test.skip(...)`). Run full Vitest + Playwright suite to confirm clean.
+- [ ] If NOT cross-threshold: do NOT commit `aircraft.json` change. File a new SURFACE with the optimizer's regression data + per-regime CSV trajectories. At that point flag a third-layer mechanism review (whether the aerosurface model itself needs a deeper revision — Theodorsen function, separate moment-of-inertia treatment, etc.). Phase 2 mission content may need to re-scope to descending-glide envelope.
+- [ ] verify-self in browser at `?mission=phugoid-probe-mid&debug=true`: confirm 30s window stays bounded (if cross-threshold branch).
+- [ ] Resolve SURFACE-2026-05-16-04, SURFACE-2026-05-12-03, SURFACE-2026-05-16-01, SURFACE-2026-05-11-04, SURFACE-2026-05-12-01 in `workflow/backlog.md` — all 5 chained surfaces fully close when WP14.11 successfully tunes and the probe spec stays green. Update CHANGELOG.md with the cascade closure on the WP14.11 finalize commit.
 
 ### WP15: Takeoff/landing mission
 **Description:** Airfield with a runway. Detect wheels-down on runway within bounds + safe vertical speed. Objective: take off, pattern around, land.
