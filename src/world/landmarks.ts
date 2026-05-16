@@ -9,6 +9,11 @@ import {
   type Texture,
 } from 'three';
 import { createRunwayStripeTexture } from './textures';
+import {
+  TOWER_POSITION,
+  TOWER_FOOTPRINT,
+  TOWER_HEIGHT,
+} from '../aircraft/physics-core/world-fixture';
 
 export interface RunwayOptions {
   length?: number;
@@ -65,9 +70,10 @@ export interface TowerResult {
 }
 
 export function createTower(opts: TowerOptions = {}): TowerResult {
-  const height = opts.height ?? 30;
-  const footprint = opts.footprint ?? 8;
-  const position = opts.position ?? new Vector3(40, 0, -250);
+  const height = opts.height ?? TOWER_HEIGHT;
+  const footprint = opts.footprint ?? TOWER_FOOTPRINT;
+  const position = opts.position
+    ?? new Vector3(TOWER_POSITION.x, TOWER_POSITION.y, TOWER_POSITION.z);
   const bodyColor = opts.bodyColor ?? 0xc8c8c8;
   const capColor = opts.capColor ?? 0xc83232;
 

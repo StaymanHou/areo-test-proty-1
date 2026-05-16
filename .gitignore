@@ -35,3 +35,6 @@ dist-ssr
 
 # Claude Code local state (auto-memory, etc.)
 .claude/
+
+# WP14.7+ tooling outputs (harness CSVs, WP14.8 optimizer search results)
+tools/tune/results/

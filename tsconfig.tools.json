@@ -1,0 +1,15 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "moduleResolution": "bundler",
+    "types": ["node"]
+  },
+  "include": [
+    "tools/**/*",
+    "src/aircraft/physics-core/**/*",
+    "tests/parity-fixtures.ts"
+  ],
+  "exclude": [
+    "**/*.test.ts"
+  ]
+}

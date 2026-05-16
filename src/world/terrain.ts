@@ -6,6 +6,11 @@ import {
   type Texture,
 } from 'three';
 import { createCheckerTexture } from './textures';
+import {
+  GROUND_SIZE,
+  GROUND_Y,
+  GROUND_HALF_THICKNESS,
+} from '../aircraft/physics-core/world-fixture';
 
 export interface Terrain {
   getHeight(x: number, z: number): number;
@@ -20,8 +25,6 @@ export interface FlatTerrainOptions {
   texture?: Texture;
 }
 
-const COLLIDER_HALF_THICKNESS = 0.1;
-
 export class FlatTerrain implements Terrain {
   readonly size: number;
   readonly height: number;
@@ -30,8 +33,8 @@ export class FlatTerrain implements Terrain {
   private readonly texture: Texture;
 
   constructor(opts: FlatTerrainOptions = {}) {
-    this.size = opts.size ?? 4000;
-    this.height = opts.height ?? 0;
+    this.size = opts.size ?? GROUND_SIZE;
+    this.height = opts.height ?? GROUND_Y;
     this.textureRepeat = opts.textureRepeat ?? 100;
 
     if (this.size <= 0) {
@@ -68,7 +71,7 @@ export class FlatTerrain implements Terrain {
 
   getColliderDesc(): RAPIER.ColliderDesc {
     const halfSize = this.size / 2;
-    return RAPIER.ColliderDesc.cuboid(halfSize, COLLIDER_HALF_THICKNESS, halfSize)
-      .setTranslation(0, this.height - COLLIDER_HALF_THICKNESS, 0);
+    return RAPIER.ColliderDesc.cuboid(halfSize, GROUND_HALF_THICKNESS, halfSize)
+      .setTranslation(0, this.height - GROUND_HALF_THICKNESS, 0);
   }
 }

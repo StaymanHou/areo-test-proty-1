@@ -12,23 +12,48 @@ import {
   csvToTrajectory,
   type TrajectoryRow,
 } from '../src/aircraft/physics-core/trajectory-buffer';
+import { createPhysicsWorld } from '../src/aircraft/physics-core/world-fixture';
 import { PARITY_FIXTURES, type ParityFixture } from './parity-fixtures';
 
 // WP14.6 parity-diff. Loads the browser-emitted trajectory CSVs from
 // `test-results/browser-trajectory-<id>.csv` (produced by
-// `tests/e2e/parity.spec.ts`), re-runs the same fixtures through a pure-TS
-// loop calling `physics-core/step()` with `AircraftBody` (no Three.js mesh),
-// and diffs column-by-column.
+// `tests/e2e/parity.spec.ts`), and diffs them against a Node-side
+// trajectory column-by-column.
 //
-// Synthetic-stub status: at WP14.6 the "Node side" of this diff is the
-// in-process Vitest pure-TS loop. WP14.7 will swap it for a real `tsx
-// tools/tune/harness.ts` invocation. Same physics-core entry points, same
-// Rapier-WASM build → same trajectories.
+// Node-side source precedence (WP14.7 Phase 3 — see arch.md Rev 2026-05-12
+// §D14.3, CONVENTIONS.md `### src/aircraft/physics-core/ boundary`):
+//   1. If `test-results/harness-trajectory-<id>.csv` exists (produced by
+//      `npm run harness:parity`), diff browser-vs-harness. This is the
+//      load-bearing acceptance check for WP14.7+: physics-core has one
+//      browser caller (`src/main.ts`) and one Node caller
+//      (`tools/tune/harness.ts`), both of which must produce identical
+//      trajectories.
+//   2. Else, fall back to the in-process synthetic stub (Vitest pure-TS
+//      loop calling `physics-core/step()` with `AircraftBody`). This path
+//      preserves the WP14.6 single-tool smoke contract: `npm run test`
+//      alone (no Playwright, no harness) can still exercise parity-diff
+//      end-to-end as long as a browser CSV is present.
+//   3. If the browser CSV is missing too, skip with an explanatory log
+//      — the test is fundamentally a browser-vs-something check.
 //
 // Tolerance: |Δ| < 1e-6 per scalar (angles use shortest-arc distance). The
 // browser-side Rapier and the Node-side Rapier are the same WASM build at
-// the same fixed-dt, so bit-identity is the structural expectation; the
-// 1e-6 tolerance is engineering slack for any incidental f32 round-trip.
+// the same fixed-dt, so trajectory-level bit-identity is the structural
+// expectation; the 1e-6 tolerance is engineering slack for f64 CSV
+// round-trip noise (last-decimal-digit ULPs from Number.prototype.toString
+// picking the shortest representation per row).
+//
+// Parity-of-divergence (WP14.7 Phase 1): some fixtures intentionally exercise
+// known-unstable regimes (SURFACE-2026-05-16-01: β4 explicit-Euler instability
+// above V_REF; SURFACE-2026-05-12-03: β5 phugoid). Trajectories in those
+// regimes go non-finite (NaN/Infinity) deterministically. What parity-diff
+// CAN prove is that both runners diverge at the same tick with the same
+// values — including the same NaN/Infinity pattern. What it CANNOT prove is
+// stability — that's a separate acceptance gate, blocked on the SURFACE
+// items above. Until divergence, finite values must match within TOLERANCE.
+// At and beyond divergence, the non-finite pattern must match (both NaN, or
+// both same-signed Infinity). This is the honest contract: "the two runners
+// are bit-identical, including in how they explode."
 
 const CONFIG_PATH = path.resolve('public/config/aircraft.json');
 const TEST_RESULTS_DIR = path.resolve('test-results');
@@ -43,20 +68,11 @@ beforeAll(async () => {
 });
 
 function runSynthetic(fixture: ParityFixture): TrajectoryRow[] {
-  const world = new RAPIER.World({ x: 0, y: -9.81, z: 0 });
-  // Match the browser's world shape — a flat ground plane at y=0 + a tower at
-  // (40, 0, -250). Without those colliders, Rapier's broad phase has fewer
-  // candidates to consider and the first-tick integration diverges from the
-  // browser trajectory. The ground+tower together replicate the shipped world.
-  // Trampoline-thin (0.001m) cuboid for the ground — matches FlatTerrain's
-  // collider descriptor. Tower uses a small static cuboid like the shipped one.
-  // NOTE: terrain shape constants here track src/world/terrain.ts and
-  // src/world/landmarks.ts; keep them in sync until WP14.7 provides a
-  // canonical "world fixture" helper that both harness and tests consume.
-  const groundDesc = RAPIER.ColliderDesc.cuboid(2000, 0.001, 2000).setTranslation(0, 0, 0);
-  world.createCollider(groundDesc);
-  const towerDesc = RAPIER.ColliderDesc.cuboid(4, 15, 4).setTranslation(40, 15, -250);
-  world.createCollider(towerDesc);
+  // World construction is delegated to physics-core/world-fixture.ts — the
+  // single source of truth shared with the browser path (src/main.ts via
+  // src/world/{terrain,landmarks}.ts) and the WP14.7 Node harness. Drift
+  // between paths breaks bit-identity over long trajectories.
+  const { world } = createPhysicsWorld();
 
   const aircraft = new AircraftBody(world, config, {
     position: new Vector3(fixture.position.x, fixture.position.y, fixture.position.z),
@@ -77,52 +93,210 @@ function angleDiff(a: number, b: number): number {
   return Math.min(d, Math.PI * 2 - d);
 }
 
-describe('parity-diff: browser-emitted trajectory == synthetic-stub trajectory', () => {
+// Classify a number into a bit-identity-comparable kind. Two values are
+// "the same kind" if they agree on this classifier. For finite values,
+// equality of kind is necessary but not sufficient — magnitude diff still
+// matters (TOLERANCE check). For non-finite values, equality of kind is
+// itself the parity assertion (both NaN; or both +Infinity; or both
+// -Infinity). Exported for unit testing in this file's tail block.
+export type NonFiniteKind = 'NaN' | '+Infinity' | '-Infinity';
+export function nonFiniteKind(x: number): NonFiniteKind | null {
+  if (Number.isNaN(x)) return 'NaN';
+  if (x === Infinity) return '+Infinity';
+  if (x === -Infinity) return '-Infinity';
+  return null;
+}
+
+// Node-side source precedence (WP14.7 Phase 3). Given the presence/absence
+// of browser and harness CSVs at test-run time, decide what parity-diff
+// should do for this fixture:
+//   - 'skip' — browser CSV is the anchor; without it there's nothing to
+//     compare. Skip with a log; the full pipeline produces both.
+//   - 'use-harness' — both present; diff browser vs harness. This is the
+//     WP14.7+ acceptance path and the one CI runs.
+//   - 'use-synthetic' — browser present, harness absent. Fall back to the
+//     in-process synthetic stub. Preserves the WP14.6 "Vitest-alone is a
+//     smoke for everything except parity" contract.
+// Exported so the tail-block tests can pin this contract directly; a
+// future "simplification" that flipped the precedence (e.g. preferring
+// synthetic when both present) would silently degrade the CI signal in
+// most cases since CI always has both CSVs. Codifying it here prevents
+// that drift.
+export type NodeSourceDecision = 'skip' | 'use-harness' | 'use-synthetic';
+export function pickNodeSource(
+  browserCsvExists: boolean,
+  harnessCsvExists: boolean,
+): NodeSourceDecision {
+  if (!browserCsvExists) return 'skip';
+  return harnessCsvExists ? 'use-harness' : 'use-synthetic';
+}
+
+describe('parity-diff: browser-emitted trajectory == node-side trajectory', () => {
   for (const fixture of PARITY_FIXTURES) {
     it(`fixture ${fixture.id}: ${fixture.ticks}-tick trajectory matches within |Δ|<${TOLERANCE}`, () => {
-      const csvPath = path.join(TEST_RESULTS_DIR, `browser-trajectory-${fixture.id}.csv`);
-      if (!fs.existsSync(csvPath)) {
+      const browserCsvPath = path.join(TEST_RESULTS_DIR, `browser-trajectory-${fixture.id}.csv`);
+      const harnessCsvPath = path.join(TEST_RESULTS_DIR, `harness-trajectory-${fixture.id}.csv`);
+
+      const decision = pickNodeSource(
+        fs.existsSync(browserCsvPath),
+        fs.existsSync(harnessCsvPath),
+      );
+
+      if (decision === 'skip') {
         // The browser-side CSV is produced by `npm run test:e2e`. If Vitest
         // runs before Playwright (e.g., in a `npm run test` only flow), the
         // file won't exist yet — skip with an explanatory log rather than
-        // fail. The full pipeline (Vitest + Playwright + Vitest) will hit
-        // the assertions; CI runs both.
+        // fail. The full pipeline (Vitest + Playwright + harness:parity +
+        // Vitest) will hit the assertions; CI runs the full pipeline.
         console.log(
-          `parity-diff: ${csvPath} not present — run \`npm run test:e2e\` first to produce it. Skipping this fixture.`,
+          `parity-diff: ${browserCsvPath} not present — run \`npm run test:e2e\` first to produce it. Skipping this fixture.`,
         );
         return;
       }
 
-      const browserRows = csvToTrajectory(fs.readFileSync(csvPath, 'utf-8'));
-      const syntheticRows = runSynthetic(fixture);
+      const browserRows = csvToTrajectory(fs.readFileSync(browserCsvPath, 'utf-8'));
 
-      expect(browserRows.length, `row count mismatch for ${fixture.id}`).toBe(syntheticRows.length);
+      let nodeRows: TrajectoryRow[];
+      let nodeSource: string;
+      if (decision === 'use-harness') {
+        nodeRows = csvToTrajectory(fs.readFileSync(harnessCsvPath, 'utf-8'));
+        nodeSource = 'harness';
+      } else {
+        // decision === 'use-synthetic'
+        nodeRows = runSynthetic(fixture);
+        nodeSource = 'synthetic-stub';
+      }
+
+      expect(browserRows.length, `row count mismatch for ${fixture.id} (node source: ${nodeSource})`).toBe(nodeRows.length);
 
       for (let i = 0; i < browserRows.length; i++) {
         const b = browserRows[i];
-        const s = syntheticRows[i];
-        expect(b.tick, `tick mismatch at row ${i}`).toBe(s.tick);
+        const n = nodeRows[i];
+        expect(b.tick, `tick mismatch at row ${i} (node source: ${nodeSource})`).toBe(n.tick);
 
         const scalarKeys: (keyof TrajectoryRow)[] = [
           'posX', 'posY', 'posZ', 'vX', 'vY', 'vZ', 'airspeed',
         ];
         for (const k of scalarKeys) {
-          const diff = Math.abs((b[k] as number) - (s[k] as number));
+          const bv = b[k] as number;
+          const nv = n[k] as number;
+          const bk = nonFiniteKind(bv);
+          const nk = nonFiniteKind(nv);
+          if (bk !== null || nk !== null) {
+            // Parity-of-divergence: both runners must produce the same kind
+            // of non-finite (both NaN, or both same-signed Infinity). If one
+            // diverged and the other didn't, that's a real parity break.
+            expect(
+              bk,
+              `${fixture.id} row ${i} field ${k}: divergence-kind mismatch (browser=${bv}, ${nodeSource}=${nv})`,
+            ).toBe(nk);
+            continue;
+          }
+          const diff = Math.abs(bv - nv);
           expect(
             diff,
-            `${fixture.id} row ${i} field ${k}: |Δ|=${diff} > ${TOLERANCE} (browser=${b[k]}, synthetic=${s[k]})`,
+            `${fixture.id} row ${i} field ${k}: |Δ|=${diff} > ${TOLERANCE} (browser=${bv}, ${nodeSource}=${nv})`,
           ).toBeLessThan(TOLERANCE);
         }
 
         const angleKeys: (keyof TrajectoryRow)[] = ['pitch', 'yaw', 'roll'];
         for (const k of angleKeys) {
-          const diff = angleDiff(b[k] as number, s[k] as number);
+          const bv = b[k] as number;
+          const nv = n[k] as number;
+          const bk = nonFiniteKind(bv);
+          const nk = nonFiniteKind(nv);
+          if (bk !== null || nk !== null) {
+            expect(
+              bk,
+              `${fixture.id} row ${i} field ${k}: divergence-kind mismatch (browser=${bv}, ${nodeSource}=${nv})`,
+            ).toBe(nk);
+            continue;
+          }
+          const diff = angleDiff(bv, nv);
           expect(
             diff,
-            `${fixture.id} row ${i} field ${k}: shortest-arc Δ=${diff} > ${TOLERANCE} (browser=${b[k]}, synthetic=${s[k]})`,
+            `${fixture.id} row ${i} field ${k}: shortest-arc Δ=${diff} > ${TOLERANCE} (browser=${bv}, ${nodeSource}=${nv})`,
           ).toBeLessThan(TOLERANCE);
         }
       }
     });
   }
+});
+
+// Codification block — unit coverage for the parity-of-divergence helper
+// added in WP14.7 Phase 1.7. Until this block landed, `nonFiniteKind` was
+// exercised only indirectly via the throttle-high fixture happening to
+// produce matching NaN/Infinity patterns in both runners. That's a fragile
+// coupling: a future change that made the classifier collapse `+Infinity`
+// and `-Infinity` to the same kind would silently let parity-failure cases
+// through. These tests pin the contract directly.
+describe('nonFiniteKind: parity-of-divergence classifier', () => {
+  it('returns null for finite numbers (positive, negative, zero, signed-zero)', () => {
+    expect(nonFiniteKind(0)).toBeNull();
+    expect(nonFiniteKind(-0)).toBeNull();
+    expect(nonFiniteKind(1.5)).toBeNull();
+    expect(nonFiniteKind(-1e308)).toBeNull();
+    expect(nonFiniteKind(Number.MAX_VALUE)).toBeNull();
+    expect(nonFiniteKind(Number.MIN_VALUE)).toBeNull();
+  });
+
+  it('distinguishes NaN, +Infinity, and -Infinity as separate kinds', () => {
+    expect(nonFiniteKind(NaN)).toBe('NaN');
+    expect(nonFiniteKind(Infinity)).toBe('+Infinity');
+    expect(nonFiniteKind(-Infinity)).toBe('-Infinity');
+  });
+
+  it('treats +Infinity and -Infinity as DIFFERENT kinds (signed-infinity is load-bearing)', () => {
+    // If both runners diverge but in opposite directions, that is a real
+    // parity break — the integrator is asymmetric between them. The parity-
+    // of-divergence assertion must catch this.
+    expect(nonFiniteKind(Infinity)).not.toBe(nonFiniteKind(-Infinity));
+  });
+
+  it('treats NaN as distinct from both +Infinity and -Infinity', () => {
+    // NaN-vs-Infinity is a particularly insidious parity break: one runner
+    // hit 0/0 while the other hit overflow. These are not the same failure
+    // mode and must not be treated as parity-success.
+    expect(nonFiniteKind(NaN)).not.toBe(nonFiniteKind(Infinity));
+    expect(nonFiniteKind(NaN)).not.toBe(nonFiniteKind(-Infinity));
+  });
+
+  it('rejects NaN identity collapse (NaN !== NaN, but classifier returns same string)', () => {
+    // Sanity: in JS NaN !== NaN, so a naive `b === s` comparison fails for
+    // matching NaN values. The classifier-based dispatch must succeed
+    // because `nonFiniteKind(NaN) === nonFiniteKind(NaN)` returns true (both
+    // are the string 'NaN').
+    expect(NaN === NaN).toBe(false);
+    expect(nonFiniteKind(NaN) === nonFiniteKind(NaN)).toBe(true);
+  });
+});
+
+// Codification block — pins the WP14.7 Phase 3 precedence contract. The
+// fixture tests above exercise either the harness or synthetic branch at
+// test-run time depending on ambient filesystem state, which means CI
+// (where both CSVs are always present) never exercises the synthetic
+// fallback — a future inversion of the precedence would silently degrade
+// the CI signal. These four cases pin all four corners of the truth
+// table directly.
+describe('pickNodeSource: Phase 3 precedence', () => {
+  it('returns "skip" when the browser CSV is absent (regardless of harness)', () => {
+    expect(pickNodeSource(false, false)).toBe('skip');
+    expect(pickNodeSource(false, true)).toBe('skip');
+  });
+
+  it('returns "use-harness" when both browser and harness CSVs are present (WP14.7+ acceptance path)', () => {
+    expect(pickNodeSource(true, true)).toBe('use-harness');
+  });
+
+  it('returns "use-synthetic" when browser is present but harness is absent (WP14.6 fallback contract)', () => {
+    expect(pickNodeSource(true, false)).toBe('use-synthetic');
+  });
+
+  it('prefers harness over synthetic when both are available — pinning the precedence direction', () => {
+    // Direct restatement of the prefer-harness rule. If someone "simplifies"
+    // pickNodeSource to always-synthetic or always-harness, this test
+    // catches the half they got wrong.
+    expect(pickNodeSource(true, true)).not.toBe('use-synthetic');
+    expect(pickNodeSource(true, false)).not.toBe('use-harness');
+  });
 });

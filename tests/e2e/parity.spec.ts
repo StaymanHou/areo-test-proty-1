@@ -3,13 +3,16 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { PARITY_FIXTURES, type ParityFixture } from '../parity-fixtures';
 
-// WP14.6 parity-test browser emitter. Loads `/?debug=true&mission=free-flight`
+// Parity-test browser emitter. Loads `/?debug=true&mission=free-flight`
 // to get a `window.__aircraft.runFixture()` hook, drives one or more fixtures
 // deterministically, writes the resulting trajectory CSVs to
 // `test-results/` so `tests/parity-diff.test.ts` (Vitest) can diff them
 // against the synthetic-stub-then-Node-harness side.
 //
-// At WP14.6 only `throttle-mid` is in PARITY_FIXTURES. WP14.7 extends.
+// Fixtures are defined in `tests/parity-fixtures.ts` and consumed in lockstep
+// by this spec, `parity-diff.test.ts`, and `tools/tune/harness.ts`. WP14.7
+// extended coverage from mid-only to low/mid/high per
+// `feedback_verify_self_envelope.md`.
 
 type TrajectoryRow = {
   tick: number;

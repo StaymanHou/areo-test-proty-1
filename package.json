@@ -9,7 +9,9 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "harness": "tsx tools/tune/harness.ts",
+    "harness:parity": "tsx tools/tune/harness.ts --all-fixtures --out-dir test-results"
   },
   "devDependencies": {
     "@playwright/test": "^1.60.0",
@@ -17,6 +19,7 @@
     "@types/stats.js": "^0.17.4",
     "@types/three": "^0.184.0",
     "jsdom": "^29.1.1",
+    "tsx": "^4.22.0",
     "typescript": "~6.0.2",
     "vite": "^8.0.4",
     "vitest": "^4.1.4"
