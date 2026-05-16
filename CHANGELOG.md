@@ -3,6 +3,8 @@
 ## 2026-05-16
 
 - **Feature shipped:** WP14.7 Node Rapier-WASM harness — `tools/tune/harness.ts` boots Rapier-WASM in Node, accepts deep-path parameter overrides + fixture id + tick count via CLI, emits trajectory CSVs the browser path diffs to within `|Δ|<1e-6`; `parity-diff.test.ts` rewired with browser→(harness | synthetic) precedence and parity-of-divergence semantics; second of 3 WPs in the D14 cascade.
+- **Feature shipped:** WP14.8 score function + Nelder-Mead optimizer + tune CLI — `tools/tune/score.ts` implements multi-regime envelope-probing fitness (NaN penalty encodes time-to-first-NaN as a gradient), `tools/tune/optimizer.ts` runs Nelder-Mead with K random restarts + local quadratic regression on the best simplex (dimension-agnostic from day one), `tools/tune/tune.ts` is the `npm run tune` CLI that wires them with the WP14.7 harness; third of 3 WPs in the D14 cascade — fully landed, WP14.5-retry now genuinely unblocked.
+- **Milestone:** WP14.8: Score function + Nelder-Mead optimizer + tune CLI (D14 cascade step 3 of 3).
 
 ## 2026-05-12
 
