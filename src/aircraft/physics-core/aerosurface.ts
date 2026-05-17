@@ -120,6 +120,14 @@ export class AeroSurface {
   /** AoA-rate damping coefficient (β5). 0 = no augmentation. */
   clAlphaDot: number;
   /**
+   * Cached chord length in metres (captured BEFORE `chord` is normalized to a
+   * unit vector). Read-only after construction unless `setGeometry({chord})` is
+   * called — `setGeometry` refreshes it. Used by D16 (β5 non-dimensional form,
+   * WP14.10) to scale the AoA-rate damping by `c̄ / (2V)`. Computed once at
+   * construction; never allocated per tick.
+   */
+  chordLength: number;
+  /**
    * Previous-tick local AoA cache for the β5 finite difference. `undefined`
    * means "no previous reading" — augmentation is skipped and the current
    * AoA is recorded. Reset to `undefined` by `setGeometry` because a
@@ -130,6 +138,8 @@ export class AeroSurface {
   constructor(config: AeroSurfaceConfig) {
     this.position = config.position.clone();
     this.normal = config.normal.clone().normalize();
+    // Capture chord length BEFORE normalize() — see chordLength field doc.
+    this.chordLength = config.chord.length();
     this.chord = config.chord.clone().normalize();
     this.area = config.area;
     this.clCurve = config.clCurve;
@@ -213,6 +223,8 @@ export class AeroSurface {
       this.normal.copy(opts.normal).normalize();
     }
     if (opts.chord !== undefined) {
+      // Capture length BEFORE normalize — same contract as the constructor.
+      this.chordLength = opts.chord.length();
       this.chord.copy(opts.chord).normalize();
     }
     if (opts.normal !== undefined || opts.chord !== undefined) {

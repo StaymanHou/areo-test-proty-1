@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-05-17
+
+- **Feature escalated:** WP14.9 β4 implicit-Euler integration (D15) — attempt-1 moment-amplification-ratio implementation refuted at verify-self (baseline NaN at tick 416, vs pre-D15 tick 417 — no improvement); operator selected Option 3 (full reframe — V-scaling shape itself is wrong, not the explicit-vs-implicit dimension); filed SURFACE-2026-05-17-01 as the actionable D15-rev driver (textbook non-dimensional pitch-rate-damping `cl_q · ω · c̄ / (2V)` parallel to D16); production code reverted to pre-D15 baseline; `chordLength` cache retained on `AeroSurface` for D16 consumption; successor WP pending arch revision via /product-arch.
+
 ## 2026-05-16
 
 - **Feature shipped:** WP14.7 Node Rapier-WASM harness — `tools/tune/harness.ts` boots Rapier-WASM in Node, accepts deep-path parameter overrides + fixture id + tick count via CLI, emits trajectory CSVs the browser path diffs to within `|Δ|<1e-6`; `parity-diff.test.ts` rewired with browser→(harness | synthetic) precedence and parity-of-divergence semantics; second of 3 WPs in the D14 cascade.
