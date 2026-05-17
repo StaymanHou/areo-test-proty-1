@@ -1,7 +1,7 @@
 ---
 stage: arch
 state: complete
-updated: 2026-05-16 (D15 + D16 added: β4 implicit-Euler integration + β5 non-dimensional form — entered via P12 SURFACE-IN from WP14.5-retry / SURFACE-2026-05-16-04; both mechanisms refuted at the parameter layer by the harness-optimizer; numerical-integration fixes apply at the discretization layer, not the model layer)
+updated: 2026-05-17 (D17 added: β4 non-dimensional pitch-rate damping — entered via P12 SURFACE-IN from WP14.9 / SURFACE-2026-05-17-01; supersedes D15 as the actionable β4-mechanism decision after D15 attempt-1 was empirically refuted at verify-self; the framing shifts from "discretization-layer fix" to "non-dimensionalization fix" — structurally parallel to D16's β5 treatment, making both fixes consistently non-dim instead of one-non-dim-one-implicit)
 ---
 
 
@@ -645,3 +645,134 @@ WP15 (takeoff/landing) and WP16 (combat) remain paused at the post-WP14 line —
 - **Whether `chordLength` warrants a per-surface override in `aircraft.json`.** Currently the chord vector is `(0, 0, -1)` for all 4 surfaces, so `chord.length() = 1` everywhere. If Phase 3 adds aircraft with varying chord lengths, a per-surface override would be needed — deferred until then.
 - **Whether D15 needs a per-axis moment-of-inertia split.** The implicit-Euler correction needs `I` (moment of inertia about the damping axis). The aircraft has `inertia: { x, y, z }` in `aircraft.json`; β4 damping is primarily about pitch (Y-axis) on h-stab and roll (Z-axis) on wings. WP14.X1 documents which axis each surface's β4 dampens (probably needs a `clQAxis` schema field — surface knows its rotation axis from `normal × chord`). If this turns out to require schema work, surface as SURFACE during WP14.X1 build.
 - **Whether the D14 score function envelope constants need updating after D15+D16.** Likely no — the envelope (ALT=50m, AS=30 m/s, PR=360°/s) is set by aircraft feel, not by integration scheme. But WP14.5-retry-2 may surface that the new stable region's natural amplitudes are different. Tuning the score function is meta-tuning; defer until WP14.5-retry-2 actually runs.
+
+---
+
+## Revision 2026-05-17 — D17: β4 non-dimensional pitch-rate damping (supersedes D15)
+
+**Context.** WP14.9 (β4 implicit-Euler integration per D15) was attempted 2026-05-17 and refuted at verify-self. Attempt-1 implemented D15 Form A as a moment-amplification-ratio at `src/aircraft/physics-core/aerosurface.ts:449` — factor `(1 + clQ · vScale) / (1 + clQ · max(0, vScale − 1))` — preserving WP6.5 calibration bit-identically at low V and asymptotically bounding amplification above V_REF. Empirical result:
+
+- **Baseline `clQ=3, 8`** (current `aircraft.json`): NaN at tick 416 (vs pre-D15 tick 417 — *within 1 tick, no improvement*).
+- **Non-default `clQ=12`** (CLAUDE.md Rule #2 gate): NaN at tick 817.
+- **Control `clQ=0`** (β4 disabled): finite through all 1800 ticks.
+
+The clQ=0 control isolates β4 as the sole instability driver (per CLAUDE.md Rule #4, added 2026-05-17). The attempt-1 implementation did not fix it. Full diagnostic evidence in `workflow/backlog.md` → SURFACE-2026-05-17-01, including per-trajectory NaN onset ticks for all three regimes and the diagnostic interpretation. WP14.9 archive retrospect at `workflow/archive/wp14.9-beta4-implicit-euler.md`.
+
+**Diagnostic shift (operator framing).** The original D15 framed β4 instability as an explicit-vs-implicit integration problem. Operator selected **Option 3 (full reframe)** at attempt 1/3 of the `feedback_retune_attempt_budget.md` budget: the V-scaling shape itself is the defect, not the explicit-vs-implicit dimension. Dimensional analysis (done post-failure, not pre-plan — see WP14.9 retrospect §"Assumptions that were wrong") confirms:
+
+- Current code's amplification `(1 + clQ · vScale)` on the rotation-induced airflow contribution `ω × r` produces a damping moment that scales as `(linear in V) × (dynamic pressure ∝ V²) = V³`. **Cubic damping growth.**
+- Textbook pitch-rate damping (Etkin & Reid, *Dynamics of Flight*, §5.10–5.12; same source D16 cites for β5) gives the damping moment as proportional to `cl_q · (q · c̄ / 2V)`, where `q` is pitch rate and `c̄` is reference chord. The `c̄ / (2V)` is the standard reduced-frequency normalization — it makes `cl_q` a **dimensionless** coefficient of `O(1)` (typical values 1–10). Net damping scaling: `(1/V) × V² = V`. **Linear damping growth.**
+- The current form gives 2 extra orders of V — exactly the magnitude difference that puts the explicit-Euler discrete-time pole outside the unit circle above V_REF, producing the SURFACE-2026-05-16-01 sign-flip cascade. **The instability is not a discretization problem; it is a dimensional problem made visible by the discretization.**
+
+**Driving mode disclosure.** Continues `feedback_operator_as_external.md` deviation: operator-as-architect, full-autopilot. The reframe was framed by the operator's Option 3 selection during WP14.9 verify-self pause; the agent's working-out under that framing produced this decision sketch. **Phase 3 re-validation hook:** D17 is reviewable at WP21 (cross-browser QA) or sooner if downstream WPs surface a problem.
+
+**Why D17 supersedes D15 rather than amending it.** D15 stays in arch.md as the origin record (analogous to how SURFACE-2026-05-16-01 stays open as the β4-specific origin record even after being superseded by SURFACE-2026-05-16-04 and now -17-01). D15's "discretization-layer fix" framing was empirically refuted; D17 reframes at the non-dimensionalization layer. Keeping both visible preserves the audit trail of *why* the cascade ended up unified (both β4 and β5 are now non-dimensionalization fixes) rather than mixed (D15 implicit-Euler + D16 non-dim).
+
+---
+
+### D17 — β4 non-dimensional pitch-rate damping
+
+**Decision.** Replace the WP6.6 V-scaling amplification of `ω × r` in `src/aircraft/physics-core/aerosurface.ts:445-450` with a standard non-dimensional pitch-rate-damping form applied at the CL level (parallel to D16's β5 treatment). The new code path:
+
+```typescript
+// Pre-D17 (current — to be replaced):
+_scratchAngVelCross.copy(bodyState.angvel).cross(_scratchAppOffset);
+if (surface.clQ !== 0) {
+  const vBody = bodyState.linvel.length();
+  const vScale = vBody > BETA4_V_REF ? vBody / BETA4_V_REF : 1;
+  _scratchAngVelCross.multiplyScalar(1 + surface.clQ * vScale);
+}
+
+// Post-D17 (new):
+_scratchAngVelCross.copy(bodyState.angvel).cross(_scratchAppOffset);
+// No airflow amplification — ω × r flows through un-scaled.
+// β4 enters at the CL level (step 4b, alongside β5), not at the airflow step.
+```
+
+```typescript
+// Step 4b — β4 + β5 non-dimensional rate-damping (paired):
+if (surface.clQ !== 0) {
+  // ω_pitch = component of body angular velocity about this surface's
+  // damping axis (= (position × restNormal).normalized() — pre-computed at
+  // construction time and cached as surface.dampAxis). The damping axis is
+  // the axis about which this surface's lift moment acts when ω is present;
+  // for h-stab it's pitch (X), for wings it's roll (Z), for v-stab it's yaw (Y).
+  const omegaAlongDampAxis = bodyState.angvel.dot(_scratchDampAxisWorld);
+  const vBody = bodyState.linvel.length();
+  const vEff = vBody > BETA4_V_REF ? vBody : BETA4_V_REF;
+  cl += surface.clQ * omegaAlongDampAxis * surface.chordLength / (2 * vEff);
+}
+```
+
+where `_scratchDampAxisWorld` is the surface's cached `dampAxis` rotated into the world frame via the body quaternion (one allocation-free quaternion-apply per surface per tick, using a module-scoped scratch buffer). The `max(V, V_REF)` floor matches D16's β5 form for consistency: it avoids the `1/V` singularity at low airspeed and preserves a sensible damping scale in the descending-glide attractor regime.
+
+**Why the non-dimensional form is right.** The standard derivation: pitch-rate damping moment `M_q = q_bar · S · c̄ · Cm_q · (q · c̄ / 2V)` where `q_bar = 0.5 · ρ · V²` is dynamic pressure. Lifting one factor of `c̄` for moment-arm leaves `cl_q · (q · c̄ / 2V)` as the lift-coefficient augmentation per unit pitch-rate. The factor `c̄ / (2V)` is the **reduced frequency** — a standard dimensionless aerodynamic quantity. It makes `cl_q` a dimensionless `O(1)` coefficient in the textbook range of 1–10 (typical for h-stab; wings smaller — see Etkin & Reid Table 5.4 for representative values). This is the same shape D16 already adopted for β5; D17 unifies the cascade.
+
+**Why move from airflow-amplification to CL-augmentation.** The WP6.5/WP6.6 framing put β4 in the airflow chain (`ω × r` amplified before AoA computation) because that's where pitch rate first enters the aero pipeline. But pitch-rate damping is conceptually a *change in lift coefficient* due to angular rate, not a *change in apparent airflow*. The airflow chain already correctly handles `ω × r` (linear airflow contribution); β4 should augment CL on top, just as β5 augments CL for AoA rate. This is structurally consistent with how textbook aero models separate steady aerodynamics (`Cl(α)`) from unsteady derivatives (`Cl_q`, `Cl_α̇`, etc.).
+
+**Sign convention (binding).** Positive `clQ` on a surface aft of the CG (h-stab) must produce a CL augmentation that opposes the pitch rate — i.e., positive pitch rate (nose up, `+ω_pitch`) at the h-stab produces *negative* CL augmentation on the h-stab, which produces downward force, which produces nose-down moment, which damps the pitch. The sign of `dampAxis` (computed as `(position × restNormal).normalized()`) determines whether the `dot(angvel, dampAxis)` term comes out with the right polarity at each surface. **Per CLAUDE.md Rule #1 (live observation before sign tests):** WP14.9-successor must observe live behavior at non-zero clQ in at least two operating regimes before writing any sign-convention unit test that codifies the orientation.
+
+**Risk + verification approach.**
+
+- **Risk 1: low-V parity drift.** WP6.5's β4 was calibrated empirically in-browser for the low-V (descending-glide, `V < V_REF = 30 m/s`) regime at `clQ=3` (wings) and `clQ=8` (h-stab). At `V = V_REF`, the pre-D17 amplification factor is `(1 + clQ · 1) = (1 + clQ)` — a 9× boost on h-stab's `ω × r`. At `V = V_REF` under D17, the CL augmentation is `clQ · ω_pitch · c̄ / (2 · V_REF) = 8 · ω_pitch · 1 / 60 ≈ 0.133 · ω_pitch`. **These are not the same calibration.** The new form does not preserve WP6.5 bit-for-bit — and that's expected, since WP6.5's calibration was empirical against a dimensionally-wrong formula. The new form needs its own calibration; the `clQ` values currently in `aircraft.json` are likely wrong under D17.
+  - **Mitigation:** WP14.5-retry-2 (the joint-tuning successor WP) will retune `clQ` under the new form. Per the textbook reference, the optimizer bounds for `clQ` under D17 should be `[0..15]` per surface (dimensionless O(1) range), NOT `[0..20]` from WP14.5-retry's bounds (which were for the dimensional form).
+  - **Parity test contract change:** the existing harness-vs-browser parity test `tests/parity-diff.test.ts` will fail at all three throttle fixtures under D17 because trajectories are different from pre-D17 *everywhere*, not just above V_REF. The parity test regenerates: browser CSVs re-emitted via `npm run test:e2e -- tests/e2e/parity.spec.ts` (the same regeneration step WP14.9 went through). The parity contract becomes "browser and Node-side harness produce bit-identical trajectories under D17" — which is what the test fundamentally asserts. The reference trajectory shape changes; bit-identity within the new shape is preserved.
+
+- **Risk 2: clQ=0 still must be a no-op.** D17's CL augmentation is gated on `surface.clQ !== 0`, identical to the existing gate. With clQ=0 the augmentation block does not execute and the airflow chain produces the un-augmented trajectory bit-for-bit. Default-zero parity is preserved. **Existing tests that exercise `clQ=0` MUST continue to pass.**
+
+- **Risk 3: dampAxis sign for v-stab.** v-stab (clQ defaults to 0 in `aircraft.json`) has `position = (0, 0.5, 3)` and `normal = (1, 0, 0)`. `dampAxis = (position × normal).normalized() = (0, 0.5, 3) × (1, 0, 0) = (0 · 0 − 3 · 0, 3 · 1 − 0 · 0, 0 · 0 − 0.5 · 1) = (0, 3, −0.5)`. Normalized: `(0, 0.987, −0.164)` — primarily Y (yaw) with a small Z (roll) component. For positive yaw rate (nose right, `+ω_y`), the dot product is positive, so CL augmentation on v-stab is positive `→` more sideways force `→` correct yaw-damping direction. Sign checks out at construction-time geometry; live observation per Rule #1 will confirm at non-zero clQ on v-stab if/when that's tuned.
+
+- **Verification (binding, primary):** the harness `throttle-high` fixture (1800 ticks, throttle=0.4, spawn `v=30 m/s`) MUST stay finite at:
+  - Baseline (post-tune `clQ` values from WP14.5-retry-2), AND
+  - Non-default per Rule #2 — e.g. `clQ=12` on all surfaces or the optimizer's recommended high-stress point, AND
+  - Control `clQ=0` per Rule #4 — finite trajectory proves β4 is not the *active* destabilizer.
+
+- **Verification (binding, secondary):** after D17 + D16 both land + WP14.5-retry-2 runs the joint search, the optimizer MUST find a parameter point where all 3 throttle regimes (low/mid/high) stay finite through 1800 ticks AND score ≥ -300. If it doesn't, file a new SURFACE — but the diagnostic from -17-01 + -16-04 predicts both non-dim fixes together SHOULD produce a stable region somewhere in `[0..15] × [0..15]` per surface.
+
+**Default behavior preservation.** All current `aircraft.json` `clAlphaDot=0` defaults remain no-ops by gate. `clQ=3, 8` defaults will change the trajectory under D17 (per Risk 1) — and that's by design: the pre-D17 trajectories at `clQ=3, 8` were the *unstable* ones above V_REF (NaN at tick 417). The post-D17 trajectories at the same `clQ=3, 8` values will differ at all V, and may themselves be unstable until WP14.5-retry-2 retunes. The retune is *part of the D17 cascade*, not a separate concern.
+
+**Closes-by-implementation:**
+- **SURFACE-2026-05-17-01** (D15 attempt-1 refutation): closes when D17 implementation ships and the `throttle-high` fixture stays finite through 1800 ticks at the WP14.5-retry-2-tuned values across all 3 throttle regimes (per CLAUDE.md Rules #2 + #4 gates).
+- **SURFACE-2026-05-16-01** (β4-specific origin record): closes-by-implementation at the same gate as -17-01.
+- **SURFACE-2026-05-16-04** β4 side closes at the same gate. β5 side closes at D16 implementation (WP14.10 still on the cascade path).
+
+---
+
+### D17 — physics-mechanism discipline reinforcement (consolidates D15+D16)
+
+D17 inherits all three of the existing CLAUDE.md physics-mechanism discipline rules (#1 live-observation, #2 non-default verify-self, #3 harness-driven tuning) AND the new Rule #4 (control regime), added 2026-05-17 in response to this same WP14.9 escalation:
+
+- **Rule #1:** the WP14.9-successor schema-landing (now actually a code-landing, since D17 changes the *form* of an existing schema field's effect rather than adding a new field) requires a Playwright probe at a non-zero clQ before any new sign-convention unit test is written. The D14 harness optimizer's parity fixtures count toward this requirement.
+- **Rule #2:** the WP must verify at a non-default clQ against the SURFACE-2026-05-16-01 throttle-high regime AND against the WP14.5-retry-2 optimizer's recommended high-stress point. Default-parity tests alone do NOT satisfy close — this is the gate that fired in WP14.9, catching attempt-1's defect.
+- **Rule #3:** WP14.5-retry-2 (post-D17+D16 joint tuning) MUST run through `npm run tune` over the explicit dimensionless `[0..15]` bounds per surface, NOT hand-guessing. The optimizer search is the systematic budget per `feedback_retune_attempt_budget.md`.
+- **Rule #4** (added 2026-05-17, originated by WP14.9 verify-self): the WP14.9-successor's verify-self must include a control regime (`clQ=0`) alongside baseline + non-default. The control proves β4 is the driver of any observed effect (positive or negative). Without it, a verify-self failure can be misread as a different mechanism's bug, routing into the wrong escalation lane. WP14.9 surfaced this rule by demonstrating the failure-mode it prevents.
+
+---
+
+### Forward implications (WBS updates required)
+
+The D15+D16 cascade in `wbs.md` is partially obsoleted. Concretely:
+
+- **WP14.9 (D15 — β4 implicit-Euler integration):** marked ESCALATED in `wbs.md` per the WP14.9 finalize commit (`9ebaf47`). Stays in the WBS as an audit-trail entry; the description references SURFACE-2026-05-17-01 as the actionable driver.
+- **WP14.9b — β4 non-dimensional pitch-rate damping (D17) [NEW, replaces WP14.9].** Size: **S** (one `computeAeroForce` step-4b change parallel to D16's β5 augmentation + per-surface `dampAxis` cache at construction + per-surface scratch-buffer for the world-frame dampAxis vector + retune of `clQ` values in `aircraft.json` as part of close). The retune is part of close because D17 invalidates WP6.5's empirical calibration — shipping D17 with the existing `clQ=3, 8` values would ship a likely-unstable airframe. **Dependencies:** WP14.6 (physics-core layer), WP14.7 (harness for verify-self), WP14.8 (optimizer for the calibration retune), WP14.9's `chordLength` cache (retained — D17 consumes it identically to D16).
+- **WP14.10 (D16 — β5 non-dimensional form):** unchanged. Still S-sized, still depends on the `chordLength` cache. Lands in parallel with WP14.9b or after, whichever the operator picks. The two are mechanically independent at this layer (D17 and D16 augment different rate-derivatives of CL) but operationally tend to land together for the WP14.5-retry-2 joint tune.
+- **WP14.11 (joint tuning retry):** unchanged shape, updated parameter bounds. The `npm run tune` command becomes:
+  ```
+  npm run tune -- --knobs surfaces.0.clQ,surfaces.0.clAlphaDot,surfaces.2.clQ,surfaces.2.clAlphaDot --bounds 0..15,0..15,0..15,0..15 --regimes low,mid,high --restarts 4 --seed 42
+  ```
+  The bounds are dimensionless `[0..15]` per surface (textbook range), not the dimensional `[0..20]` × `[-10..20]` from WP14.5-retry. The sign-bounds are also tighter (positive-only for `clAlphaDot` under D16, per the standard reduced-frequency sign convention).
+
+**Schema additions.**
+- `AeroSurface.dampAxis: Vector3` — new per-surface cached field (`(position × restNormal).normalized()`), computed at construction, refreshed by `setGeometry`. Allocation-free hot path: the world-frame version is computed each tick into a module-scoped scratch buffer via quaternion-apply.
+- **No `aircraft.json` schema changes.** `clQ` keeps its existing meaning ("pitch-rate damping coefficient"); only its integration changes. Values in `aircraft.json` will likely change via the retune, but the *schema* doesn't.
+
+**Test additions.**
+- WP14.9b Vitest: non-dim form unit-test for `clQ = 1, ω_pitch = 1 rad/s, c̄ = 1, V = 30 m/s` produces CL augmentation of `1 · 1 · 1 / 60 ≈ 0.0167` (closed form sanity check); dampAxis derivation tests for each of the 4 surface geometries; clQ=0 control parity (existing tests must continue to pass at the existing clQ=0 surfaces — v-stab).
+- WP14.9b Playwright: harness fixture probe at non-zero clQ on h-stab in two regimes (low + high throttle, ≥10s window each) per CLAUDE.md Rule #1.
+- D17 + D16 Playwright: `tests/e2e/phugoid-probe.spec.ts` un-skipped at WP14.11 close.
+
+### Open questions / deferred to D17 cascade implementation WPs
+
+- **Whether the per-surface `dampAxis` should be derivable from `(position × restNormal)` or needs an explicit schema override.** For all 4 current aircraft.json surfaces, the geometric derivation produces the physically correct damping axis (h-stab → pitch, wings → roll, v-stab → yaw — verified analytically in the WP14.9 P1.2 task log at `workflow/archive/wp14.9-beta4-implicit-euler.md` → `## Resolution`). If Phase 3 adds aircraft with unusual surface positions (canard, delta wing, V-tail), the geometric derivation may not match the intended damping axis. Defer until then; surface as SURFACE during WP14.9b build if the 4-surface aircraft.json doesn't validate cleanly under the geometric derivation.
+- **Whether `clQ` values from the WP14.5-retry-2 tune should be committed to `aircraft.json` in the same commit as the D17 implementation or in a follow-up.** Single-commit is cleaner (matches the WP14.9b "S size" framing); two-commit allows the impl to land + parity-regenerate + run-tune sequentially with intermediate verification. **Recommended:** single-commit if the tune converges to a stable point within the WP14.5-retry-2 budget; two-commit fallback if iteration is needed. Document at WP14.9b close.
+- **Whether D17 needs `BETA4_V_REF` (currently 30 m/s) to change.** Under D17 `BETA4_V_REF` serves the same role as D16's identical-named constant: a floor preventing the `1/V` singularity at very low airspeed. The same physical value (30 m/s = spawn airspeed = WP14.5 phugoid-probe entry velocity) makes sense; no change. But noted in case Phase 3 retuning surfaces a different optimal anchor.
