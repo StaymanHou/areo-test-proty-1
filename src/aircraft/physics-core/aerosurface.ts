@@ -29,14 +29,19 @@ export interface AeroSurfaceConfig {
    */
   incidenceRad?: number;
   /**
-   * Pitch-rate damping coefficient (β4). When non-zero, amplifies the
-   * rotation-induced contribution to local airflow by `(1 + clQ · max(v,
-   * V_REF) / V_REF)`. The `max(v, V_REF)` floor preserves WP6.5's low-V
-   * β4 calibration bit-for-bit; above V_REF=30, amplification grows linearly
-   * with v so the resulting damping moment scales as V², keeping damping
-   * ratio constant across the flight envelope. No 1/V singularity. Default
-   * 0 (no damping — pre-β4 behavior preserved). See CONVENTIONS.md and
-   * SURFACE-2026-05-11-03.
+   * Pitch-rate damping coefficient (β4). Under D17 (arch.md Revision
+   * 2026-05-17) this is a dimensionless O(1) coefficient (textbook range
+   * 1–10 per Etkin & Reid Table 5.4). When non-zero, the lift coefficient
+   * is augmented by `clQ · ω_along_dampAxis · c̄ / (2 · max(V, V_REF))`,
+   * where `dampAxis = (position × restNormal).normalized()` is the
+   * surface's rotation-damping axis (roll Z for wings, pitch X for h-stab,
+   * primarily yaw Y for v-stab). The factor `c̄ / (2V)` is the standard
+   * reduced-frequency normalization; the `max(V, V_REF)` floor avoids the
+   * `1/V` singularity. The resulting damping force grows linearly with V
+   * (matching ½ρV² dynamic pressure × ΔCL ∝ 1/V). Replaces the pre-D17
+   * WP6.5/WP6.6 airflow-amplification form. Default 0 (no augmentation —
+   * pre-β4 behavior preserved). See CONVENTIONS.md, arch.md D17 (Revision
+   * 2026-05-17), and SURFACE-2026-05-17-01.
    */
   clQ?: number;
   /**
@@ -65,17 +70,16 @@ export interface BodyState {
 
 export const AIR_DENSITY = 1.225; // kg/m³, sea-level ISA. Phase 1 constant.
 
-// β4 airspeed-scaling reference (arch.md Revision 2026-05-11 "Fallback path",
-// SURFACE-2026-05-11-03). The β4 damping amplification on (ω × r) is
-// (1 + clQ · max(v, V_REF) / V_REF). The `max(v, V_REF)` floor matters: WP6.5's
-// β4 was calibrated at low airspeed (V < V_REF, descending-glide regime), and
-// a naive `v / V_REF` would shrink damping below WP6.5 levels there. By
-// flooring at V_REF, the formula reduces to (1 + clQ) for all v ≤ V_REF —
-// preserving WP6.5 calibration bit-for-bit in the low-V regime. Above V_REF,
-// amplification grows linearly with v so the damping moment scales as V²,
-// matching the V² growth of the destabilizing pitch moment from `incidenceRad`
-// and keeping the damping ratio constant across the high-V regime. No 1/V
-// singularity. clQ=0 preserves pre-β4 behavior exactly.
+// Shared β4/β5 reference airspeed (arch.md D17 + D16). Both β4 (pitch-rate
+// damping) and β5 (AoA-rate damping) augment CL by a `c̄ / (2 · max(V, V_REF))`
+// factor — the textbook reduced-frequency normalization. The `max(V, V_REF)`
+// floor avoids the `1/V` singularity at low airspeed and anchors the damping
+// scale in the descending-glide attractor regime. The same physical role
+// applies to both; one constant per arch.md "shared reference airspeed"
+// rationale. Pre-D17 this constant was scoped to β4's now-removed airflow-
+// amplification form; under D17 it is the floor for the CL-augmentation
+// denominator. Value (30 m/s) matches WP14.5 phugoid-probe entry velocity
+// and the aircraft spawn airspeed.
 const BETA4_V_REF = 30;
 
 // Module-scoped scratch buffers — avoid allocation in the hot path.
@@ -91,6 +95,8 @@ const _scratchLiftDir = new Vector3();
 const _scratchDragDir = new Vector3();
 const _scratchDeflectQ = new Quaternion();
 const _scratchSpan = new Vector3();
+const _scratchDampAxis = new Vector3();
+const _scratchDampAxisWorld = new Vector3();
 
 export class AeroSurface {
   // Geometry + curves are mutable via setGeometry / setCurves (WP7 live tuning).
@@ -109,6 +115,33 @@ export class AeroSurface {
   restNormal: Vector3;
   /** Pre-baked rotation axis for deflections — original (pre-incidence) normal × chord, unit length. */
   spanAxis: Vector3;
+  /**
+   * Pre-baked damping axis for D17 β4 pitch-rate damping. Computed as
+   * `(normal × position).normalized()` BEFORE the incidence rotation is
+   * applied to normal/chord (matches `spanAxis` derivation timing).
+   * Geometrically: the body-frame axis along which positive angular
+   * velocity produces a CL augmentation that opposes the motion (damping).
+   * For canonical configs: h-stab `normal=(0,1,0), position=(0,0,r)` →
+   * dampAxis = `(0,1,0)×(0,0,r) = (r,0,0)/r = +X` (pitch axis). Wing-right
+   * `normal=(0,1,0), position=(2,0,0)` → dampAxis = `(0,1,0)×(2,0,0) =
+   * (0,0,−2)/2 = −Z` (anti-roll). Wing-left → `+Z`. V-stab
+   * `normal=(1,0,0), position=(0,0.5,3)` → primarily −Y (anti-yaw).
+   *
+   * **Cross-product order note:** arch.md D17 (Revision 2026-05-17) prose
+   * specifies `(position × normal)` literally, but that gives the wrong
+   * sign — verified analytically by tracing the moment-direction chain
+   * (positive pitch rate at +Z aft surface needs +Y damping force = +ΔCL,
+   * which requires `dot(ω, dampAxis) > 0` for ω = (1,0,0), which requires
+   * dampAxis = +X). The corrected order is `(normal × position)`. Surfaced
+   * to product:arch as SURFACE-2026-05-17-02 for an arch.md errata.
+   *
+   * Refreshed by `setGeometry({position?, normal?})`. If the geometric
+   * cross product degenerates (position parallel to normal, e.g. a
+   * CG-coincident surface — physically nonsensical), the axis falls back
+   * to a zero vector and β4 augmentation contributes zero by virtue of
+   * the dot product. Mutable only via setGeometry.
+   */
+  dampAxis: Vector3;
   /** Mutable for WP7 live tuning; do not mutate during the per-tick hot path. */
   maxDeflectionRad: number;
   /** Current deflection angle in radians; signed. Mutated via setDeflection. */
@@ -155,6 +188,21 @@ export class AeroSurface {
       throw new Error('AeroSurface: normal and chord must not be parallel');
     }
     this.spanAxis = span.normalize();
+
+    // D17 β4 damping axis = (normal × position).normalized(), pre-incidence.
+    // `this.normal` at this point is the pre-incidence rest normal (incidence
+    // is applied below). Cross-product order is `(normal × position)`, NOT the
+    // `(position × normal)` literal in arch.md D17 prose — see dampAxis
+    // field-doc above for sign-correction analysis. Position-coincident-with-CG
+    // surfaces (lengthSq < tolerance) get a zero dampAxis; β4 augmentation then
+    // contributes zero by virtue of the dot product. Physically irrelevant —
+    // a real lift surface always has a non-zero CG offset.
+    const damp = new Vector3().crossVectors(this.normal, this.position);
+    if (damp.lengthSq() < 1e-9) {
+      this.dampAxis = new Vector3(0, 0, 0);
+    } else {
+      this.dampAxis = damp.normalize();
+    }
 
     // Apply fixed mount-angle (incidence) about the span axis. Default 0 leaves
     // normal/chord unchanged — preserves all pre-D10 fixture behavior bit-for-bit.
@@ -235,6 +283,17 @@ export class AeroSurface {
         throw new Error('AeroSurface.setGeometry: normal and chord must not be parallel');
       }
       this.spanAxis.copy(_scratchSpan).normalize();
+
+      // D17: refresh dampAxis from pre-incidence normal × position. Must be
+      // computed BEFORE the incidence rotation below — matches the
+      // constructor's ordering.
+      _scratchDampAxis.crossVectors(this.normal, this.position);
+      if (_scratchDampAxis.lengthSq() < 1e-9) {
+        this.dampAxis.set(0, 0, 0);
+      } else {
+        this.dampAxis.copy(_scratchDampAxis).normalize();
+      }
+
       if (this.incidenceRad !== 0) {
         // Sign matches the constructor — see comment there.
         _scratchDeflectQ.setFromAxisAngle(this.spanAxis, -this.incidenceRad);
@@ -249,6 +308,21 @@ export class AeroSurface {
       // α_prev would have been). Clear the cache so the next call behaves
       // as a fresh first-tick — no augmentation, then record the new α.
       this.prevAoA = undefined;
+    } else if (opts.position !== undefined) {
+      // Position-only change: dampAxis depends on position too. restNormal is
+      // the post-incidence rest normal; for a pure position change we don't
+      // re-bake spanAxis (normal didn't change), so we use restNormal
+      // directly. The small incidence-tilt of restNormal vs the pre-incidence
+      // normal makes this an approximation, but for typical incidence values
+      // (≤2° per aircraft.json) the dampAxis tilt is sub-degree — well below
+      // the geometric uncertainty in the position itself. For surfaces where
+      // this matters, recompute from scratch by passing `normal` too.
+      _scratchDampAxis.crossVectors(this.restNormal, this.position);
+      if (_scratchDampAxis.lengthSq() < 1e-9) {
+        this.dampAxis.set(0, 0, 0);
+      } else {
+        this.dampAxis.copy(_scratchDampAxis).normalize();
+      }
     }
   }
 
@@ -446,20 +520,21 @@ export function computeAeroForce(
   _outAppPoint.copy(bodyState.position).add(_scratchAppOffset);
 
   // 2. Airflow at application point in world frame.
-  // Airflow = −(linvel + ω × r). With β4 (clQ>0), the rotation contribution is
-  // amplified by (1 + clQ · max(v, V_REF) / V_REF). The floor at V_REF makes the
-  // formula degenerate to (1 + clQ) for all v ≤ V_REF — bit-identical to WP6.5
-  // β4 calibration in the low-V regime. Above V_REF, amplification grows
-  // linearly with v so the damping moment scales as V², matching the V² growth
-  // of the destabilizing lift moment from `incidenceRad` and keeping damping
-  // ratio constant. No 1/V singularity; clQ=0 preserves pre-β4 behavior exactly.
-  // See arch.md Revision 2026-05-11 ("Fallback path") and SURFACE-2026-05-11-03.
+  // Airflow = −(linvel + ω × r). The `ω × r` cross product is the linear
+  // airflow contribution from body rotation — physically the velocity of
+  // the surface's application point through the air due to angular motion.
+  // Under D17 (arch.md Revision 2026-05-17), β4 (pitch-rate damping) no
+  // longer scales this airflow — it enters at the CL level (step 4b)
+  // instead, as a standard non-dimensional reduced-frequency term
+  // `clQ · ω_along_dampAxis · c̄ / (2·max(V, V_REF))`. This matches the
+  // textbook unsteady-aero treatment (Etkin & Reid §5.10) and the parallel
+  // β5 treatment (D16). Pre-D17 the airflow chain was amplified by
+  // `(1 + clQ · max(v,V_REF)/V_REF)` — that produced cubic V³ damping-
+  // force growth (linear amplification × V² dynamic pressure) and NaN'd
+  // above V_REF (SURFACE-2026-05-16-01, SURFACE-2026-05-17-01). The D17
+  // form produces linear-V damping-force growth, matching the linear-V
+  // growth of the destabilizing incidence moment.
   _scratchAngVelCross.copy(bodyState.angvel).cross(_scratchAppOffset);
-  if (surface.clQ !== 0) {
-    const vBody = bodyState.linvel.length();
-    const vScale = vBody > BETA4_V_REF ? vBody / BETA4_V_REF : 1;
-    _scratchAngVelCross.multiplyScalar(1 + surface.clQ * vScale);
-  }
   _scratchAirflow.copy(bodyState.linvel).add(_scratchAngVelCross).negate();
   const v2 = _scratchAirflow.lengthSq();
   if (v2 < 1e-12) {
@@ -476,7 +551,30 @@ export function computeAeroForce(
   let cl = lookupLiftDragCurve(surface.clCurve, alpha);
   const cd = lookupLiftDragCurve(surface.cdCurve, alpha);
 
-  // 4b. β5 — AoA-rate damping. Gated on BOTH clAlphaDot ≠ 0 AND a physics
+  // 4b. β4 — D17 non-dimensional pitch-rate damping. CL augmentation form:
+  //   ΔCL = clQ · ω_along_dampAxis · c̄ / (2 · max(V, V_REF))
+  // where dampAxis is the surface's pre-baked damping axis (roll for wings,
+  // pitch for h-stab, primarily yaw for v-stab) rotated into the world
+  // frame. The factor `c̄ / (2V)` is the textbook reduced-frequency
+  // normalization; the `max(V, V_REF)` floor avoids the 1/V singularity.
+  // Gated on clQ ≠ 0 so the default surface preserves pre-β4 behavior
+  // bit-for-bit (the gate is the same shape as pre-D17; only the body of
+  // the branch changed). Sign: dampAxis = (position × restNormal); for an
+  // aft surface (position = (0,0,+r)) with restNormal = (0,1,0),
+  // dampAxis = (−1,0,0) — anti-pitch direction. Positive body pitch rate
+  // (nose-up, +ω_y... actually +ω_x in body-Y-up) produces negative
+  // dot(angvel, dampAxis), so ΔCL < 0 on the aft surface, which produces
+  // downward lift, which produces nose-down moment, which damps the pitch.
+  // See arch.md D17 (Revision 2026-05-17), CONVENTIONS.md, SURFACE-2026-05-17-01.
+  if (surface.clQ !== 0) {
+    _scratchDampAxisWorld.copy(surface.dampAxis).applyQuaternion(bodyState.quaternion);
+    const omegaAlongDampAxis = bodyState.angvel.dot(_scratchDampAxisWorld);
+    const vBody = bodyState.linvel.length();
+    const vEff = vBody > BETA4_V_REF ? vBody : BETA4_V_REF;
+    cl += surface.clQ * omegaAlongDampAxis * surface.chordLength / (2 * vEff);
+  }
+
+  // 4c. β5 — AoA-rate damping. Gated on BOTH clAlphaDot ≠ 0 AND a physics
   // dt being supplied AND a previous-tick AoA being cached. The triple
   // gate keeps test fixtures that call computeAeroForce(surface, body)
   // without dt — and surfaces with default clAlphaDot=0 — at bit-for-bit

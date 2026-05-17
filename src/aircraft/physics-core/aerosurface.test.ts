@@ -913,13 +913,20 @@ describe('AeroSurface — WP6.5: per-surface incidence (D10)', () => {
     expect(fNegative.force.y).toBeLessThan(0);
   });
 
-  it('clQ amplification grows with airspeed above V_REF (regression anchor for SURFACE-2026-05-11-03)', () => {
-    // β4 (clQ) damping is amplified by (1 + clQ · max(v, V_REF) / V_REF). Below
-    // V_REF the amplification is constant at (1 + clQ) — preserving WP6.5's
-    // low-V calibration bit-for-bit. Above V_REF, amplification grows linearly
-    // so the resulting damping moment scales as V², matching the V² growth of
-    // the destabilizing pitch moment from incidence. This test exercises the
-    // floor (v=V_REF/2 vs v=V_REF) and the high-V branch (v=2·V_REF).
+  it('clQ damping force grows with airspeed above V_REF under D17 non-dim form (regression anchor for SURFACE-2026-05-11-03 + SURFACE-2026-05-17-01)', () => {
+    // Under D17 (arch.md Revision 2026-05-17), β4 augments CL by
+    //   ΔCL = clQ · ω_along_dampAxis · c̄ / (2 · max(V, V_REF))
+    // Below V_REF the augmentation is constant (V floors at V_REF); above
+    // V_REF, ΔCL DECREASES with V as 1/V — but the damping FORCE
+    // (q·ΔCL = ½ρV²·A·ΔCL) still grows LINEARLY with V because the V²
+    // dynamic-pressure factor more than compensates. Net damping moment
+    // therefore scales linearly with V — matching the linear-V growth of
+    // the destabilizing moment from incidenceRad (vs the pre-D17 cubic-V³
+    // growth which destabilized above V_REF and produced the SURFACE-2026-
+    // 05-16-01 NaN at tick 417). The test exercises the floor branch
+    // (v=V_REF/2 vs v=V_REF, where damping force scales purely with V²) AND
+    // the high-V branch (v=2·V_REF, where damping force scales linearly
+    // with V because V² · (1/V) = V).
     const { cl, cd } = createSymmetricFlatPlateCurves();
     const surface = createAeroSurface({
       position: new Vector3(0, 0, 3),
@@ -940,45 +947,44 @@ describe('AeroSurface — WP6.5: per-surface incidence (D10)', () => {
       angvel: new Vector3(0.05, 0, 0),
     });
 
-    // At v = V_REF/2 = 15 m/s the amplification factor floors at (1 + 8) = 9.
+    // At v = V_REF/2 = 15 m/s the augmentation floor is active (V_eff = V_REF).
     const fLow = computeAeroForce(surface, mkBody(-15));
     const yLow = fLow.force.y;
-    // At v = V_REF = 30 m/s the amplification factor is exactly (1 + 8) = 9.
+    // At v = V_REF = 30 m/s the augmentation floor is exactly at the boundary.
     const fRef = computeAeroForce(surface, mkBody(-30));
     const yRef = fRef.force.y;
-    // At v = 2·V_REF = 60 m/s the amplification factor is (1 + 8·60/30) = 17.
+    // At v = 2·V_REF = 60 m/s ΔCL halves (factor c̄/(2V)) but the V² in dynamic
+    // pressure more than compensates → damping FORCE grows linearly with V.
     const fHigh = computeAeroForce(surface, mkBody(-60));
     const yHigh = fHigh.force.y;
 
     // All three produce positive damping force at the aft surface for positive
     // pitch rate (nose-up at z=+3 → +Y damping → nose-down moment about CG).
+    // Under D17 with corrected dampAxis sign (= normal × position = +X for
+    // h-stab), positive pitch-rate × positive clQ → positive ΔCL → upward
+    // force at aft surface → damping.
     expect(yLow).toBeGreaterThan(0);
     expect(yRef).toBeGreaterThan(0);
     expect(yHigh).toBeGreaterThan(0);
 
-    // High-V regime: damping force must grow above V_REF (the whole point of
-    // the V-scaling). This is the load-bearing assertion against the pre-fix
-    // airspeed-independent formula — it would fail because the amplification
-    // factor was constant at (1 + clQ) for all v.
+    // High-V regime: damping force must grow above V_REF. Under D17 the
+    // load-bearing physics is q·ΔCL ∝ V² · (1/V) = V (linear) rather than the
+    // pre-D17 cubic V³ which destabilized above V_REF. The pre-D17 form was
+    // amplification (1 + clQ · V/V_REF) on ω×r — that gave linear growth in
+    // airflow, then × V² in dynamic pressure = V³ growth in force. D17's
+    // linear-V growth matches the linear-V destabilizing moment from
+    // incidenceRad, restoring tunability.
     expect(yHigh).toBeGreaterThan(yRef);
   });
 
-  it('clQ amplification floors at (1 + clQ) for v ≤ V_REF (preserves WP6.5 low-V β4 calibration)', () => {
-    // Regression anchor for the `max(v, V_REF)` floor. WP6.5 was calibrated for
-    // the descending-glide regime (V bleeds 30→1 m/s) at clQ=3/8 amplification.
-    // The fix in SURFACE-2026-05-11-03 must NOT reduce damping in this regime,
-    // or low-V stability regresses (verified empirically — see WP6.6 WIP).
-    //
-    // We assert (1 + clQ) floor behavior directly: at v = 5 m/s (well below
-    // V_REF=30), the amplification factor must equal the v=V_REF=30 factor.
-    // We probe this via force-output identity rather than reading the private
-    // formula directly: the surface forces at v=5 should differ from v=30 ONLY
-    // by the linvel/airflow change, not by any β4 amplification delta.
-    //
-    // Concretely: compute the force at v=5 with the current β4 fix, then
-    // compare against a hypothetical formula that fixes amplification at
-    // (1 + clQ) regardless of v. Since the fix's floor branch IS that formula,
-    // forces should match exactly.
+  it('clQ damping force stays finite + bounded for v ≤ V_REF under D17 floor (no 1/V singularity)', () => {
+    // Regression anchor for the `max(v, V_REF)` floor under D17. Without the
+    // floor, ΔCL = clQ · ω · c̄ / (2V) blows up as v→0 (the textbook reduced-
+    // frequency form's 1/V singularity). The floor at V_REF freezes V_eff at
+    // V_REF for v ≤ V_REF, keeping ΔCL bounded and damping finite in the low-V
+    // descending-glide regime. WP14.5 phugoid-probe entry velocity is V_REF
+    // by construction, so the floor activates exactly when the airframe
+    // bleeds airspeed below the design point.
     const { cl, cd } = createSymmetricFlatPlateCurves();
     const surface = createAeroSurface({
       position: new Vector3(0, 0, 3),
@@ -1042,6 +1048,167 @@ describe('AeroSurface — WP6.5: per-surface incidence (D10)', () => {
     expect(s.restNormal.y).toBeCloseTo(restNormalBefore.y, 9);
     expect(s.restNormal.z).toBeCloseTo(restNormalBefore.z, 9);
     expect(s.incidenceRad).toBe(incidence);
+  });
+
+  it('D17 dampAxis derivation matches all 4 canonical aircraft.json surface configs', () => {
+    // WP14.9b P1.6. dampAxis = (normal × position).normalized() per the D17
+    // implementation (corrected sign vs arch.md literal text per
+    // SURFACE-2026-05-17-02). Canonical surfaces from aircraft.json:
+    //   - wing-left:  position=(-2, 0, 0), normal=(0, 1, 0) → +Z (roll axis, positive Z direction)
+    //   - wing-right: position=( 2, 0, 0), normal=(0, 1, 0) → -Z (roll axis, negative Z direction)
+    //   - h-stab:     position=( 0, 0, 3), normal=(0, 1, 0) → +X (pitch axis)
+    //   - v-stab:     position=( 0, 0.5, 3), normal=(1, 0, 0) → primarily -Y (yaw axis)
+    const { cl, cd } = createSymmetricFlatPlateCurves();
+    const mk = (pos: Vector3, nrm: Vector3) =>
+      createAeroSurface({
+        position: pos,
+        normal: nrm,
+        chord: new Vector3(0, 0, -1),
+        area: 1,
+        clCurve: cl,
+        cdCurve: cd,
+      });
+
+    const wingLeft = mk(new Vector3(-2, 0, 0), new Vector3(0, 1, 0));
+    expect(wingLeft.dampAxis.x).toBeCloseTo(0, 9);
+    expect(wingLeft.dampAxis.y).toBeCloseTo(0, 9);
+    expect(wingLeft.dampAxis.z).toBeCloseTo(1, 9);
+
+    const wingRight = mk(new Vector3(2, 0, 0), new Vector3(0, 1, 0));
+    expect(wingRight.dampAxis.x).toBeCloseTo(0, 9);
+    expect(wingRight.dampAxis.y).toBeCloseTo(0, 9);
+    expect(wingRight.dampAxis.z).toBeCloseTo(-1, 9);
+
+    const hstab = mk(new Vector3(0, 0, 3), new Vector3(0, 1, 0));
+    expect(hstab.dampAxis.x).toBeCloseTo(1, 9);
+    expect(hstab.dampAxis.y).toBeCloseTo(0, 9);
+    expect(hstab.dampAxis.z).toBeCloseTo(0, 9);
+
+    // v-stab: (1,0,0) × (0, 0.5, 3) = (0·3 − 0·0.5, 0·0 − 1·3, 1·0.5 − 0·0)
+    //       = (0, −3, 0.5); |.|=√(9+0.25)=√9.25 ≈ 3.041; normalized ≈ (0, −0.9864, 0.1644)
+    const vstab = mk(new Vector3(0, 0.5, 3), new Vector3(1, 0, 0));
+    expect(vstab.dampAxis.x).toBeCloseTo(0, 9);
+    expect(vstab.dampAxis.y).toBeCloseTo(-0.9864, 4);
+    expect(vstab.dampAxis.z).toBeCloseTo(0.1644, 4);
+    // Unit length sanity across all 4.
+    expect(wingLeft.dampAxis.length()).toBeCloseTo(1, 9);
+    expect(wingRight.dampAxis.length()).toBeCloseTo(1, 9);
+    expect(hstab.dampAxis.length()).toBeCloseTo(1, 9);
+    expect(vstab.dampAxis.length()).toBeCloseTo(1, 9);
+  });
+
+  it('D17 closed-form non-dim CL augmentation: ΔCL = clQ·ω·c̄/(2·max(V,V_REF))', () => {
+    // WP14.9b P1.7. Closed-form sanity at clQ=1, ω_pitch=1 rad/s, c̄=1 m on
+    // the canonical h-stab geometry. dampAxis for h-stab is +X; with ω = (1,0,0)
+    // omegaAlongDampAxis = +1. Expected ΔCL = 1 · 1 · 1 / (2·max(V, 30)).
+    //   V=15:  ΔCL = 1/60  (V floors at 30)
+    //   V=30:  ΔCL = 1/60
+    //   V=60:  ΔCL = 1/120  (linear DECREASE with V — the textbook reduced-freq form)
+    // We probe this by computing the force at clQ=0 vs clQ=1 and reading the
+    // difference in CL space via the q·CL relationship.
+    const { cl, cd } = createSymmetricFlatPlateCurves();
+    // Chord-length = 1 (chord vector magnitude = 1).
+    const baseCfg = {
+      position: new Vector3(0, 0, 3),
+      normal: new Vector3(0, 1, 0),
+      chord: new Vector3(0, 0, -1),
+      area: 1,
+      clCurve: cl,
+      cdCurve: cd,
+    };
+    const undamped = createAeroSurface(baseCfg);
+    const damped = createAeroSurface({ ...baseCfg, clQ: 1 });
+    expect(damped.chordLength).toBeCloseTo(1, 9);
+    expect(damped.dampAxis.x).toBeCloseTo(1, 9);
+
+    const mkBody = (vz: number): BodyState => ({
+      position: new Vector3(),
+      quaternion: new Quaternion(),
+      linvel: new Vector3(0, 0, vz),
+      angvel: new Vector3(1, 0, 0), // 1 rad/s pitch rate, along dampAxis = +X
+    });
+
+    // The Y-component of force is (q · CL) (since lift dir = +Y here, drag is +Z).
+    // ΔF_y = q · ΔCL = 0.5 · ρ · V_air² · A · ΔCL.
+    // For airflow magnitude V_air, the linvel contribution dominates ω×r at
+    // these V (ω×r ≈ 1·3 = 3 m/s vs linvel = 30/60). The exact V_air ≠ V_body
+    // but is close enough for an order-of-magnitude check; we assert the
+    // ΔCL-vs-V scaling shape directly via the FORCE RATIO between V=30 and V=60.
+
+    // computeAeroForce returns a reused output Vector3 — snapshot .y
+    // IMMEDIATELY after each call before the next call overwrites it.
+    const yU30 = computeAeroForce(undamped, mkBody(-30)).force.y;
+    const yD30 = computeAeroForce(damped, mkBody(-30)).force.y;
+    const dY30 = yD30 - yU30;
+    const yU60 = computeAeroForce(undamped, mkBody(-60)).force.y;
+    const yD60 = computeAeroForce(damped, mkBody(-60)).force.y;
+    const dY60 = yD60 - yU60;
+
+    // At V=30: ΔCL=1/60, q≈0.5·1.225·30²·1 = 551.25 → ΔF_y_expected ≈ 9.19 N.
+    // At V=60: ΔCL=1/120, q≈0.5·1.225·60²·1 = 2205 → ΔF_y_expected ≈ 18.375 N.
+    // Ratio ΔF60 / ΔF30 = 2 (linear-V growth of damping force — D17's load-
+    // bearing physics property).
+    expect(dY30).toBeGreaterThan(0); // clQ=1 added positive ΔCL on h-stab for +ω_x
+    expect(dY60).toBeGreaterThan(0);
+    // Linear-V growth: ratio 2 ± 5% tolerance for AoA-dependent CL_natural noise.
+    expect(dY60 / dY30).toBeGreaterThan(1.9);
+    expect(dY60 / dY30).toBeLessThan(2.1);
+    // Magnitude sanity: ΔF at V=30 is in the 5-15 N range (q·ΔCL = 551·1/60 ≈ 9 N,
+    // modulo V_air ≈ V_body approximation).
+    expect(dY30).toBeGreaterThan(5);
+    expect(dY30).toBeLessThan(15);
+
+    // Floor sanity: ΔCL at V=15 must equal ΔCL at V=30 (V_eff floors at V_REF).
+    // But the FORCE q·ΔCL differs because q ∝ V². So ΔF_15 should be ¼ of ΔF_30
+    // (V=15: q ≈ 138, ΔCL=1/60 → ΔF ≈ 2.3 N; V=30: ΔF ≈ 9.2 N; ratio = 4).
+    const yU15 = computeAeroForce(undamped, mkBody(-15)).force.y;
+    const yD15 = computeAeroForce(damped, mkBody(-15)).force.y;
+    const dY15 = yD15 - yU15;
+    expect(dY15).toBeGreaterThan(0);
+    expect(dY30 / dY15).toBeGreaterThan(3.5);
+    expect(dY30 / dY15).toBeLessThan(4.5);
+  });
+
+  it('D17 setGeometry refreshes dampAxis after position change', () => {
+    // WP14.9b P1.3 contract: setGeometry({position}) refreshes dampAxis.
+    const { cl, cd } = createSymmetricFlatPlateCurves();
+    const s = createAeroSurface({
+      position: new Vector3(0, 0, 3),
+      normal: new Vector3(0, 1, 0),
+      chord: new Vector3(0, 0, -1),
+      area: 1,
+      clCurve: cl,
+      cdCurve: cd,
+    });
+    expect(s.dampAxis.x).toBeCloseTo(1, 9);
+    expect(s.dampAxis.z).toBeCloseTo(0, 9);
+    // Move surface to wing-right position (2, 0, 0) — dampAxis should flip
+    // from h-stab pitch (+X) to wing-right anti-roll (-Z).
+    s.setGeometry({ position: new Vector3(2, 0, 0) });
+    expect(s.dampAxis.x).toBeCloseTo(0, 9);
+    expect(s.dampAxis.y).toBeCloseTo(0, 9);
+    expect(s.dampAxis.z).toBeCloseTo(-1, 9);
+  });
+
+  it('D17 setGeometry refreshes dampAxis after normal change', () => {
+    // WP14.9b P1.3 contract: setGeometry({normal}) refreshes dampAxis.
+    const { cl, cd } = createSymmetricFlatPlateCurves();
+    const s = createAeroSurface({
+      position: new Vector3(0, 0, 3),
+      normal: new Vector3(0, 1, 0),
+      chord: new Vector3(0, 0, -1),
+      area: 1,
+      clCurve: cl,
+      cdCurve: cd,
+    });
+    expect(s.dampAxis.x).toBeCloseTo(1, 9);
+    // Flip normal to v-stab orientation (sideways) — must update spanAxis +
+    // dampAxis. v-stab `normal=(1,0,0), position=(0,0,3)` gives dampAxis =
+    // (1,0,0) × (0,0,3) = (1·3−0·0, 0·0−1·3, 1·0−0·0) = (0,−3,0) → norm (0,−1,0).
+    s.setGeometry({ normal: new Vector3(1, 0, 0), chord: new Vector3(0, 0, -1) });
+    expect(s.dampAxis.x).toBeCloseTo(0, 9);
+    expect(s.dampAxis.y).toBeCloseTo(-1, 9);
+    expect(s.dampAxis.z).toBeCloseTo(0, 9);
   });
 });
 

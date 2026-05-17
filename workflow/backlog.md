@@ -4,6 +4,32 @@ Surface-notes from workflow runs. Consumed and resolved by higher-level workflow
 
 ## Open
 
+### SURFACE-2026-05-17-03 — D17 empirical stable clQ region is narrower than textbook 1–10 range (WP14.11 bounds revision + possible mechanism-interaction investigation)
+- **Source:** feature:verify-self (WP14.9b Phase 1, 2026-05-17)
+- **Target level:** product:wbs (WP14.11 bounds revision, no arch change)
+- **Type:** tuning-bounds-revision + potential mechanism-interaction investigation
+- **Priority:** high (gates WP14.11 cross-threshold finding; if WP14.11 fails to find a stable point in the narrowed bounds, escalates to product:arch as a third-mechanism-layer concern)
+- **Summary:** WP14.9b verify-self triple-gate revealed the D17 stable clQ region under current aircraft.json (mass=1000, inertia=(1500,3000,1500)+ surface geometries) is **narrower than arch.md's "textbook 1–10" range claim** (Etkin & Reid Table 5.4). Empirical sweep at uniform clQ on all surfaces (throttle-high, 1800 ticks): clQ=0 finite ✓, clQ=1 finite ✓, clQ=2 NaN@1022, clQ=5 NaN@747, clQ=8 NaN@483, clQ=12 NaN@687. Higher clQ generally less stable (monotonic for 0→8); clQ=12 outlier may be due to wings-at-12 providing enough roll damping to delay a secondary instability mode. **Implementation is sound** — control clQ=0 finite (Rule #4 PASS), mechanism observably active at clQ=1 (different trajectory from clQ=0 in both throttle-low and throttle-high regimes per Rule #1 probe), default-parity preserved (520/520 Vitest under aircraft.json baseline). The narrowness is a tuning question.
+- **Evidence:** `/tmp/wp14.9b/triple-{baseline,clQ12,clQ0,clQ1,clQ2,clQ5,clQ8}.csv` (gitignored; reproducible via `npm run --silent harness -- --fixture throttle-high --ticks 1800 --params "surfaces.0.clQ=N,surfaces.1.clQ=N,surfaces.2.clQ=N,surfaces.3.clQ=N"`). Also `/tmp/wp14.9b/rule1-{throttle-low,throttle-high}-clQ{0,1}.csv` for the Rule #1 sign-direction observation.
+- **Suggested action (WP14.11):**
+  1. Tighten optimizer bounds from `[0..15]×[0..15]` to `[0..2]×[0..2]` per surface as the primary search range. The empirical stable region is `[0..1.5]` for uniform clQ; per-surface heterogeneity (h-stab can take more damping than wings) may widen the joint space.
+  2. Score function should heavily weight finiteness — at the narrowed bounds, the optimizer is searching a small space and shouldn't waste budget on NaN regions.
+  3. If WP14.11 cannot find a cross-threshold point in `[0..2]` per surface, escalate to product:arch — possibly a third-mechanism-layer concern (Theodorsen function for unsteady aero, separate moment-of-inertia handling, or interaction between β4 D17 form and the unfixed β5 raw-rate form). Note: WP14.10 (β5 D16 non-dim form) might widen the stable region by fixing β5's overshoot — worth re-probing the clQ region AFTER WP14.10 lands but BEFORE WP14.11's optimizer run.
+- **Relationship to other SURFACEs:** This is a sub-finding of the broader D17 cascade. Does NOT block WP14.9b close (implementation sound per WBS WP14.9b close gate). DOES gate WP14.11 — WP14.11's bounds should be revised before optimizer run.
+- **Status:** open
+
+### SURFACE-2026-05-17-02 — arch.md D17 dampAxis cross-product order is sign-inverted vs textbook damping convention
+- **Source:** feature:build (WP14.9b Phase 1, 2026-05-17)
+- **Target level:** product:arch (D17 errata — single-character fix to literal spec text)
+- **Type:** arch-errata / sign-convention
+- **Priority:** medium (cosmetic — implementation already proceeds with the corrected sign per CLAUDE.md Rule #1 live-derivation; arch.md prose just needs to match what the code does)
+- **Summary:** arch.md D17 (Revision 2026-05-17) and the WP14.9b WBS entry both specify `dampAxis = (position × normal).normalized()`. By right-hand rule on the canonical h-stab (`position=(0,0,3), normal=(0,1,0)`), this gives `(−1, 0, 0)` = anti-pitch axis. The textbook β4 damping convention requires `dot(angular_velocity, dampAxis) · clQ > 0` for damping in the moment direction (positive pitch rate × positive clQ → positive ΔCL → upward force at aft surface → nose-down moment → damps the pitch). With the literal arch.md order, `dot((1,0,0), (−1,0,0)) = −1`, so ΔCL is negative — that's ANTI-damping (amplifies the +pitch rate). The corrected order is `(normal × position)`, giving `(+1,0,0)` = +pitch axis = correct damping sign.
+- **Verified across all 3 surface types under the corrected order:** h-stab → +X (pitch damping); wing-right → −Z (anti-roll damping when right wing goes down on +roll); wing-left → +Z (opposite, correct); v-stab → primarily −Y (yaw-damping direction).
+- **Evidence:** WP14.9b Vitest run after attempt-1 implementation with literal arch.md sign: `positive clQ amplifies rotation-induced airflow → larger damping force on rotating body` failed at line 868 (dampedY < undampedY because ΔCL was reducing total CL, not adding to it). After flipping the cross-product order in code, behavior aligns with the test's expectation.
+- **Suggested action:** arch.md D17 prose update (single-character fix: `(position × normal)` → `(normal × position)` in lines ~697-700 of `docs/product/arch.md` AND in the Risk 3 v-stab derivation example). WP14.9b WBS entry has the same literal text — update both. The dampAxis field-doc in `aerosurface.ts` already records the deviation + reasoning. No code change needed beyond what WP14.9b already shipped.
+- **Status:** open
+- **Relationship to other SURFACEs:** This is a sub-finding of the broader D17 cascade — it does NOT block WP14.9b close (the code is correct; only the arch prose needs updating). Closes when the arch.md errata commit lands.
+
 ### SURFACE-2026-05-17-01 — D15 Form A "moment-amplification-ratio" implementation does not eliminate the SURFACE-2026-05-16-01 instability — Form A must be implemented at the ω-correction level, not the airflow-amplification level
 - **Source:** feature:verify-self (WP14.9 Phase 1, 2026-05-17)
 - **Target level:** product:arch (D15 implementation-shape clarification — possibly D15 revision, or scoping of WP14.9 from S to M/L)
