@@ -3,6 +3,11 @@
 ## 2026-05-17
 
 - **Feature escalated:** WP14.9 β4 implicit-Euler integration (D15) — attempt-1 moment-amplification-ratio implementation refuted at verify-self (baseline NaN at tick 416, vs pre-D15 tick 417 — no improvement); operator selected Option 3 (full reframe — V-scaling shape itself is wrong, not the explicit-vs-implicit dimension); filed SURFACE-2026-05-17-01 as the actionable D15-rev driver (textbook non-dimensional pitch-rate-damping `cl_q · ω · c̄ / (2V)` parallel to D16); production code reverted to pre-D15 baseline; `chordLength` cache retained on `AeroSurface` for D16 consumption; successor WP pending arch revision via /product-arch.
+- **Feature shipped:** WP14.9b β4 non-dimensional pitch-rate damping (D17 implementation) — replaced the WP6.6 airflow-amplification of `ω × r` with the textbook non-dimensional CL-augmentation `cl += clQ · ω_along_dampAxis · c̄ / (2 · max(V, V_REF))` at step 4b alongside β5, restoring linear-V damping force growth (vs pre-D17 cubic-V³); added per-surface `dampAxis` cache with corrected `(normal × position)` sign vs arch.md literal text (SURFACE-2026-05-17-02 errata); verify-self triple gate passed at clQ=1 (Rule #2) + clQ=0 (Rule #4) + Rule #1 live observation across throttle-low/high regimes; SURFACE-2026-05-17-03 filed flagging the empirical stable region is `[0..~1.5]` per surface (narrower than textbook 1–10), recommending WP14.11 optimizer bounds tighten from `[0..15]` to `[0..2]`; 520/520 Vitest + 3/3 parity Playwright + tsc strict (both configs) + build clean.
+- **Backlog resolved:** SURFACE-2026-05-17-01 — D17 implementation side closed by WP14.9b; full close awaits WP14.11.
+- **Backlog resolved:** SURFACE-2026-05-16-01 — β4 origin record; D17 cascade addressed it via WP14.9b; full close awaits WP14.11.
+- **Backlog resolved:** SURFACE-2026-05-16-04 — β4 side closed by WP14.9b; β5 side awaits WP14.10 + WP14.11.
+- **Milestone:** WP14.9b: β4 non-dimensional pitch-rate damping (D17 cascade step 1 of 3 for the post-WP14.9-escalation recovery; WP14.10 + WP14.11 remain).
 
 ## 2026-05-16
 
