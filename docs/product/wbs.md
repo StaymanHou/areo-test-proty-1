@@ -1,7 +1,7 @@
 ---
 stage: wbs
 state: in-progress
-updated: 2026-05-23 (WP14.10 DONE — D16 β5 non-dim impl shipped at commit 27324aa; verify-self triple gate passed at clAlphaDot=5,5,8,0 across throttle-low + throttle-mid; 525/525 Vitest, tsc strict clean both configs, build clean. Triple gate substituted throttle-low+throttle-mid for plan-time throttle-low+throttle-high because baseline β4 setup NaN's at throttle-high — orthogonal WP14.11 problem, arch.md D16's ≥2-regime requirement satisfied by low+mid. D17+D16 cascade impl side both shipped. **WP14.11 (joint tune) is next** — WP14.5-retry-2; recommended bounds per SURFACE-2026-05-17-03: `[0..2]` per clQ per surface (D17 narrow empirical stable region) and consider re-probing β4 stable region post-D16 since β5's overshoot fix may widen the joint stable region. Phase 2 mission content (WP15/WP16/WP17) remains paused at post-WP14 line until WP14.11 closes.)
+updated: 2026-05-23 (WP14.11 ESCALATED — branch B per WBS contingency; SURFACE-2026-05-23-01 filed at workflow/backlog.md priority high. D17+D16 cascade mechanism halves shipped (WP14.9b + WP14.10), but joint-tune retry shows that no (clQ, clAlphaDot) point in the searched space produces flyable trajectories — airspeed peaks 230-373 m/s, total deployed-config scores ~-100M vs threshold -300. β4+β5 mechanisms work numerically but airframe energy balance / drag-CD / inertia / phugoid interaction produces unflyable dynamics. **Third mechanism layer needed** — 5 candidates ranked (drag-CD model → inertia tensor → Theodorsen unsteady aero → WP6.5 ω×r retirement → score envelope re-calibration). Phase 2 mission content (WP15/WP16/WP17) remains paused at post-WP14 line until SURFACE-2026-05-23-01 resolves. Shipped commit 4e43786 on main.)
 ---
 
 # Work Breakdown Structure
@@ -413,7 +413,7 @@ T-shirt sizing: **XS** ≤ 2h · **S** ≤ half day · **M** ≤ 1 day · **L** 
 - [x] SURFACE-2026-05-16-04 partially closes (β5 side; β4 side closed at WP14.9b). SURFACE-2026-05-12-03 partially closes (mechanism side; tuning awaits WP14.11). SURFACE-2026-05-12-01 unblocks. SURFACE-2026-05-11-04 partial-close path continues.
 - [x] Final tally: **525/525 Vitest (32 test files)**; tsc strict clean on both configs (`tsconfig.json` + `tsconfig.tools.json`); `npm run build` clean. Shipped commit `27324aa` on main.
 
-### WP14.11: Joint (clQ, clAlphaDot) tuning retry post-D17+D16
+### WP14.11: Joint (clQ, clAlphaDot) tuning retry post-D17+D16 — ESCALATED 2026-05-23 → SURFACE-2026-05-23-01
 **Description:** WP14.5-retry-2. Re-run the WP14.5-retry tune command after D17 (β4 non-dim) + D16 (β5 non-dim) land. The diagnostic prediction from SURFACE-2026-05-17-01 + SURFACE-2026-05-16-04 + the physics literature is that both non-dim fixes together SHOULD produce a stable region somewhere in the joint (clQ, clAlphaDot) space — D17 by making β4 dimensionally correct (linear V damping growth instead of cubic), D16 by making β5 dimensionally correct (`c̄/(2V)` reduced-frequency normalization). If the optimizer finds a cross-threshold point, commit `aircraft.json` values and un-skip `tests/e2e/phugoid-probe.spec.ts`. If it does not, file a new SURFACE — at that point we have a third mechanism layer we haven't surfaced yet (possibly the aerosurface model itself needs Theodorsen-function-level corrections, or the separate moment-of-inertia handling needs revisiting), and Phase 2 mission content may need re-scoping to the descending-glide envelope.
 **Phase:** 2
 **Dependencies:** WP14.9b (D17), WP14.10 (D16)
@@ -684,3 +684,20 @@ D17+D16 cascade impl side **both landed**. WP14.9b (β4 D17) shipped 2026-05-17 
 **Plan-time physics derivation (CLAUDE.md Rule #5)** fired at both WPs. At WP14.9b it caught arch.md D17 cross-product order errata (SURFACE-2026-05-17-02). At WP14.10 the derivation matched D16 prose exactly — no errata detected.
 
 **Next:** **WP14.11** — joint (clQ, clAlphaDot) tuning retry via the harness optimizer. Pre-run decisions (per SURFACE-2026-05-17-03 + WP14.10 evidence): tighten clQ upper bound from `[0..15]` toward `[0..2]` per surface (D17 empirical stable region under aircraft.json baseline mass/inertia was `[0..~1.5]`); consider re-probing β4 stable region under D16 (β5's overshoot fix may have widened the joint stable region — the baseline-NaN-at-throttle-high observation predates D16). Acceptance threshold: all 3 throttle regimes finite through 1800 ticks AND total score ≥ −300, same as WP14.5-retry. If cross-threshold: commit aircraft.json values + un-skip `tests/e2e/phugoid-probe.spec.ts`. If not: file SURFACE for third-mechanism-layer concern.
+
+## Session Pause — 2026-05-23 09:43
+Paused. See `workflow/.session.md` to resume.
+
+## WP14.11 ESCALATED — 2026-05-23
+
+WP14.11 ran the canonical joint-tune optimizer at `[0..15]^4` (4 restarts, seed 42) and a narrowed re-run at `[0..3]×[0..10]×[0..3]×[0..10]` per SURFACE-2026-05-17-03's recommendation. Multiple symmetric-mirror points produce 1800 finite ticks across all 3 throttle regimes — a real partial-success vs WP14.5-retry's zero-finite-points box. But every searched point yields airspeed peaks of 230–373 m/s and total deployed-config scores ~−100M; all far outside the phugoid-probe.spec envelope (200 m/s cap) and the threshold (`total score ≥ −300`). β4 D17 + β5 D16 textbook damping mechanisms work as designed (numerical finiteness achieved at multiple points); the airframe's energy balance / drag-CD / inertia tensor / phugoid-mode interaction produces unflyable dynamics no (clQ, clAlphaDot) can resolve.
+
+**Search-vs-deploy mismatch** discovered during the run: tune CLI evaluates the airframe with `surfaces.0` and `surfaces.2` tuned but `surfaces.1` at `aircraft.json` baseline — the operator deploys symmetric-mirrored. Optimizer's reported score reflects an asymmetric unflyable airframe. `tools/tune/score-deployed.mjs` utility added this WP to compute the deployed-config score from harness CSVs. Tooling fix candidate (out of WP scope): `--mirror` flag on tune CLI.
+
+**SURFACE-2026-05-23-01 filed** (priority high; gates WP15/WP16/WP17 mission content) with 5 ranked investigation candidates: (1) drag-CD model — at throttle=0.05 the airframe accelerates from 25 m/s spawn to 373 m/s peak, suggesting CD_0 is dramatically underestimating drag; (2) inertia tensor — Iyy=3000 is 2.2× a Cessna-class airframe (≈1346), making phugoid period too slow; (3) Theodorsen / Wagner unsteady aero — phase-lagged α̇ response the quasi-steady form misses; (4) WP6.5 ω×r retirement now that D17 is in place; (5) score function envelope re-calibration (only after airframe fixes).
+
+**SURFACE-2026-05-23-01 supersedes SURFACE-2026-05-16-04 as the actionable arch-revision driver.** β4+β5 are no longer the bottleneck; airframe physics elsewhere is. SURFACE-2026-05-17-03 partial-closes (the narrowed search was correct pre-tune call). SURFACE-2026-05-17-01, SURFACE-2026-05-12-03, SURFACE-2026-05-11-04, SURFACE-2026-05-12-01 all blocked-by SURFACE-2026-05-23-01.
+
+**Operator-as-architect deviation per `feedback_operator_as_external.md` held:** full-autopilot Mode 4; verify-human skipped; SURFACE-IN documents the Phase 2 outcome and the 5 candidate next steps for the architect's next pass. Shipped commit `4e43786` on main.
+
+**Next:** SURFACE-2026-05-23-01 routed to the architect for D-revision decision. Phase 2 mission content (WP15/WP16/WP17) remains paused. Possible next paths: D18 drag-coefficient model revision, D19 inertia revision, D20 unsteady aero — operator picks one based on investigation order; small "spike" WPs may precede the formal D-revision per CLAUDE.md Rule #3 (operator may hand-pick aircraft.json constants for non-physical-tuning reasons like gameplay-feel override).

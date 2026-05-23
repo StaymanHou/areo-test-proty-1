@@ -8,6 +8,11 @@
 - **Backlog resolved:** SURFACE-2026-05-12-01 — mechanism-side blocker resolved; now blocked by WP14.11 tuning rather than mechanism.
 - **Backlog resolved:** SURFACE-2026-05-11-04 — phugoid undamped: architectural + mechanism sides both resolved; tuning side awaits WP14.11.
 - **Milestone:** WP14.10: β5 non-dimensional form (D16). D17+D16 cascade impl side both shipped; WP14.11 (joint tune) is the natural next unit.
+- **Feature escalated:** WP14.11 joint (clQ, clAlphaDot) tuning retry — canonical `[0..15]^4` optimizer and narrow `[0..3]×[0..10]^4` re-run both failed to find a cross-threshold-flyable point; multiple symmetric-mirror points produce 1800 finite ticks across all 3 throttle regimes (partial success vs WP14.5-retry's zero-finite-points box), but airspeed peaks 230-373 m/s and deployed-config scores ~−100M put every searched point well outside the phugoid-probe envelope; β4 D17 + β5 D16 mechanisms work as designed (numerical finiteness achieved), but airframe energy balance / drag-CD / inertia / phugoid interaction produces unflyable dynamics no (clQ, clAlphaDot) can resolve; new `tools/tune/score-deployed.mjs` utility added to compute the deployed-symmetric airframe score (the tune CLI's reported score reflects an asymmetric search-space airframe — search-vs-deploy mismatch flagged as tooling fix candidate); filed SURFACE-2026-05-23-01 with 5 ranked investigation candidates (drag-CD → inertia → Theodorsen → ω×r retirement → score envelope); no `aircraft.json` change, phugoid-probe.spec.ts stays skipped; 525/525 Vitest + tsc strict (both configs) + build clean.
+- **Backlog resolved:** SURFACE-2026-05-17-03 — partial close; bounds-narrowing recommendation applied at WP14.11; superseded by SURFACE-2026-05-23-01 as actionable arch driver.
+- **Backlog resolved:** SURFACE-2026-05-16-04 — superseded by SURFACE-2026-05-23-01; β4+β5 mechanism halves both confirmed working (no longer the bottleneck).
+- **Backlog resolved:** SURFACE-2026-05-17-01 — D17 reframe complete; β4 mechanism layer no longer suspect; downstream tuning concerns moved to SURFACE-2026-05-23-01.
+- **Backlog resolved:** SURFACE-2026-05-16-01 — β4 high-throttle runaway resolved by D17 + WP14.9b at `clQ=0,1`; the remaining airframe-unflyability is no longer a β4 issue.
 
 ## 2026-05-17
 
