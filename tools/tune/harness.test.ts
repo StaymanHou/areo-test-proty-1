@@ -187,4 +187,52 @@ describe('runHarness (in-process)', () => {
     });
     expect(altered).not.toBe(baseline);
   });
+
+  it('WP14.10 / D16: β5 non-dimensional form stays finite over 600 ticks at non-default clAlphaDot in throttle-mid', () => {
+    // Codification of WP14.10's verify-self Rule #2 gate (CLAUDE.md
+    // physics-mechanism discipline). Under D16's c̄/(2V) non-dim factor,
+    // clAlphaDot in the textbook range 1–10 must produce a finite trajectory
+    // for at least 600 ticks (10 s @ 60 Hz). The pre-D16 raw-rate form
+    // NaN'd within 85–199 ticks at clAlphaDot=0.1 per SURFACE-2026-05-16-04
+    // evidence; a regression that drops the V_REF floor or the c̄/(2V)
+    // factor would surface here.
+    const csv = runHarness({
+      fixture: lookupFixture('throttle-mid'),
+      ticks: 600,
+      params: [
+        'surfaces.0.clAlphaDot=5',
+        'surfaces.1.clAlphaDot=5',
+        'surfaces.2.clAlphaDot=8',
+        'surfaces.3.clAlphaDot=0',
+      ],
+    });
+    expect(csv).not.toMatch(/NaN/i);
+    expect(csv).not.toMatch(/Infinity/i);
+    const dataRows = csv.split('\n').filter((l) => l.length > 0).slice(1);
+    expect(dataRows.length).toBe(600);
+  });
+
+  it('WP14.10 / D16: explicit clAlphaDot=0 produces bit-identical trajectory to omitted (live default-zero parity)', () => {
+    // Codification of WP14.10's verify-self Rule #4 gate. The D16 gate
+    // `if (clAlphaDot !== 0 && ...)` skips the augmentation block when
+    // clAlphaDot=0, so the trajectory must be byte-identical to baseline.
+    // This catches any future refactor that accidentally activates the
+    // augmentation block at default-zero (e.g. removing the !== 0 guard).
+    const baseline = runHarness({
+      fixture: lookupFixture('throttle-mid'),
+      ticks: 300,
+      params: [],
+    });
+    const explicitZero = runHarness({
+      fixture: lookupFixture('throttle-mid'),
+      ticks: 300,
+      params: [
+        'surfaces.0.clAlphaDot=0',
+        'surfaces.1.clAlphaDot=0',
+        'surfaces.2.clAlphaDot=0',
+        'surfaces.3.clAlphaDot=0',
+      ],
+    });
+    expect(explicitZero).toBe(baseline);
+  });
 });

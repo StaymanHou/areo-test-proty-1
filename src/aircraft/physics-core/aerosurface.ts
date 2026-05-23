@@ -574,14 +574,25 @@ export function computeAeroForce(
     cl += surface.clQ * omegaAlongDampAxis * surface.chordLength / (2 * vEff);
   }
 
-  // 4c. β5 — AoA-rate damping. Gated on BOTH clAlphaDot ≠ 0 AND a physics
-  // dt being supplied AND a previous-tick AoA being cached. The triple
-  // gate keeps test fixtures that call computeAeroForce(surface, body)
-  // without dt — and surfaces with default clAlphaDot=0 — at bit-for-bit
-  // pre-β5 behavior. Sign: positive clAlphaDot adds lift in the +α
-  // direction on a rising α, which produces a damping moment on the AoA
-  // oscillation that drives the phugoid mode. See arch.md Rev 2026-05-12
-  // (D13), CONVENTIONS.md, and SURFACE-2026-05-11-04.
+  // 4c. β5 — AoA-rate damping in textbook non-dimensional form (D16).
+  // Augmentation: cl += clAlphaDot · dα/dt · c̄ / (2 · max(V, V_REF))
+  // The factor c̄/(2V) is the standard reduced-frequency normalization
+  // (Etkin & Reid, Dynamics of Flight, §5.10–5.12). It makes clAlphaDot a
+  // dimensionless O(1) coefficient (textbook range 1–10) instead of a
+  // dimensional one that depends on tick rate and airspeed scales. The
+  // pre-D16 raw form `cl += clAlphaDot · dα/dt` was dimensionally broken:
+  // at dt=1/60 a startup transient of 1°/tick gave dα/dt ≈ 1 rad/s, so
+  // clAlphaDot=0.1 produced ΔCL=0.1 — comparable to the entire steady-
+  // state CL at moderate α. The non-dim form scales that down by c̄/(2V),
+  // ≈ 1/60 at V=30 m/s with chord=1 m — three orders of magnitude
+  // smaller, in the right physical range. Triple gate (clAlphaDot ≠ 0,
+  // dt supplied, prevAoA cached) preserves bit-for-bit pre-β5 parity at
+  // default clAlphaDot=0 by construction (0 · anything = 0). The V floor
+  // uses BETA4_V_REF — D16 shares β4's reference airspeed. Sign: positive
+  // clAlphaDot adds lift on rising α, which damps the phugoid oscillation;
+  // c̄/(2V) > 0 preserves the pre-D16 sign relationship validated at
+  // WP10.5. See arch.md Revision 2026-05-16 (D16), CONVENTIONS.md, and
+  // SURFACE-2026-05-12-03 / SURFACE-2026-05-16-04.
   if (
     surface.clAlphaDot !== 0 &&
     dt !== undefined &&
@@ -589,7 +600,9 @@ export function computeAeroForce(
     surface.prevAoA !== undefined
   ) {
     const dAlphaDt = (alpha - surface.prevAoA) / dt;
-    cl += surface.clAlphaDot * dAlphaDt;
+    const vBody = bodyState.linvel.length();
+    const vEff = vBody > BETA4_V_REF ? vBody : BETA4_V_REF;
+    cl += surface.clAlphaDot * dAlphaDt * surface.chordLength / (2 * vEff);
   }
   // Unconditionally cache α_now for the next call's finite difference.
   // Even when augmentation is skipped, the cache must be primed so the
