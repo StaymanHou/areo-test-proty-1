@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-05-23
+
+- **Feature shipped:** WP14.10 β5 non-dimensional AoA-rate damping (D16 implementation) — replaced the raw-rate `cl += clAlphaDot · dα/dt` form at the β5 branch with the textbook non-dimensional CL-augmentation `cl += clAlphaDot · dα/dt · c̄ / (2 · max(V, V_REF))` (Etkin & Reid §5.10–5.12), reusing the `chordLength` cache and `BETA4_V_REF` constant from WP14.9/WP14.9b; verify-self triple gate passed at clAlphaDot=5,5,8,0 across throttle-low + throttle-mid regimes (substituted for plan's throttle-high because baseline β4 setup NaN's there — WP14.11 territory); Rule #4 control bit-identical to baseline; plan-time physics derivation matched D16 prose exactly (no arch errata, unlike WP14.9b); 525/525 Vitest + tsc strict (both configs) + build clean.
+- **Backlog resolved:** SURFACE-2026-05-16-04 — β5 side closed by WP14.10; full close on both sides awaits WP14.11 joint tune.
+- **Backlog resolved:** SURFACE-2026-05-12-03 — mechanism side closed by WP14.10 (D16 non-dim form replaces raw-rate); tuning side awaits WP14.11.
+- **Backlog resolved:** SURFACE-2026-05-12-01 — mechanism-side blocker resolved; now blocked by WP14.11 tuning rather than mechanism.
+- **Backlog resolved:** SURFACE-2026-05-11-04 — phugoid undamped: architectural + mechanism sides both resolved; tuning side awaits WP14.11.
+- **Milestone:** WP14.10: β5 non-dimensional form (D16). D17+D16 cascade impl side both shipped; WP14.11 (joint tune) is the natural next unit.
+
 ## 2026-05-17
 
 - **Feature escalated:** WP14.9 β4 implicit-Euler integration (D15) — attempt-1 moment-amplification-ratio implementation refuted at verify-self (baseline NaN at tick 416, vs pre-D15 tick 417 — no improvement); operator selected Option 3 (full reframe — V-scaling shape itself is wrong, not the explicit-vs-implicit dimension); filed SURFACE-2026-05-17-01 as the actionable D15-rev driver (textbook non-dimensional pitch-rate-damping `cl_q · ω · c̄ / (2V)` parallel to D16); production code reverted to pre-D15 baseline; `chordLength` cache retained on `AeroSurface` for D16 consumption; successor WP pending arch revision via /product-arch.
