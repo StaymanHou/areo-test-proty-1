@@ -1495,3 +1495,240 @@ describe('AeroSurface — WP14.10: β5 non-dimensional form (D16)', () => {
   });
 });
 
+describe('AeroSurface — WP14.11.5: D18 induced drag (inducedDragK)', () => {
+  // D18 augments CD by inducedDragK · cl² at step 4d in computeAeroForce,
+  // AFTER β4/β5 CL augmentation and BEFORE force-magnitude computation.
+  // The augmentation uses the post-β4/β5 `cl` per arch.md D18 rationale
+  // ("induced drag is driven by the total circulation-bound lift").
+  //
+  // Lift mag = q · cl · A in the +normal direction (world +Y under identity
+  // body quaternion); Drag mag = q · cd · A in the +airflow direction. The
+  // tests below construct a known-AoA flow and compare drag magnitudes with
+  // and without inducedDragK to isolate ΔCD = inducedDragK · cl².
+  //
+  // Three.js mutable-buffer rule: computeAeroForce returns a reused output
+  // Vector3. Snapshot scalars immediately after each call (per CLAUDE.md).
+  function makeWing(opts?: { inducedDragK?: number }): AeroSurface {
+    const { cl, cd } = createSymmetricFlatPlateCurves();
+    return createAeroSurface({
+      position: new Vector3(0, 0, 0),
+      normal: new Vector3(0, 1, 0),
+      chord: new Vector3(0, 0, -1),
+      area: 1.5,
+      clCurve: cl,
+      cdCurve: cd,
+      ...opts,
+    });
+  }
+
+  // Body at level orientation moving forward (−Z) + downward (−Y) → airflow
+  // at the wing has +Y and +Z components → positive AoA. At linvel
+  // (0, −v_down, −v_fwd), the AoA satisfies tan(α) = v_down / v_fwd.
+  function makeBody(vFwd: number, vDown: number): BodyState {
+    return {
+      position: new Vector3(),
+      quaternion: new Quaternion(),
+      linvel: new Vector3(0, -vDown, -vFwd),
+      angvel: new Vector3(),
+    };
+  }
+
+  it('closed-form sanity: ΔF_drag (projected on airflow direction) = q · A · inducedDragK · cl²', () => {
+    // Construct a body state at a known moderate AoA. linvel = (0, −vDown, −vFwd)
+    // → airflow at the wing = +(0, vDown, vFwd). α = atan(vDown/vFwd) ≈ 9.46°
+    // (pre-stall, on the linear region of the CL curve).
+    //
+    // Approach: compare baseline vs augmented forces at the same body state.
+    // D18 augments ONLY cd, so ΔF = q·A·(Δcd)·airflow_direction, where
+    // Δcd = inducedDragK·cl². Extract Δ along the airflow direction
+    // (which is the drag direction) — this isolates the induced-drag rise
+    // cleanly. Project onto airflow_direction to get a scalar.
+    //
+    // cl is extracted from the BASELINE force by solving the lift-direction
+    // projection: F_baseline · normal_world = q·A·cl + q·A·cd·(normal·airflow_dir).
+    // With identity quat, normal_world = +Y. But normal and airflow_dir are
+    // NOT orthogonal in general, so we can't read cl directly off F.y. We
+    // do the 2D system solve: F.y = q·A·(cl·1 + cd·airflow_y_hat),
+    // F.z = q·A·(cl·0 + cd·airflow_z_hat), → cd = F.z/(q·A·airflow_z_hat),
+    // cl = (F.y - cd·q·A·airflow_y_hat) / (q·A).
+    const vFwd = 30;
+    const vDown = 5;
+    const v2 = vFwd * vFwd + vDown * vDown; // 925
+    const q = 0.5 * AIR_DENSITY * v2; // dynamic pressure (per unit area)
+    const A = 1.5;
+    const k = 0.15;
+    const vMag = Math.sqrt(v2);
+    const airflowYHat = vDown / vMag; // airflow direction = +(0, vDown, vFwd)/|v|
+    const airflowZHat = vFwd / vMag;
+
+    const baseline = makeWing();
+    const augmented = makeWing({ inducedDragK: k });
+    const body = makeBody(vFwd, vDown);
+
+    // Snapshot baseline force components IMMEDIATELY (mutable-buffer rule).
+    const fBase = computeAeroForce(baseline, body);
+    const baseFy = fBase.force.y;
+    const baseFz = fBase.force.z;
+
+    // Now run the augmented surface at the same body state.
+    const fAug = computeAeroForce(augmented, body);
+    const augFy = fAug.force.y;
+    const augFz = fAug.force.z;
+
+    // Extract cl from the baseline force. With identity quaternion,
+    // normal_world = (0,1,0). Lift = q·A·cl·normal = (0, q·A·cl, 0).
+    // Drag = q·A·cd·airflow_hat = q·A·cd·(0, airflowYHat, airflowZHat).
+    // So baseFy = q·A·cl + q·A·cd·airflowYHat,
+    //    baseFz = q·A·cd·airflowZHat.
+    const cdBase = baseFz / (q * A * airflowZHat);
+    const cl = (baseFy - q * A * cdBase * airflowYHat) / (q * A);
+
+    // Project ΔF onto airflow direction to extract the scalar Δdrag.
+    // (X component is 0 for this body state; we project over Y,Z only.)
+    const dFy = augFy - baseFy;
+    const dFz = augFz - baseFz;
+    const deltaDragAlongAirflow = dFy * airflowYHat + dFz * airflowZHat;
+
+    // Expected: ΔF along airflow = q · A · k · cl².
+    const expectedDeltaDrag = q * A * k * cl * cl;
+    expect(deltaDragAlongAirflow).toBeCloseTo(expectedDeltaDrag, 6);
+
+    // Sanity: the orthogonal-to-airflow component of ΔF should be ~zero —
+    // D18 only augments along the drag axis, not the lift axis.
+    // Orthogonal direction in the Y-Z plane: (0, +airflowZHat, -airflowYHat).
+    const deltaOrthogonal = dFy * airflowZHat - dFz * airflowYHat;
+    expect(Math.abs(deltaOrthogonal)).toBeLessThan(1e-9);
+  });
+
+  it('sign-symmetric in cl: negative cl produces the same induced-drag rise as positive cl', () => {
+    // cl² is positive in both signs of cl (textbook: induced drag is the
+    // same magnitude in inverted flight). We construct two body states
+    // producing equal-magnitude opposite-sign AoA and verify the induced
+    // drag rise is bit-identical.
+    const vFwd = 30;
+    const vMag = 5;
+    const A = 1.5;
+    const k = 0.15;
+
+    // Positive AoA: linvel = (0, -vMag, -vFwd) → airflow +Y component, +α.
+    // Negative AoA: linvel = (0, +vMag, -vFwd) → airflow -Y component, -α.
+    const bodyPos = makeBody(vFwd, vMag);
+    const bodyNeg: BodyState = {
+      position: new Vector3(),
+      quaternion: new Quaternion(),
+      linvel: new Vector3(0, +vMag, -vFwd),
+      angvel: new Vector3(),
+    };
+
+    const baselinePos = makeWing();
+    const baselineNeg = makeWing();
+    const augPos = makeWing({ inducedDragK: k });
+    const augNeg = makeWing({ inducedDragK: k });
+
+    // Snapshot drag scalars immediately after each call (mutable-buffer rule).
+    // Use separate AeroSurface instances per body state to avoid β5 prev-AoA
+    // cache pollution across calls (β5 is dormant here since clAlphaDot=0,
+    // but the discipline matches WP14.10 D16 test patterns above).
+    const baseDragZPos = computeAeroForce(baselinePos, bodyPos).force.z;
+    const baseDragZNeg = computeAeroForce(baselineNeg, bodyNeg).force.z;
+    const augDragZPos = computeAeroForce(augPos, bodyPos).force.z;
+    const augDragZNeg = computeAeroForce(augNeg, bodyNeg).force.z;
+
+    // The sign-symmetry assertion: ΔdragZ (augmented − baseline) is the
+    // same magnitude in both regimes, because |cl| at +α equals |cl| at −α
+    // for the symmetric flat-plate curve, so k·cl² is identical.
+    const dPos = augDragZPos - baseDragZPos;
+    const dNeg = augDragZNeg - baseDragZNeg;
+    expect(dPos).toBeGreaterThan(0); // induced drag adds to drag in the airflow direction
+    expect(dNeg).toBeGreaterThan(0);
+    expect(dPos).toBeCloseTo(dNeg, 9);
+    // Reference unused destructured locals for clarity (TS strict-mode appeasement).
+    void A;
+    void k;
+  });
+
+  it('induced drag uses POST-β4 augmented cl (lifting-line uses total CL, not steady Cl(α))', () => {
+    // Two surfaces with the same body state + the same inducedDragK BUT
+    // different clQ (which augments CL via β4). The induced-drag rise must
+    // differ because the post-β4 cl differs. If induced drag used the pre-
+    // β4 (curve-lookup-only) cl, both surfaces would show identical Δdrag.
+    //
+    // Set up a body with non-zero angular velocity → β4 augments cl.
+    // Use a surface with non-zero clQ to activate β4.
+    const k = 0.15;
+    const { cl, cd } = createSymmetricFlatPlateCurves();
+
+    function makeSurface(opts: { inducedDragK: number; clQ: number }): AeroSurface {
+      return createAeroSurface({
+        position: new Vector3(0, 0, 3), // h-stab-like position (z=+3) for dampAxis
+        normal: new Vector3(0, 1, 0),
+        chord: new Vector3(0, 0, -1),
+        area: 1.5,
+        clCurve: cl,
+        cdCurve: cd,
+        inducedDragK: opts.inducedDragK,
+        clQ: opts.clQ,
+      });
+    }
+
+    // Body state: high pitch rate (ω_x large) activates β4 strongly.
+    const bodyWithRotation: BodyState = {
+      position: new Vector3(),
+      quaternion: new Quaternion(),
+      linvel: new Vector3(0, -2, -30), // gives small positive AoA from steady flow
+      angvel: new Vector3(2, 0, 0), // pitch-up rate of 2 rad/s
+    };
+
+    const surfNoClQ = makeSurface({ inducedDragK: k, clQ: 0 });
+    const surfHighClQ = makeSurface({ inducedDragK: k, clQ: 5 });
+    const surfNoClQNoDrag = makeSurface({ inducedDragK: 0, clQ: 0 });
+    const surfHighClQNoDrag = makeSurface({ inducedDragK: 0, clQ: 5 });
+
+    // Snapshot drag scalars immediately.
+    const dragZNoClQ = computeAeroForce(surfNoClQ, bodyWithRotation).force.z;
+    const dragZHighClQ = computeAeroForce(surfHighClQ, bodyWithRotation).force.z;
+    const dragZNoClQNoDrag = computeAeroForce(surfNoClQNoDrag, bodyWithRotation).force.z;
+    const dragZHighClQNoDrag = computeAeroForce(surfHighClQNoDrag, bodyWithRotation).force.z;
+
+    // Δ caused by enabling inducedDragK at each clQ value:
+    const deltaAtZeroClQ = dragZNoClQ - dragZNoClQNoDrag;
+    const deltaAtHighClQ = dragZHighClQ - dragZHighClQNoDrag;
+
+    // Both deltas must be non-zero (induced drag active).
+    expect(Math.abs(deltaAtZeroClQ)).toBeGreaterThan(0);
+    expect(Math.abs(deltaAtHighClQ)).toBeGreaterThan(0);
+
+    // The key assertion: the deltas differ — induced drag uses the post-β4
+    // cl, so different β4 augmentation gives different induced-drag rise.
+    // If induced drag used the pre-β4 cl, both deltas would be identical
+    // (same curve-lookup cl, same k → same k·cl²).
+    //
+    // Tolerance: deltas should differ by at least the magnitude of β4's
+    // contribution to cl² (typically a few %). We assert a relative
+    // difference > 1% to give the test a clean signal margin.
+    const relDiff = Math.abs(deltaAtHighClQ - deltaAtZeroClQ) / Math.abs(deltaAtZeroClQ);
+    expect(relDiff).toBeGreaterThan(0.01);
+  });
+
+  it('default inducedDragK=0 / omitted preserves bit-for-bit pre-D18 parity (asymmetric-fix discipline)', () => {
+    // Per CLAUDE.md feedback_asymmetric_fix_no_op.md: the D18 augmentation
+    // must be a no-op in the working regime (default inducedDragK=0 on all
+    // current aircraft.json surfaces). The gate `inducedDragK !== 0` makes
+    // the augmentation block dead code at the default value; this test
+    // confirms the contract at the live computeAeroForce call site by
+    // comparing the omitted-field path to the explicit-zero path.
+    const baseline = makeWing();
+    const explicitZero = makeWing({ inducedDragK: 0 });
+    const body = makeBody(30, 5);
+
+    const fBase = computeAeroForce(baseline, body);
+    const xBase = fBase.force.x;
+    const yBase = fBase.force.y;
+    const zBase = fBase.force.z;
+    const fZero = computeAeroForce(explicitZero, body);
+    expect(fZero.force.x).toBeCloseTo(xBase, 12);
+    expect(fZero.force.y).toBeCloseTo(yBase, 12);
+    expect(fZero.force.z).toBeCloseTo(zBase, 12);
+  });
+});
+

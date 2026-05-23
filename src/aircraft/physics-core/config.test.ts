@@ -197,6 +197,106 @@ describe('parseAircraftConfig', () => {
     expect(() => parseAircraftConfig(bad3)).toThrow(/clAlphaDot/);
   });
 
+  // --- D18 schema: inducedDragK + fuselageDrag (WP14.11.5) ---
+
+  it('inducedDragK is undefined when absent (AeroSurface default 0 takes over downstream)', () => {
+    const cfg = parseAircraftConfig(validBaseline());
+    expect(cfg.surfaces[0]!.inducedDragK).toBeUndefined();
+  });
+
+  it('parses an explicit numeric inducedDragK (positive)', () => {
+    const raw = validBaseline();
+    (raw.surfaces[0] as unknown as { inducedDragK: number }).inducedDragK = 0.15;
+    const cfg = parseAircraftConfig(raw);
+    expect(cfg.surfaces[0]!.inducedDragK).toBe(0.15);
+  });
+
+  it('rejects non-finite or non-numeric inducedDragK', () => {
+    const bad = validBaseline();
+    (bad.surfaces[0] as unknown as { inducedDragK: unknown }).inducedDragK = '0.15';
+    expect(() => parseAircraftConfig(bad)).toThrow(/inducedDragK/);
+
+    const bad2 = validBaseline();
+    (bad2.surfaces[0] as unknown as { inducedDragK: number }).inducedDragK = NaN;
+    expect(() => parseAircraftConfig(bad2)).toThrow(/inducedDragK/);
+
+    const bad3 = validBaseline();
+    (bad3.surfaces[0] as unknown as { inducedDragK: number }).inducedDragK = Infinity;
+    expect(() => parseAircraftConfig(bad3)).toThrow(/inducedDragK/);
+  });
+
+  it('rejects negative inducedDragK with physical-rationale message (drag opposes motion)', () => {
+    // D18 sign convention: inducedDragK ≥ 0. Negative values are unphysical
+    // because drag (k · cl²) must dissipate energy, not produce it.
+    const bad = validBaseline();
+    (bad.surfaces[0] as unknown as { inducedDragK: number }).inducedDragK = -0.15;
+    expect(() => parseAircraftConfig(bad)).toThrow(/must be ≥ 0/);
+  });
+
+  it('fuselageDrag is undefined when absent (default-absent parity — pre-D18 behavior preserved)', () => {
+    const cfg = parseAircraftConfig(validBaseline());
+    expect(cfg.fuselageDrag).toBeUndefined();
+  });
+
+  it('parses a valid fuselageDrag object with cd0 + area', () => {
+    const raw = validBaseline() as ReturnType<typeof validBaseline> & {
+      fuselageDrag?: { cd0: number; area: number };
+    };
+    raw.fuselageDrag = { cd0: 0.3, area: 1.5 };
+    const cfg = parseAircraftConfig(raw);
+    expect(cfg.fuselageDrag).toEqual({ cd0: 0.3, area: 1.5 });
+  });
+
+  it('rejects fuselageDrag with missing or non-numeric cd0', () => {
+    const bad = validBaseline() as ReturnType<typeof validBaseline> & {
+      fuselageDrag: unknown;
+    };
+    bad.fuselageDrag = { area: 1.5 };
+    expect(() => parseAircraftConfig(bad)).toThrow(/fuselageDrag\.cd0/);
+
+    const bad2 = validBaseline() as ReturnType<typeof validBaseline> & {
+      fuselageDrag: unknown;
+    };
+    bad2.fuselageDrag = { cd0: '0.3', area: 1.5 };
+    expect(() => parseAircraftConfig(bad2)).toThrow(/fuselageDrag\.cd0/);
+  });
+
+  it('rejects fuselageDrag with missing or non-numeric area', () => {
+    const bad = validBaseline() as ReturnType<typeof validBaseline> & {
+      fuselageDrag: unknown;
+    };
+    bad.fuselageDrag = { cd0: 0.3 };
+    expect(() => parseAircraftConfig(bad)).toThrow(/fuselageDrag\.area/);
+
+    const bad2 = validBaseline() as ReturnType<typeof validBaseline> & {
+      fuselageDrag: unknown;
+    };
+    bad2.fuselageDrag = { cd0: 0.3, area: NaN };
+    expect(() => parseAircraftConfig(bad2)).toThrow(/fuselageDrag\.area/);
+  });
+
+  it('rejects negative fuselageDrag.cd0 and negative area (drag is dissipative)', () => {
+    const bad = validBaseline() as ReturnType<typeof validBaseline> & {
+      fuselageDrag: { cd0: number; area: number };
+    };
+    bad.fuselageDrag = { cd0: -0.3, area: 1.5 };
+    expect(() => parseAircraftConfig(bad)).toThrow(/fuselageDrag\.cd0 must be ≥ 0/);
+
+    const bad2 = validBaseline() as ReturnType<typeof validBaseline> & {
+      fuselageDrag: { cd0: number; area: number };
+    };
+    bad2.fuselageDrag = { cd0: 0.3, area: -1.5 };
+    expect(() => parseAircraftConfig(bad2)).toThrow(/fuselageDrag\.area must be ≥ 0/);
+  });
+
+  it('rejects fuselageDrag that is not an object', () => {
+    const bad = validBaseline() as ReturnType<typeof validBaseline> & {
+      fuselageDrag: unknown;
+    };
+    bad.fuselageDrag = 'not-an-object';
+    expect(() => parseAircraftConfig(bad)).toThrow(/fuselageDrag must be an object/);
+  });
+
   // --- Parametric curve schema (WP7 Phase A) ---
 
   const validParametricCurve = () => ({

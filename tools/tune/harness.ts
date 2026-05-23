@@ -120,19 +120,33 @@ export function applyParamOverrides(
 
     const segments = pathStr.split('.');
     let cursor: unknown = config;
-    // Intermediate-path segments MUST resolve to an existing object/array — a
-    // missing intermediate is a real path typo (e.g. `surfaces.99.foo` when
-    // there is no index 99). The LEAF segment is allowed to be absent: many
-    // tunable fields default to 0 and are not declared in `aircraft.json`
-    // (clAlphaDot is the canonical example). The optimizer (WP14.8) sweeps
-    // parameter space including default-0 fields, so the harness must accept
-    // "set a leaf that isn't there yet."
+    // Intermediate-path segments: the LEAF is allowed to be absent (many
+    // tunable fields default to 0 and are not declared in `aircraft.json` —
+    // clAlphaDot is the canonical example; D18's `inducedDragK` follows the
+    // same pattern). For intermediates, two cases:
+    //   (a) cursor is a plain object and the next segment is missing → auto-
+    //       create `{}` for the path. This supports D18's top-level optional
+    //       `fuselageDrag?: { cd0, area }` shape: `fuselageDrag.cd0=0.3` on
+    //       baseline aircraft.json (no `fuselageDrag` parent) creates the
+    //       parent object on the fly so the leaf assignment can land.
+    //   (b) cursor is an array and the next index is out of range → still
+    //       throw. Array indices that don't exist are real path typos (e.g.
+    //       `surfaces.99.foo` when there are only 4 surfaces). Auto-creating
+    //       array elements would silently mask the typo and is unsafe.
     for (let i = 0; i < segments.length - 1; i++) {
       const seg = segments[i]!;
-      if (typeof cursor !== 'object' || cursor === null || !(seg in (cursor as Record<string, unknown>))) {
-        throw new Error(`harness: --params path "${pathStr}" does not resolve at segment "${seg}"`);
+      if (typeof cursor !== 'object' || cursor === null) {
+        throw new Error(`harness: --params path "${pathStr}" — parent at segment "${seg}" is not an object`);
       }
-      cursor = (cursor as Record<string, unknown>)[seg];
+      const obj = cursor as Record<string, unknown>;
+      if (!(seg in obj)) {
+        if (Array.isArray(cursor)) {
+          throw new Error(`harness: --params path "${pathStr}" does not resolve at segment "${seg}"`);
+        }
+        // Auto-create missing intermediate object segment (D18 support).
+        obj[seg] = {};
+      }
+      cursor = obj[seg];
       // Arrays are object-typed in JS; this handles `surfaces.0.clQ` style as well,
       // since `'0' in array` is true for index 0.
     }

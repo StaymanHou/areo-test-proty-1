@@ -1,6 +1,7 @@
 import { Vector3 } from 'three';
 import {
   AeroSurface,
+  AIR_DENSITY,
   computeAeroForce,
   createAeroSurface,
 } from './aerosurface';
@@ -69,6 +70,7 @@ export class FlightModel {
         incidenceRad: s.incidenceRad,
         clQ: s.clQ,
         clAlphaDot: s.clAlphaDot,
+        inducedDragK: s.inducedDragK,
       }),
     );
 
@@ -142,6 +144,29 @@ export class FlightModel {
       _pointBuf.y = result.applicationPoint.y;
       _pointBuf.z = result.applicationPoint.z;
       this.aircraft.body.addForceAtPoint(_forceBuf, _pointBuf, true);
+    }
+
+    // 1b. D18 fuselage parasitic drag (body-level, single force at body origin).
+    // Magnitude: 0.5 · ρ · V² · area · cd0. Direction: -linvel / |linvel| (drag
+    // opposes motion through still air). Applied at the body origin via
+    // `addForce` (NOT `addForceAtPoint`) so the contribution is purely
+    // translational with zero torque — fuselage drag is not a moment-arm
+    // mechanism. Gated on `config.fuselageDrag` being present (default-absent
+    // preserves pre-D18 behavior bit-for-bit). V > epsilon guard avoids 0/0
+    // at body rest. See arch.md Revision 2026-05-23 (D18), CONVENTIONS.md,
+    // and SURFACE-2026-05-23-01.
+    const fuselageDrag = this.aircraft.config.fuselageDrag;
+    if (fuselageDrag !== undefined) {
+      const v = state.linvel.length();
+      if (v > 1e-6) {
+        const q = 0.5 * AIR_DENSITY * v * v;
+        const mag = q * fuselageDrag.area * fuselageDrag.cd0;
+        const invV = 1 / v;
+        _forceBuf.x = -state.linvel.x * mag * invV;
+        _forceBuf.y = -state.linvel.y * mag * invV;
+        _forceBuf.z = -state.linvel.z * mag * invV;
+        this.aircraft.body.addForce(_forceBuf, true);
+      }
     }
 
     // 2. Thrust along body −Z, rotated into world frame.

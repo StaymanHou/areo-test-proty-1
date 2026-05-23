@@ -396,3 +396,109 @@ describe('FlightModel', () => {
     }
   });
 });
+
+describe('FlightModel — WP14.11.5: D18 fuselage drag', () => {
+  // D18 fuselage drag is a body-level force at the body origin:
+  //   F = −0.5 · ρ · V² · area · cd0 · (linvel / |linvel|)
+  // applied via `addForce` (NOT `addForceAtPoint`) so the contribution is
+  // purely translational with zero torque. Gated on `config.fuselageDrag`
+  // being present (default-absent preserves pre-D18 behavior bit-for-bit).
+  //
+  // Approach: compare baseline vs fuselage-drag configs at the same body
+  // state. Read the accumulated force via `body.userForce()` after a single
+  // applyForces() call. Diff = the fuselage drag contribution in isolation.
+  //
+  // (Rapier exposes `body.userForce()` to read the accumulated user-applied
+  // force this tick; `resetForces` clears it before world.step.)
+  const AIR_DENSITY = 1.225;
+
+  function configWithFuselageDrag(cd0: number, area: number): AircraftConfig {
+    const raw = baselineRaw() as ReturnType<typeof baselineRaw> & {
+      fuselageDrag?: { cd0: number; area: number };
+    };
+    raw.fuselageDrag = { cd0, area };
+    return parseAircraftConfig(raw);
+  }
+
+  it('closed-form: ΔF_fuselage = 0.5 · ρ · V² · area · cd0 at V=30 m/s along −Z', () => {
+    const cd0 = 0.3;
+    const area = 1.5;
+    const V = 30;
+    const expectedMag = 0.5 * AIR_DENSITY * V * V * area * cd0;
+    // Predicted: 0.5 · 1.225 · 900 · 1.5 · 0.3 = 248.0625 N.
+
+    // Baseline config (no fuselageDrag) and augmented config (fuselageDrag set).
+    const cfgBaseline = config;
+    const cfgAugmented = configWithFuselageDrag(cd0, area);
+
+    // Two worlds, two aircraft — read userForce() right after applyForces.
+    const wBase = new RAPIER.World({ x: 0, y: 0, z: 0 });
+    const acBase = new Aircraft(wBase, cfgBaseline, { linvel: new Vector3(0, 0, -V) });
+    const fmBase = new FlightModel(acBase);
+    fmBase.applyForces(0); // no thrust — isolate aero + (no) fuselage drag
+    const fBase = acBase.body.userForce();
+
+    const wAug = new RAPIER.World({ x: 0, y: 0, z: 0 });
+    const acAug = new Aircraft(wAug, cfgAugmented, { linvel: new Vector3(0, 0, -V) });
+    const fmAug = new FlightModel(acAug);
+    fmAug.applyForces(0);
+    const fAug = acAug.body.userForce();
+
+    // Δforce should equal the fuselage drag vector: along +Z (opposite to
+    // linvel which is −Z), magnitude = 0.5·ρ·V²·area·cd0.
+    const dFx = fAug.x - fBase.x;
+    const dFy = fAug.y - fBase.y;
+    const dFz = fAug.z - fBase.z;
+    expect(Math.abs(dFx)).toBeLessThan(1e-6);
+    expect(Math.abs(dFy)).toBeLessThan(1e-6);
+    expect(dFz).toBeCloseTo(expectedMag, 4); // ≈ 248.06 N along +Z
+  });
+
+  it('direction: fuselage drag force is anti-parallel to linvel (opposes motion)', () => {
+    const cd0 = 0.5;
+    const area = 2.0;
+    // Use an off-axis linvel to confirm direction works in 3D, not just +Z.
+    const lv = new Vector3(15, -10, -25); // arbitrary direction; |lv| = √(225+100+625) = √950 ≈ 30.82
+    const cfgBaseline = config;
+    const cfgAugmented = configWithFuselageDrag(cd0, area);
+
+    const wBase = new RAPIER.World({ x: 0, y: 0, z: 0 });
+    const acBase = new Aircraft(wBase, cfgBaseline, { linvel: lv.clone() });
+    const fmBase = new FlightModel(acBase);
+    fmBase.applyForces(0);
+    const fBase = acBase.body.userForce();
+
+    const wAug = new RAPIER.World({ x: 0, y: 0, z: 0 });
+    const acAug = new Aircraft(wAug, cfgAugmented, { linvel: lv.clone() });
+    const fmAug = new FlightModel(acAug);
+    fmAug.applyForces(0);
+    const fAug = acAug.body.userForce();
+
+    // Δforce (the fuselage drag contribution) must be anti-parallel to linvel.
+    // Check by dot product: dot(Δforce, linvel) / (|Δforce|·|linvel|) ≈ −1.
+    const dF = new Vector3(fAug.x - fBase.x, fAug.y - fBase.y, fAug.z - fBase.z);
+    const dFmag = dF.length();
+    expect(dFmag).toBeGreaterThan(0);
+    const cosTheta = dF.dot(lv) / (dFmag * lv.length());
+    expect(cosTheta).toBeCloseTo(-1, 6);
+  });
+
+  it('V=0 guard: zero linvel produces zero fuselage drag and no NaN', () => {
+    const cfgAugmented = configWithFuselageDrag(0.3, 1.5);
+    const world = new RAPIER.World({ x: 0, y: 0, z: 0 });
+    // No linvel passed → defaults to (0,0,0); the V > 1e-6 guard must skip
+    // the fuselage-drag branch entirely (no NaN from 1/v at v=0).
+    const aircraft = new Aircraft(world, cfgAugmented);
+    const fm = new FlightModel(aircraft);
+    fm.applyForces(0);
+    const force = aircraft.body.userForce();
+    // All per-surface aero forces at zero airflow also return zero per
+    // computeAeroForce's `v2 < 1e-12` guard, so total accumulated force is 0.
+    expect(force.x).toBe(0);
+    expect(force.y).toBe(0);
+    expect(force.z).toBe(0);
+    expect(Number.isFinite(force.x)).toBe(true);
+    expect(Number.isFinite(force.y)).toBe(true);
+    expect(Number.isFinite(force.z)).toBe(true);
+  });
+});

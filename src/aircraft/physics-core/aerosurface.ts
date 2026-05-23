@@ -57,6 +57,17 @@ export interface AeroSurfaceConfig {
    * arch.md Revision 2026-05-12 (D13), and SURFACE-2026-05-11-04.
    */
   clAlphaDot?: number;
+  /**
+   * Induced-drag coefficient (D18). When non-zero, the drag coefficient is
+   * augmented by `inducedDragK · cl²`, applied AFTER β4/β5 CL augmentations
+   * so the post-augmentation `cl` drives the induced-drag rise (textbook
+   * lifting-line: `CD_i = CL_actual² / (π·AR·e)`). Sign convention: must be
+   * ≥ 0 (drag always opposes motion); negative values rejected at
+   * `parseAircraftConfig`. Default 0 — pre-D18 behavior preserved bit-for-bit.
+   * See CONVENTIONS.md, arch.md Revision 2026-05-23 (D18), and
+   * SURFACE-2026-05-23-01.
+   */
+  inducedDragK?: number;
 }
 
 export const DEFAULT_MAX_DEFLECTION_RAD = (25 * Math.PI) / 180;
@@ -152,6 +163,8 @@ export class AeroSurface {
   clQ: number;
   /** AoA-rate damping coefficient (β5). 0 = no augmentation. */
   clAlphaDot: number;
+  /** Induced-drag coefficient (D18). 0 = no augmentation. See AeroSurfaceConfig.inducedDragK doc. */
+  inducedDragK: number;
   /**
    * Cached chord length in metres (captured BEFORE `chord` is normalized to a
    * unit vector). Read-only after construction unless `setGeometry({chord})` is
@@ -181,6 +194,7 @@ export class AeroSurface {
     this.incidenceRad = config.incidenceRad ?? 0;
     this.clQ = config.clQ ?? 0;
     this.clAlphaDot = config.clAlphaDot ?? 0;
+    this.inducedDragK = config.inducedDragK ?? 0;
 
     // Span axis = (pre-incidence) normal × chord. If parallel, surface geometry is degenerate.
     const span = new Vector3().crossVectors(this.normal, this.chord);
@@ -549,7 +563,7 @@ export function computeAeroForce(
 
   // 4. Curve lookup.
   let cl = lookupLiftDragCurve(surface.clCurve, alpha);
-  const cd = lookupLiftDragCurve(surface.cdCurve, alpha);
+  let cd = lookupLiftDragCurve(surface.cdCurve, alpha);
 
   // 4b. β4 — D17 non-dimensional pitch-rate damping. CL augmentation form:
   //   ΔCL = clQ · ω_along_dampAxis · c̄ / (2 · max(V, V_REF))
@@ -608,6 +622,23 @@ export function computeAeroForce(
   // Even when augmentation is skipped, the cache must be primed so the
   // following tick can compute a valid dα/dt.
   surface.prevAoA = alpha;
+
+  // 4d. D18 induced drag (lifting-line drag-polar coupling). Augment CD by
+  //   ΔCD = inducedDragK · cl²
+  // where `cl` here is the POST-β4/β5 augmented lift coefficient — induced
+  // drag is driven by the total circulation-bound lift the wing is producing
+  // this tick, not just the steady-state Cl(α). This matches textbook
+  // lifting-line theory `CD_i = CL_actual² / (π·AR·e)` with `inducedDragK`
+  // = `1 / (π·AR·e)` treated as a tunable primary knob. The augmentation is
+  // sign-symmetric in cl (cl² is positive in both signs of cl), correctly
+  // modeling that real wings produce induced drag in both positive- and
+  // negative-G flight. Gated on inducedDragK ≠ 0 so default-zero preserves
+  // pre-D18 behavior bit-for-bit. Sign convention enforced at parse time
+  // (inducedDragK ≥ 0; drag opposes motion). See arch.md Revision 2026-05-23
+  // (D18), CONVENTIONS.md, and SURFACE-2026-05-23-01.
+  if (surface.inducedDragK !== 0) {
+    cd += surface.inducedDragK * cl * cl;
+  }
 
   // 5. Magnitudes.
   const q = 0.5 * AIR_DENSITY * v2 * surface.area;

@@ -53,6 +53,15 @@ export interface AircraftSurfaceConfig {
    * See arch.md Revision 2026-05-12 (D13), CONVENTIONS.md, and SURFACE-2026-05-11-04.
    */
   clAlphaDot?: number;
+  /**
+   * Induced-drag coefficient (D18). When non-zero, the drag coefficient is
+   * augmented by `inducedDragK · cl²` after β4/β5 CL augmentation, applying
+   * the textbook lifting-line drag-polar coupling `CD_i = CL² / (π·AR·e)`
+   * with `k = 1/(π·AR·e)` treated as a tunable primary knob. Sign: must be
+   * ≥ 0 (drag always opposes motion). Default undefined → no augmentation.
+   * See arch.md Revision 2026-05-23 (D18), CONVENTIONS.md, and SURFACE-2026-05-23-01.
+   */
+  inducedDragK?: number;
 }
 
 export interface AircraftConfig {
@@ -60,6 +69,16 @@ export interface AircraftConfig {
   inertia: Vector3;
   thrust: { maxN: number };
   surfaces: AircraftSurfaceConfig[];
+  /**
+   * Body-level fuselage parasitic drag (D18). When present, a single drag
+   * force of magnitude `0.5·ρ·V²·area·cd0` is applied at the body origin
+   * opposite to the linear velocity vector. Applied at the body origin so
+   * the force contributes zero torque — fuselage drag is a pure
+   * translational damping term. Both `cd0` and `area` must be ≥ 0. When
+   * absent (default), no fuselage drag is applied (pre-D18 behavior).
+   * See arch.md Revision 2026-05-23 (D18) and SURFACE-2026-05-23-01.
+   */
+  fuselageDrag?: { cd0: number; area: number };
 }
 
 function parseCurve(
@@ -220,6 +239,20 @@ export function parseAircraftConfig(raw: unknown): AircraftConfig {
       }
       clAlphaDot = s.clAlphaDot;
     }
+    let inducedDragK: number | undefined;
+    if (s.inducedDragK !== undefined) {
+      if (typeof s.inducedDragK !== 'number' || !Number.isFinite(s.inducedDragK)) {
+        throw new Error(
+          `aircraft config: surfaces[${i}].inducedDragK must be a finite number`,
+        );
+      }
+      if (s.inducedDragK < 0) {
+        throw new Error(
+          `aircraft config: surfaces[${i}].inducedDragK must be ≥ 0 (drag opposes motion; negative values are unphysical)`,
+        );
+      }
+      inducedDragK = s.inducedDragK;
+    }
     return {
       name: s.name,
       position: asVec3(s.position, `surfaces[${i}].position`),
@@ -234,14 +267,37 @@ export function parseAircraftConfig(raw: unknown): AircraftConfig {
       incidenceRad,
       clQ,
       clAlphaDot,
+      inducedDragK,
     };
   });
+
+  let fuselageDrag: { cd0: number; area: number } | undefined;
+  if (r.fuselageDrag !== undefined) {
+    if (typeof r.fuselageDrag !== 'object' || r.fuselageDrag === null) {
+      throw new Error('aircraft config: fuselageDrag must be an object');
+    }
+    const f = r.fuselageDrag as Record<string, unknown>;
+    if (typeof f.cd0 !== 'number' || !Number.isFinite(f.cd0)) {
+      throw new Error('aircraft config: fuselageDrag.cd0 must be a finite number');
+    }
+    if (f.cd0 < 0) {
+      throw new Error('aircraft config: fuselageDrag.cd0 must be ≥ 0');
+    }
+    if (typeof f.area !== 'number' || !Number.isFinite(f.area)) {
+      throw new Error('aircraft config: fuselageDrag.area must be a finite number');
+    }
+    if (f.area < 0) {
+      throw new Error('aircraft config: fuselageDrag.area must be ≥ 0');
+    }
+    fuselageDrag = { cd0: f.cd0, area: f.area };
+  }
 
   return {
     mass: r.mass,
     inertia,
     thrust: { maxN: thrustMaxN },
     surfaces,
+    fuselageDrag,
   };
 }
 

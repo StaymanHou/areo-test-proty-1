@@ -118,9 +118,22 @@ describe('applyParamOverrides', () => {
     expect(cfg.x.y).toBe(-150);
   });
 
-  it('throws when an intermediate segment does not resolve', () => {
+  it('throws when an intermediate array segment does not resolve', () => {
+    // Array indices that don't exist are real path typos — auto-creating
+    // sparse array elements would silently mask them. Preserve the throw.
     const cfg = { surfaces: [{ clQ: 3 }] };
     expect(() => applyParamOverrides(cfg, ['surfaces.99.clQ=1'])).toThrow(/does not resolve at segment "99"/);
+  });
+
+  it('auto-creates a missing intermediate object segment (D18 fuselageDrag case)', () => {
+    // D18's top-level `fuselageDrag?: {cd0, area}` is absent on baseline
+    // aircraft.json. The optimizer's `--knobs fuselageDrag.cd0,fuselageDrag.area`
+    // must work without pre-seeding the parent object. Plain-object
+    // intermediates are auto-created; array intermediates still throw
+    // (covered by the previous test).
+    const cfg: Record<string, unknown> = {};
+    applyParamOverrides(cfg, ['fuselageDrag.cd0=0.3', 'fuselageDrag.area=1.5']);
+    expect(cfg.fuselageDrag).toEqual({ cd0: 0.3, area: 1.5 });
   });
 
   it('throws on malformed entry (no =)', () => {
@@ -231,6 +244,96 @@ describe('runHarness (in-process)', () => {
         'surfaces.1.clAlphaDot=0',
         'surfaces.2.clAlphaDot=0',
         'surfaces.3.clAlphaDot=0',
+      ],
+    });
+    expect(explicitZero).toBe(baseline);
+  });
+
+  it('WP14.11.5 / D18: non-default inducedDragK + fuselageDrag reduces peak airspeed > 5× vs baseline at throttle-low (600-tick window)', () => {
+    // Codification of WP14.11.5's verify-self Rule #2 gate (CLAUDE.md
+    // physics-mechanism discipline). The D18 mechanism layer (per-surface
+    // induced drag `cd += inducedDragK · cl²` + body-level fuselage drag
+    // `F = −0.5·ρ·V²·area·cd0·v̂`) must observably damp the phugoid energy
+    // excursion. At throttle-low (0.05 throttle, spawn v=30 m/s), the
+    // baseline (no D18) shows airspeed runaway to ~660 m/s within 600 ticks
+    // (10 s @ 60 Hz) — the SURFACE-2026-05-23-01 failure mode. Adding D18
+    // at textbook-grounded coefficients reduces peak airspeed by > 5×.
+    //
+    // Regime/tick-window substitution rationale: this codify gate uses the
+    // 600-tick window (not 1800) because the pre-WP14.12 baseline β4 setup
+    // (clQ=3,3,8,0) NaN's at ~650-800 ticks at all 3 throttles due to
+    // orthogonal β4 instability — including those NaN windows pollutes the
+    // D18 signal. The 600-tick window is the longest clean observation
+    // baseline. Per CLAUDE.md Rule #4 plan-time addendum (2026-05-23) +
+    // Rule #2 clarification (2026-05-17): "the empirical stable region
+    // under the current `aircraft.json` parameters" — D18 mechanism is
+    // active and observably effective within this window. WP14.12 (joint
+    // tune) resolves the 1800-tick gate by also tuning clQ down.
+    const baseline = runHarness({
+      fixture: lookupFixture('throttle-low'),
+      ticks: 600,
+      params: [],
+    });
+    const augmented = runHarness({
+      fixture: lookupFixture('throttle-low'),
+      ticks: 600,
+      params: [
+        'surfaces.0.inducedDragK=0.15',
+        'surfaces.1.inducedDragK=0.15',
+        'surfaces.2.inducedDragK=0.25',
+        'fuselageDrag.cd0=0.3',
+        'fuselageDrag.area=1.5',
+      ],
+    });
+    // Both should stay finite at 600 ticks.
+    expect(baseline).not.toMatch(/NaN/i);
+    expect(baseline).not.toMatch(/Infinity/i);
+    expect(augmented).not.toMatch(/NaN/i);
+    expect(augmented).not.toMatch(/Infinity/i);
+
+    // Extract peak airspeed (column 11, header "airspeed") from each CSV.
+    const peakAS = (csv: string): number => {
+      const rows = csv.split('\n').filter((l) => l.length > 0).slice(1);
+      let max = 0;
+      for (const row of rows) {
+        const v = Number(row.split(',')[10]);
+        if (Number.isFinite(v) && v > max) max = v;
+      }
+      return max;
+    };
+    const basePeak = peakAS(baseline);
+    const augPeak = peakAS(augmented);
+    // Sanity bound on baseline (the SURFACE-2026-05-23-01 failure mode).
+    expect(basePeak).toBeGreaterThan(400);
+    // D18 must reduce peak by > 5× (observed ~7.7× in verify-self).
+    expect(basePeak / augPeak).toBeGreaterThan(5);
+    // And augmented peak AS must be in the flyable range (well under the
+    // phugoid-probe.spec.ts 200 m/s envelope cap).
+    expect(augPeak).toBeLessThan(200);
+  });
+
+  it('WP14.11.5 / D18: explicit inducedDragK=0 (+ no fuselageDrag) produces bit-identical trajectory to omitted (live default-zero parity)', () => {
+    // Codification of WP14.11.5's verify-self Rule #4 gate. The D18 gates
+    // `if (surface.inducedDragK !== 0)` (per-surface) and
+    // `if (fuselageDrag !== undefined)` (top-level) skip the augmentation
+    // and body-level drag blocks at default values, so the trajectory must
+    // be byte-identical to baseline-omitted. This catches any future
+    // refactor that accidentally activates the augmentation at zero.
+    const baseline = runHarness({
+      fixture: lookupFixture('throttle-low'),
+      ticks: 300,
+      params: [],
+    });
+    const explicitZero = runHarness({
+      fixture: lookupFixture('throttle-low'),
+      ticks: 300,
+      params: [
+        'surfaces.0.inducedDragK=0',
+        'surfaces.1.inducedDragK=0',
+        'surfaces.2.inducedDragK=0',
+        'surfaces.3.inducedDragK=0',
+        // fuselageDrag intentionally omitted (cannot pass `undefined` via
+        // CLI; the default-absent path is exercised here by not passing it).
       ],
     });
     expect(explicitZero).toBe(baseline);

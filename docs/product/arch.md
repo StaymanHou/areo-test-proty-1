@@ -1,7 +1,7 @@
 ---
 stage: arch
 state: complete
-updated: 2026-05-17 (D17 added: β4 non-dimensional pitch-rate damping — entered via P12 SURFACE-IN from WP14.9 / SURFACE-2026-05-17-01; supersedes D15 as the actionable β4-mechanism decision after D15 attempt-1 was empirically refuted at verify-self; the framing shifts from "discretization-layer fix" to "non-dimensionalization fix" — structurally parallel to D16's β5 treatment, making both fixes consistently non-dim instead of one-non-dim-one-implicit)
+updated: 2026-05-23 (D18 added: drag polar revision — induced drag + fuselage parasitic drag; entered via P12 SURFACE-IN from WP14.11 / SURFACE-2026-05-23-01 after D17+D16 mechanism halves achieved numerical finiteness but no flyable point in joint (clQ, clAlphaDot) space. Diagnostic: aerodynamic drag dissipation under the current per-surface-only model is too weak — α=0 cruise CD≈0.02, no CL² induced-drag coupling, no fuselage drag, resulting in gravity-PE→KE conversion that produces 373 m/s airspeed peaks at throttle=0.05. D18 adds the missing drag-polar terms as the third mechanism layer.)
 ---
 
 
@@ -776,3 +776,133 @@ The D15+D16 cascade in `wbs.md` is partially obsoleted. Concretely:
 - **Whether the per-surface `dampAxis` should be derivable from `(position × restNormal)` or needs an explicit schema override.** For all 4 current aircraft.json surfaces, the geometric derivation produces the physically correct damping axis (h-stab → pitch, wings → roll, v-stab → yaw — verified analytically in the WP14.9 P1.2 task log at `workflow/archive/wp14.9-beta4-implicit-euler.md` → `## Resolution`). If Phase 3 adds aircraft with unusual surface positions (canard, delta wing, V-tail), the geometric derivation may not match the intended damping axis. Defer until then; surface as SURFACE during WP14.9b build if the 4-surface aircraft.json doesn't validate cleanly under the geometric derivation.
 - **Whether `clQ` values from the WP14.5-retry-2 tune should be committed to `aircraft.json` in the same commit as the D17 implementation or in a follow-up.** Single-commit is cleaner (matches the WP14.9b "S size" framing); two-commit allows the impl to land + parity-regenerate + run-tune sequentially with intermediate verification. **Recommended:** single-commit if the tune converges to a stable point within the WP14.5-retry-2 budget; two-commit fallback if iteration is needed. Document at WP14.9b close.
 - **Whether D17 needs `BETA4_V_REF` (currently 30 m/s) to change.** Under D17 `BETA4_V_REF` serves the same role as D16's identical-named constant: a floor preventing the `1/V` singularity at very low airspeed. The same physical value (30 m/s = spawn airspeed = WP14.5 phugoid-probe entry velocity) makes sense; no change. But noted in case Phase 3 retuning surfaces a different optimal anchor.
+
+## Revision 2026-05-23 — D18: drag polar revision (induced drag + fuselage parasitic drag) — closes SURFACE-2026-05-23-01 architecturally
+
+**Context.** WP14.11 (post-D17+D16 joint tuning) ran the harness optimizer over the dimensionally-correct bounds `[0..15]^4` for joint (clQ, clAlphaDot) and then a narrowed-bounds re-run at `[0..3]×[0..10]×[0..3]×[0..10]` per SURFACE-2026-05-17-03. **A finite-trajectory region exists** under D17+D16 — multiple symmetric-mirror (clQ, clAlphaDot) points produce 1800 finite ticks across all 3 throttle regimes — confirming both mechanism halves work numerically. **But no point produces flyable trajectories.** Deployed-config score at the narrow-bounds best: **−96.1M** vs the acceptance threshold −300 — a 320,000× gap. Airspeed peaks 230–373 m/s, far beyond the phugoid-probe spec's 200 m/s envelope. Hand-probes within the finite region all show the same energy-excursion pattern: the airframe accumulates KE in phugoid dives faster than aerodynamic drag dissipates it. Full diagnostic in `workflow/backlog.md` → SURFACE-2026-05-23-01; archived WIP at `workflow/archive/wp14.11-joint-tune.md`.
+
+**Diagnostic — energy balance arithmetic (CLAUDE.md Rule #5 plan-time derivation).** With current aircraft.json (mass=1000 kg, S_wing+stab=13.5 m², T_max=6000 N, g·m=9800 N) and the symmetric-flat-plate CD curve (CD_min=0.02 at α=0, rising linearly to CD=0.05 at stall α=15°, then to CD=1.2 at α=π/2):
+
+- Drag at V=200 m/s, α=0: `0.5 · 1.225 · 200² · 13.5 · 0.02 ≈ 6,615 N` — barely above thrust_max (6,000 N).
+- **Equilibrium-dive terminal velocity (gravity vs drag, α=0, no thrust):** `V_term = √(2·m·g / (ρ·S·CD)) = √(2·9800 / (1.225·13.5·0.02)) ≈ 245 m/s`. At any α between 0 and stall, CD rises only to 0.05 → V_term still ≈ 155 m/s.
+- The current model has **no induced drag** (the CD curve is α-only, no CL² coupling) and **no fuselage drag** (Rapier collider exists for ground contact but contributes zero aerodynamic drag — `linearDamping` is not set, no body-level drag force is applied; only per-surface lifting-area drag is computed).
+- Combined: at cruise α the airframe has dissipation only from ~13.5 m² of "clean wing." Real aircraft also have induced drag (`CD_i = k·CL²` from wingtip vortex shedding — typically comparable to parasitic CD at moderate AoA) and fuselage parasitic drag (typically 30–50% of total parasitic drag — the fuselage isn't a lifting surface but its frontal cross-section drags through the air all the same). Both are missing.
+
+The 373 m/s airspeed peak observed at throttle=0.05 is **kinematically possible only because dissipation is undersized**. β4 (pitch-rate damping) and β5 (AoA-rate damping) damp the *rotation* part of the phugoid, but the phugoid is fundamentally a *translational* energy cycle (PE↔KE swap as altitude excursions become airspeed excursions). Translational damping comes from drag, not from rate-damping terms. Rate-damping shapes the trajectory; drag bounds the energy.
+
+**Driving mode disclosure.** Operator-as-architect deviation continues under full-autopilot drive mode per `feedback_operator_as_external.md`. The architect decision below is performed by the agent at session-resume into `/product-arch` from SURFACE-2026-05-23-01. **Phase 3 re-validation hook:** D18 is reviewable at WP21 (cross-browser QA) or sooner if downstream WPs surface a problem; both schema additions are default-zero/default-absent and bit-for-bit backward-compatible, so any rollback is mechanically clean.
+
+**Why D18 is the right next mechanism layer — SURFACE-2026-05-23-01 candidate evaluation.**
+
+The SURFACE listed 5 ranked candidates. Evaluating each against the energy-balance arithmetic above:
+
+1. **Drag-CD model (SURFACE rank 1).** ✓ Named the right *layer* but the wrong specifics. The SURFACE's claim "CD_0 likely effectively zero" is **factually incorrect** — CD_min=0.02 is textbook (Etkin & Reid §1.3; matches NACA flat-plate data). The real gap is the missing CL²-coupled induced drag term and the missing fuselage drag. **D18 addresses this gap.**
+2. **Inertia tensor (SURFACE rank 2).** Symptomatic, not causal. Iyy=3000 vs Cessna-class ≈1346 is ~2.2× heavy. Halving Iyy speeds the phugoid period by `√2 ≈ 1.41×` (since `T ∝ √I`) but does not change peak energy excursion — the phugoid amplitude is set by initial conditions + dissipation, not period. Won't close the 320,000× score gap. Rejected as the third mechanism layer; potentially worth a small hand-tune later under CLAUDE.md Rule #3's operator-as-architect gameplay-feel exemption.
+3. **Theodorsen / unsteady aero (SURFACE rank 3).** High complexity, low ROI for this airframe scale. At V=200 m/s and c̄=1 m, the Wagner indicial lag is ~0.01 s (≈0.6 ticks at 60 Hz) — marginal at any reasonable α̇. Explicitly out of scope per vision principle 2 ("plausible over perfect"). Rejected.
+4. **WP6.5 ω×r retirement (SURFACE rank 4).** Misframes the mechanism. The linear `ω × r` term in `computeAeroForce` step-2 is the *kinematic* airflow contribution from body rotation — physically necessary so off-CG surfaces see correct airflow at non-zero ω (an h-stab at z=+3 with the body pitching nose-up sees an additional downward airflow component proportional to `ω_pitch · 3`). Retiring it would break basic flight at any non-zero ω, not improve it. D17 already correctly moved the *amplification* (β4 V-scaling) out of the airflow chain into the CL chain; the underlying `ω × r` belongs where it is. Rejected.
+5. **Score function envelope re-calibration (SURFACE rank 5).** The envelopes (ALT=50m, AS=30m, PITCH_RATE=360°/s) were sized in WP14.8 for a hypothetical-flyable airframe; the 373 m/s airspeed peak is far outside that envelope by design. Recalibrating envelopes to admit 373 m/s as "flyable" would mask the underlying unflyability, not fix it. The envelopes are doing exactly the right job. Rejected.
+
+**Singular not stacked.** Per `feedback_surface_or_means_or.md`: D18 picks one candidate, not the union of (1)+(2)+(3). If D18 ships and the joint tune still fails to find a flyable point, *then* inertia-tensor revision becomes the candidate for D19. Stacking would amplify failure modes and obscure which mechanism mattered.
+
+---
+
+### D18 — drag polar revision: induced drag + fuselage parasitic drag
+
+**Decision.** Add two new optional configuration fields that augment the drag computation in `computeAeroForce` and at the body level. Both default to inactive (the existing 525/525 Vitest test suite must continue to pass bit-for-bit). The two fields together complete the textbook drag-polar decomposition `CD_total = CD_0,surface + CD_0,fuselage + k·CL²`.
+
+**Schema additions (binding for the implementation WP):**
+
+1. **Per-surface optional `inducedDragK?: number`** (default 0). Added to `AircraftSurfaceConfig` and `AeroSurfaceConfig`. At the CD lookup step in `computeAeroForce` (step 4, just after `cd = lookupLiftDragCurve(...)`), augment:
+   ```typescript
+   if (surface.inducedDragK !== 0) {
+     cd += surface.inducedDragK * cl * cl;
+   }
+   ```
+   The augmentation uses the *post-β4/β5* `cl` value (i.e., after step 4b and 4c). Rationale: induced drag is the wingtip-vortex drag from the vortex circulation that lift production sets up — it scales with `CL²`, not with the steady-state CL alone. Using the unsteady-augmented CL keeps the relationship consistent with what the surface is *actually* producing in lift this tick. Sign: `inducedDragK > 0` always (drag opposes motion; the cl² term is non-negative by construction).
+
+2. **Top-level optional `fuselageDrag?: { cd0: number; area: number }`** (default absent → no fuselage drag force). Added to `AircraftConfig`. When present, a single body-level drag force is applied at the body origin (NOT at any aero surface) along `−linvel_world / |linvel|`, with magnitude `0.5 · ρ · |linvel|² · area · cd0`. Implementation lives in `flightmodel.ts` (where per-surface forces are accumulated into the body force/torque accumulator), NOT in `aerosurface.ts` (which is per-surface). The drag is applied at the body origin so it contributes zero torque — fuselage drag is a pure translational damping term, not a rotational one (which is what `linearDamping` semantics would also give us, but we use an explicit body-level drag so the magnitude scales with `V²` per textbook aerodynamics, not the linear-in-V damping that Rapier's `linearDamping` provides).
+
+**Why two knobs and not one bundled drag-polar.** Induced drag and fuselage parasitic drag have different physical scalings (CL² coupling vs constant CD_0) and different geometric anchors (per-surface vs whole-airframe). Bundling them into a single phenomenological knob (e.g. "extra drag multiplier") would (a) make the tunable parameter physically meaningless, (b) hide the relative contribution of each effect from the optimizer's regression, and (c) violate D2's "aerosurface as first-class primitive" by mixing surface-level and body-level drag into one field. The textbook decomposition is the right schema shape.
+
+**Why the augmentation point is post-β4/β5 for induced drag.** β4 (clQ) and β5 (clAlphaDot) are CL augmentations. Induced drag scales with the *total* circulation-bound lift, not just the steady-state `Cl(α)` portion. Using the post-augmentation CL keeps the model internally consistent: `CD_i = k · CL_total²` matches the textbook derivation from Prandtl's lifting-line theory. The alternative (computing `CD_i` from `Cl(α)` only) would understate induced drag during high-rate maneuvers, which is the opposite of what real aircraft do (a wing pulling g sees increased induced drag, not steady induced drag).
+
+**Why fuselage drag is at the body origin, not as a 5th "fuselage surface."** A 5th aerosurface entry would require fabricating a `position`, `normal`, `chord`, `area`, and CL/CD curves for the fuselage — none of which are physically meaningful for a non-lifting body. Pure body-level drag avoids the fabrication, fits in `flightmodel.ts` in ~10 lines, and applies the right physics (V²-scaled, at the body origin, opposite to linvel). The cost is that the `aerosurface.ts` abstraction no longer captures *all* drag — but D2's framing ("every *lift-producing* part is an AeroSurface") never claimed it did; drag from non-lifting parts is body-level by definition.
+
+**Sign convention (binding).** `inducedDragK > 0` always adds drag (energy dissipation); `inducedDragK < 0` is a misconfiguration and must be rejected at `parseAircraftConfig` time. `fuselageDrag.cd0 ≥ 0` and `fuselageDrag.area ≥ 0` are both required to be non-negative; either being zero effectively disables the fuselage drag term. The body-level drag force vector is `F_fuselage = −0.5 · ρ · |v|² · area · cd0 · v̂` where `v̂ = linvel / |linvel|`; the `−v̂` direction is unconditional (drag always opposes motion through the air). Per CLAUDE.md Rule #1 (live observation before sign tests), the D18 implementation WP must observe live behavior at non-zero coefficient in at least two operating regimes BEFORE writing any sign-convention unit test.
+
+**Default-zero / default-absent parity.** With `inducedDragK = 0` on all surfaces AND `fuselageDrag` absent from `aircraft.json`, the trajectory is bit-for-bit identical to pre-D18. Both fields are gated:
+- The `inducedDragK !== 0` check is the standard β-style gate (parallel to β1/β4/β5).
+- The `fuselageDrag` field is optional at the JSON-schema level; when absent, `flightmodel.ts` skips the body-level drag accumulator branch entirely.
+
+The existing 525/525 Vitest test suite — including the parity tests, the WP14.9b dampAxis tests, and the WP14.10 D16 closed-form non-dim tests — must continue to pass bit-for-bit.
+
+**Risk + verification approach.**
+
+- **Risk 1: induced drag k value is uncalibrated.** Textbook range for the induced-drag coefficient `k = 1 / (π · AR · e)` where AR is aspect ratio and `e` is Oswald efficiency factor (0.7–0.9). For our wing (area=6 m², span 4 m → AR=2.67, with e=0.8): `k ≈ 1/(π · 2.67 · 0.8) ≈ 0.149`. For h-stab (area=1.5, span 1.5 → AR=1.5, e=0.8): `k ≈ 0.265`. These are the right starting magnitudes for the optimizer bounds `[0..0.5]`. The harness optimizer will find the right per-surface values.
+- **Risk 2: fuselage drag parameters are uncalibrated.** Textbook fuselage `CD_0,f · A` for a Cessna-class airframe ≈ 0.3 · 1.5 m² = 0.45 m² equivalent drag-area. Optimizer bounds `cd0 ∈ [0..1.0], area ∈ [0..3.0]` per surface span the textbook range comfortably.
+- **Risk 3: induced drag + β5 interaction.** β5's clAlphaDot augments CL on rising α; if induced drag uses the post-β5 CL, sharply rising α produces a transient bump in induced drag that opposes the maneuver. This is physically correct (real aircraft pulling g feel exactly this drag rise) but may interact with the joint tune by penalizing high-clAlphaDot points more than expected. The optimizer will sort this out; not a blocker.
+- **Risk 4: induced drag scaling factor doesn't match the planform.** Textbook `k = 1/(π·AR·e)` assumes elliptical-ish planform and clean wingtips. Our flat-plate symmetric-curve doesn't model planform explicitly, so the optimizer's chosen `inducedDragK` may differ from textbook by 1.5–2×. Acceptable — the optimizer's job is to find the value that produces flyable feel, not to match a textbook number.
+
+- **Verification (binding, primary, per CLAUDE.md Rule #2):** the harness `throttle-low` fixture (1800 ticks, throttle=0.05, spawn `v=25 m/s`) MUST show:
+  - Baseline (`inducedDragK=0` everywhere + `fuselageDrag` absent): peak airspeed 373 m/s (current state — recorded in SURFACE-2026-05-23-01's per-regime table).
+  - Non-default (`inducedDragK=0.15` on wings, `inducedDragK=0.25` on h-stab, `fuselageDrag={cd0: 0.3, area: 1.5}`): peak airspeed < 200 m/s (the phugoid-probe spec envelope) AND all 3 regimes finite at 1800 ticks.
+  - Control (`inducedDragK=0` + `fuselageDrag` absent — same as baseline, per CLAUDE.md Rule #4): identical to baseline → proves the mechanism is the driver of any observed difference, not some other interaction.
+
+- **Verification (binding, secondary):** after D18 ships, the joint-tune WP (WP14.12 — replaces WP14.11 since WP14.11 closed ESCALATED) MUST find a parameter point where:
+  - All 3 throttle regimes finite through 1800 ticks (criterion 1, same as WP14.11).
+  - Deployed-symmetric-airframe score ≥ −300 (criterion 2, same as WP14.11, computed via `tools/tune/score-deployed.mjs` per `feedback_tune_cli_search_vs_deploy.md`).
+  - Browser sanity at `localhost:5173/?mission=phugoid-probe-mid&debug=true`: no NaN/Infinity in 30s, altitude stays within ±5000m, airspeed < 200 m/s, |pitch| ≤ 180°.
+  - If criterion 1 holds but criterion 2 fails at the new search bounds, that's a SURFACE-IN candidate — but the energy-balance arithmetic above predicts criterion 2 SHOULD pass with both terms tuned. Confidence: ~75%. Lower than D17's ~85% because the airframe-constants interaction with drag dissipation has more degrees of freedom than the β4/β5 single-mechanism cases.
+
+**Default behavior preservation (test contract).** All existing tests at `inducedDragK=0` and absent `fuselageDrag` produce bit-identical force/moment vectors. The `aircraft.json` ships post-WP14.12 with non-zero values; the parity-test fixture (`tests/parity-diff.test.ts`) regenerates browser CSVs accordingly per the D17 precedent. The parity contract — "browser and Node-side harness produce bit-identical trajectories" — is preserved; the reference trajectory shape changes once.
+
+**Closes-by-implementation:**
+- **SURFACE-2026-05-23-01** closes when D18 implementation ships AND the joint-tune WP (WP14.12) finds a parameter point satisfying criteria 1+2+3 above. The current state of `aircraft.json` (D17+D16 mechanisms with clQ=3,3,8,0; clAlphaDot=0,0,0,0) is the *baseline* against which D18 is measured — if D18 fails to open a flyable region, escalate to D19 (inertia-tensor revision) per the singular-not-stacked discipline.
+- **SURFACE-2026-05-17-03** (D17 narrow stable region) closes at the same gate as -23-01 — narrowing was the right call pre-WP14.11; the open question was whether the narrowed region contained a flyable point, and D18 is what makes that yes-or-no answerable.
+- **SURFACE-2026-05-12-03 + SURFACE-2026-05-11-04 + SURFACE-2026-05-12-01** all blocked-by -23-01; all close-by-implementation at WP14.12 close.
+
+---
+
+### D18 — physics-mechanism discipline reinforcement (continues D14/D15/D16/D17 lineage)
+
+D18 inherits all four existing CLAUDE.md physics-mechanism discipline rules:
+
+- **Rule #1 (live observation before sign tests).** The D18 implementation WP must observe live harness behavior at non-zero `inducedDragK` and `fuselageDrag` in at least two operating regimes (throttle-low + throttle-high) before any sign-convention unit test is written. Pure-math "CD increases with cl²" tests do not satisfy Rule #1 — the gate is observed-trajectory-difference between baseline and non-default.
+- **Rule #2 (non-default verify-self).** The D18 implementation WP cannot close on the strength of default-zero parity alone. Close gate is observable trajectory difference at the non-default coefficient in the throttle-low regime (the regime where the 373 m/s baseline peak demonstrates the gap most clearly). Per the 2026-05-17 clarification, "non-default" means "any value that activates the mechanism observably and stays finite" — not specifically the textbook value.
+- **Rule #3 (harness-driven tuning).** The follow-up joint-tune WP (WP14.12) MUST run `npm run tune` over an explicit parameter space (`inducedDragK ∈ [0..0.5] per surface, fuselageDrag.cd0 ∈ [0..1.0], fuselageDrag.area ∈ [0..3.0]`, plus the existing (clQ, clAlphaDot) knobs to re-fit them under the new dissipation regime). Hand-guessing reserved for the D18 implementation WP's verify-self only, where the value is chosen to *demonstrate* the mechanism works, not to *deploy* it.
+- **Rule #4 (control regime).** Any verify-self in this WP family MUST run baseline + non-default + control in the same fixture set. Control = `inducedDragK=0` + `fuselageDrag` absent (= current production). The triple-gate isolates D18's mechanism from any orthogonal interaction with D17/D16.
+
+Additionally, this revision reinforces a lesson learned during WP14.11 that did not require a new CLAUDE.md rule:
+
+- **`feedback_tune_cli_search_vs_deploy.md` applies to WP14.12.** The optimizer's reported score reflects the asymmetric search-space airframe, NOT the deployed symmetric-mirror airframe. The joint-tune WP must compute the deployed-config score via `tools/tune/score-deployed.mjs` as a verify-self step before declaring criterion 2 satisfied. Tooling fix candidate (out of scope for D18 but flagged): add `--mirror surfaces.0=surfaces.1` to the tune CLI.
+
+---
+
+### Forward implications (WBS updates required)
+
+The WP14.11 close path is ESCALATED; WP14.12 inherits the joint-tune scope under the new D18 + (clQ, clAlphaDot) parameter space. Concretely:
+
+- **WP14.11.5 — D18 implementation (NEW, replaces no prior WP).** Size: **S–M**. One `computeAeroForce` step-4 addition (CD augmentation, ~5 lines parallel to β4/β5 augmentations), one `flightmodel.ts` body-drag accumulator (~10 lines, including direction normalization + magnitude calc), one `AeroSurfaceConfig` + `AircraftConfig` schema extension (~15 lines with validation), one `parseAircraftConfig` plumbing pass (~20 lines), default-zero/default-absent parity tests, Rule #1 live observation, Rule #2 non-default verify-self, Rule #4 control regime. **Dependencies:** none beyond what D17/D16 already require (the physics-core layer at `src/aircraft/physics-core/` and the harness at `tools/tune/`). **Sized for one focused session.**
+- **WP14.12 — joint tune (NEW, replaces ESCALATED WP14.11).** Size: **S**. Same shape as WP14.11 but with the expanded parameter space:
+  ```
+  npm run tune -- --knobs surfaces.0.clQ,surfaces.0.clAlphaDot,surfaces.0.inducedDragK,surfaces.2.clQ,surfaces.2.clAlphaDot,surfaces.2.inducedDragK,fuselageDrag.cd0,fuselageDrag.area --bounds 0..3,0..10,0..0.5,0..3,0..10,0..0.5,0..1.0,0..3.0 --regimes low,mid,high --restarts 4 --seed 42
+  ```
+  The clQ/clAlphaDot bounds inherit WP14.11's narrowed `[0..3]×[0..10]` per surface (SURFACE-2026-05-17-03's recommendation, confirmed empirically by WP14.11). The new drag knobs use textbook-grounded bounds (see Risk 1/2 above). Acceptance criteria 1+2+3 as recorded in the D18 closes-by-implementation section. Browser sanity walk-through is part of the WP14.12 verify-self gate explicitly (the WP14.11 retrospect flagged the "no browser walkthrough at session end" gap — WP14.12 closes it).
+- **WP15, WP16, WP17 (Phase 2 mission content):** still gated on WP14.12 success. Pause line continues.
+- **No changes to D11/D12/D13 (mission framework / HUD / β5 schema).** D18 is additive and orthogonal.
+
+**Schema additions (forward-compat):**
+- `AeroSurfaceConfig.inducedDragK?: number` — new optional per-surface field.
+- `AircraftConfig.fuselageDrag?: { cd0: number; area: number }` — new optional top-level field.
+- Both default-absent → bit-for-bit pre-D18 behavior.
+
+**Test additions:**
+- D18 Vitest: closed-form unit test for `inducedDragK=0.15, cl=1.0` augments `cd` by exactly `0.15 · 1.0² = 0.15`; default-zero parity (existing tests preserved); fuselage drag direction test (force opposes linvel); fuselage drag magnitude test (V² scaling).
+- D18 Playwright: harness fixture probe at non-zero `inducedDragK` + non-zero `fuselageDrag` in throttle-low and throttle-high (≥10s window each) per CLAUDE.md Rule #1.
+- WP14.12 Playwright: `tests/e2e/phugoid-probe.spec.ts` un-skipped at close — the same un-skip that WP14.11 was supposed to do, deferred one WP further down the cascade.
+
+### Open questions / deferred to D18 cascade implementation WPs
+
+- **Whether `inducedDragK` should be derivable from per-surface `area + span` (i.e., `k = 1/(π·AR·e_default)`) at parse time rather than taken as an explicit knob.** Textbook says yes for clean wings — `k` is a *derived* quantity, not a primary one. But our flat-plate symmetric-curve doesn't model planform explicitly, and exposing `k` as a knob lets the optimizer find the value that produces good feel without forcing us to also model AR + Oswald efficiency. **Decision:** keep `inducedDragK` as a primary knob for now (consistent with D10/D13 pattern of "expose the simplification, let the optimizer find values"); if Phase 3 adds richer airframe modeling, the derivation can become a default with the knob as an override.
+- **Whether `fuselageDrag` should include a CL-coupled term (fuselage induced drag from cross-flow at non-zero β/AoA).** Real fuselages produce nontrivial side force at sideslip. **Decision:** out of scope for D18 — flat-plate symmetric airframe at zero sideslip is the Phase 1 baseline; sideslip-coupled fuselage effects belong in a future revision if Phase 3 mission types stress them (e.g., crosswind landings in WP15).
+- **Whether WP14.12 should also re-fit `clQ` and `clAlphaDot` from scratch (8-dim search) or hold them at WP14.11's narrow-bounds best and tune only the 2-3 new drag knobs (3-dim search).** The 8-dim search is more thorough; the 3-dim search is faster and matches the singular-not-stacked discipline more cleanly. **Recommended:** 8-dim — drag dissipation changes the energy balance, which changes the optimal damping coefficients. Holding β4/β5 fixed under a new dissipation regime would converge to a stale optimum. The optimizer's `--restarts 4 --seed 42` budget handles the dimensionality.
