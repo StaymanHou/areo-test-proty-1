@@ -120,23 +120,35 @@ describe('parseArgs — error paths', () => {
   });
 });
 
-// Build a synthetic level-cruise CSV for a given throttle regime so the score
-// function returns ~0 (a clean run). The exact parameter values are recorded
-// for assertion. Airspeed matches the post-D21 per-regime targetAirspeed so
-// the regime score is 0 (no envelope deviation).
+// Build a synthetic clean CSV for a given throttle regime so the score
+// function returns ~0 under D23 per-regime mode dispatch. Trajectory shape
+// matches mode-appropriate behavior:
+//   throttle ≤ 0.075 → low (controlled-descent): sink 3 m/s, pitch -20°, AS 42
+//   throttle ≤ 0.225 → mid (slow-flight): sink 1 m/s, level pitch, AS 35
+//   else → high (level-cruise): no sink, level pitch, AS 85 (post-D21 high target)
+// Pre-D23 this function produced level-cruise at all 3 throttles; D23
+// reframes low/mid to mode-appropriate behavior. AS values land near-zero
+// in each mode's envelope.
 function makeCleanCsv(throttle: number): string {
-  // Map throttle → post-D21 targetAirspeed (45/60/85 m/s at throttles 0.05/0.15/0.40).
-  const airspeed = throttle <= 0.075 ? 45 : throttle <= 0.225 ? 60 : 85;
+  const isLow = throttle <= 0.075;
+  const isMid = !isLow && throttle <= 0.225;
+  const isHigh = !isLow && !isMid;
+  const airspeed = isLow ? 42 : isMid ? 35 : 85;
+  const vY = isLow ? -3 : isMid ? -1 : 0; // sink rate (vY up-positive; sink = -vY)
+  const pitchRad = isLow ? -20 * Math.PI / 180 : 0;
   const rows: TrajectoryRow[] = [];
   for (let i = 0; i < 60; i++) {
+    const posY = 50 + vY * (i / 60); // descend at sink rate over the window
     rows.push({
       tick: i,
-      posX: 0, posY: 50, posZ: 0,
-      vX: 0, vY: 0, vZ: -airspeed,
-      pitch: 0, yaw: 0, roll: 0,
+      posX: 0, posY, posZ: 0,
+      vX: 0, vY, vZ: -airspeed,
+      pitch: pitchRad, yaw: 0, roll: 0,
       airspeed,
     });
   }
+  // Suppress unused-var lint
+  void isHigh;
   return trajectoryToCsv(rows);
 }
 

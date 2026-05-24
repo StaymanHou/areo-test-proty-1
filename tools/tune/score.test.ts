@@ -8,7 +8,20 @@ import {
   levelFlightMaintenanceCheck,
   DEFAULT_ENVELOPES,
   type RegimeTrajectory,
+  type ScoreEnvelopes,
 } from './score';
+
+// D23 (2026-05-24 night) — DEFAULT_ENVELOPES now ships per-regime mode
+// dispatch (low='controlled-descent', mid='slow-flight-or-shallow-descent',
+// high='level-cruise'). The D14/D21 tests below assume "all regimes are
+// level-cruise" semantics — preserve that intent by overriding regimeMode
+// to undefined (= back-compat fallback to levelCruiseScore for any regime).
+// This is the explicit opt-out per arch.md Revision 2026-05-24 (night)
+// "Back-compat" section.
+const LEGACY_LEVEL_CRUISE_ENVELOPES: ScoreEnvelopes = {
+  ...DEFAULT_ENVELOPES,
+  regimeMode: undefined,
+};
 
 // WP14.8 Phase 1 — score function coverage. Per the plan's case list:
 //   (a) nominal level-cruise → finite negative near 0
@@ -142,7 +155,7 @@ describe('phugoidGrowthPenalty', () => {
 describe('regimeScore — case (a) nominal level-cruise', () => {
   it('is at or near 0 (no penalties trigger) for a steady cruise inside envelopes', () => {
     const traj: RegimeTrajectory = { regime: 'mid', rows: levelCruise(600) };
-    const s = regimeScore(traj, DEFAULT_ENVELOPES);
+    const s = regimeScore(traj, LEGACY_LEVEL_CRUISE_ENVELOPES);
     // `-(0+0+0+0)` is `-0` in JS; `Object.is(-0, 0)` is false. Use loose
     // equality (toBeCloseTo) so the sign of zero doesn't trip the assert.
     expect(s).toBeCloseTo(0, 12);
@@ -152,7 +165,7 @@ describe('regimeScore — case (a) nominal level-cruise', () => {
 describe('regimeScore — case (b) mild phugoid', () => {
   it('is finite negative for a small-amplitude oscillation within envelope', () => {
     const traj: RegimeTrajectory = { regime: 'mid', rows: mildPhugoid(600) };
-    const s = regimeScore(traj, DEFAULT_ENVELOPES);
+    const s = regimeScore(traj, LEGACY_LEVEL_CRUISE_ENVELOPES);
     // ±5m altitude (within 50 envelope), ±2 m/s airspeed (within 30 envelope),
     // zero pitch-rate, no amplitude growth → score should be 0 or near-0.
     expect(s).toBeLessThanOrEqual(0);
@@ -166,7 +179,7 @@ describe('regimeScore — case (b) mild phugoid', () => {
       rows.push(makeRow({ tick: i, posY: 50 + 80 * Math.sin(2 * Math.PI * t / 5) })); // 80m > 50 env
     }
     const traj: RegimeTrajectory = { regime: 'mid', rows };
-    const s = regimeScore(traj, DEFAULT_ENVELOPES);
+    const s = regimeScore(traj, LEGACY_LEVEL_CRUISE_ENVELOPES);
     expect(s).toBeLessThan(-100); // (80 - 50)^2 = 900, squared again in formula → much larger
   });
 });
@@ -181,14 +194,14 @@ describe('regimeScore — case (c)/(d) NaN encoding', () => {
 
   it('encodes time-to-NaN as -1e9 + nanTick (early NaN)', () => {
     const traj: RegimeTrajectory = { regime: 'mid', rows: nanAtTick(200, 100) };
-    expect(regimeScore(traj, DEFAULT_ENVELOPES)).toBe(-1e9 + 100);
+    expect(regimeScore(traj, LEGACY_LEVEL_CRUISE_ENVELOPES)).toBe(-1e9 + 100);
   });
 
   it('encodes time-to-NaN as -1e9 + nanTick (late NaN, must score higher than early)', () => {
     const earlyTraj: RegimeTrajectory = { regime: 'mid', rows: nanAtTick(600, 100) };
     const lateTraj: RegimeTrajectory = { regime: 'mid', rows: nanAtTick(600, 500) };
-    const earlyScore = regimeScore(earlyTraj, DEFAULT_ENVELOPES);
-    const lateScore = regimeScore(lateTraj, DEFAULT_ENVELOPES);
+    const earlyScore = regimeScore(earlyTraj, LEGACY_LEVEL_CRUISE_ENVELOPES);
+    const lateScore = regimeScore(lateTraj, LEGACY_LEVEL_CRUISE_ENVELOPES);
     expect(earlyScore).toBe(-1e9 + 100);
     expect(lateScore).toBe(-1e9 + 500);
     // Late NaN is "better" — under higher-is-better, lateScore > earlyScore
@@ -199,8 +212,8 @@ describe('regimeScore — case (c)/(d) NaN encoding', () => {
   it('finite-trajectory scores are always greater than any NaN-trajectory score', () => {
     const finite: RegimeTrajectory = { regime: 'mid', rows: levelCruise(600) };
     const veryLateNan: RegimeTrajectory = { regime: 'mid', rows: nanAtTick(600, 599) };
-    expect(regimeScore(finite, DEFAULT_ENVELOPES)).toBeGreaterThan(
-      regimeScore(veryLateNan, DEFAULT_ENVELOPES),
+    expect(regimeScore(finite, LEGACY_LEVEL_CRUISE_ENVELOPES)).toBeGreaterThan(
+      regimeScore(veryLateNan, LEGACY_LEVEL_CRUISE_ENVELOPES),
     );
   });
 });
@@ -208,7 +221,7 @@ describe('regimeScore — case (c)/(d) NaN encoding', () => {
 describe('regimeScore — case (e) pitch-rate blowup', () => {
   it('is heavily penalized when pitch-rate exceeds PITCH_RATE_LIMIT', () => {
     const traj: RegimeTrajectory = { regime: 'mid', rows: pitchRateBlowup(400, 200) };
-    const s = regimeScore(traj, DEFAULT_ENVELOPES);
+    const s = regimeScore(traj, LEGACY_LEVEL_CRUISE_ENVELOPES);
     // 90° pitch jump in one tick → ~5400 deg/s; (5400 - 360)^2 = ~25M; squared → ~6.5e14
     expect(s).toBeLessThan(-1e6);
   });
@@ -221,7 +234,7 @@ describe('score — case (f) multi-regime mixed pass/fail', () => {
       { regime: 'mid', rows: levelCruise(600, 60) },  // clean at post-D21 mid target → 0
       { regime: 'high', rows: nanAtTick(600, 50) },   // -1e9 + 50
     ];
-    const total = score(trajectories, DEFAULT_ENVELOPES);
+    const total = score(trajectories, LEGACY_LEVEL_CRUISE_ENVELOPES);
     // Total = 0 + 0 + (-1e9 + 50) = -1e9 + 50
     expect(total).toBe(-1e9 + 50);
     // NaN penalty dominates: the clean regimes contribute 0; the NaN regime's
@@ -235,21 +248,21 @@ describe('score — case (f) multi-regime mixed pass/fail', () => {
       { regime: 'mid', rows: levelCruise(600, 60) },
       { regime: 'high', rows: levelCruise(600, 85) },
     ];
-    expect(score(trajectories, DEFAULT_ENVELOPES)).toBe(0);
+    expect(score(trajectories, LEGACY_LEVEL_CRUISE_ENVELOPES)).toBe(0);
   });
 
   it('is the weighted sum of per-regime scores (verifies the top-level Σ)', () => {
     const t1: RegimeTrajectory = { regime: 'mid', rows: mildPhugoid(600) };
     const t2: RegimeTrajectory = { regime: 'high', rows: mildPhugoid(600) };
-    const sum = score([t1, t2], DEFAULT_ENVELOPES);
-    const s1 = regimeScore(t1, DEFAULT_ENVELOPES);
-    const s2 = regimeScore(t2, DEFAULT_ENVELOPES);
+    const sum = score([t1, t2], LEGACY_LEVEL_CRUISE_ENVELOPES);
+    const s1 = regimeScore(t1, LEGACY_LEVEL_CRUISE_ENVELOPES);
+    const s2 = regimeScore(t2, LEGACY_LEVEL_CRUISE_ENVELOPES);
     expect(sum).toBeCloseTo(s1 + s2, 9);
   });
 
   it('respects per-regime weights from envelopes', () => {
     const envelopes = {
-      ...DEFAULT_ENVELOPES,
+      ...LEGACY_LEVEL_CRUISE_ENVELOPES,
       weightRegime: { low: 1, mid: 2, high: 1 },
     };
     const t: RegimeTrajectory = { regime: 'mid', rows: mildPhugoid(600) };
@@ -357,7 +370,7 @@ describe('regimeScore — case (a) D21 criterion 0 altitude-drop encoding', () =
     }
     // Regime score should return -1e9 + failTick (prefer-failing-later encoding).
     const traj: RegimeTrajectory = { regime: 'mid', rows };
-    expect(regimeScore(traj, DEFAULT_ENVELOPES)).toBe(-1e9 + 30);
+    expect(regimeScore(traj, LEGACY_LEVEL_CRUISE_ENVELOPES)).toBe(-1e9 + 30);
   });
 });
 
@@ -366,7 +379,7 @@ describe('regimeScore — case (b) D21 criterion 0 passes for steady level cruis
     // Steady cruise at the post-D21 mid target (60 m/s) → criterion 0 passes,
     // criterion 2 envelope penalties are all zero → score is 0 (or near-0 with -0 sign).
     const traj: RegimeTrajectory = { regime: 'mid', rows: levelCruise(600) };
-    expect(regimeScore(traj, DEFAULT_ENVELOPES)).toBeCloseTo(0, 12);
+    expect(regimeScore(traj, LEGACY_LEVEL_CRUISE_ENVELOPES)).toBeCloseTo(0, 12);
   });
 });
 
@@ -380,7 +393,7 @@ describe('regimeScore — case (c) D21 criterion 0 airspeed-collapse encoding', 
       expect(result.failReason).toBe('airspeed_collapse');
     }
     const traj: RegimeTrajectory = { regime: 'mid', rows };
-    expect(regimeScore(traj, DEFAULT_ENVELOPES)).toBe(-1e9 + 15);
+    expect(regimeScore(traj, LEGACY_LEVEL_CRUISE_ENVELOPES)).toBe(-1e9 + 15);
   });
 });
 
@@ -404,7 +417,7 @@ describe('regimeScore — case (d) D21 precedence: NaN > criterion 0', () => {
       rows.push(makeRow({ tick: i, posY, airspeed }));
     }
     const traj: RegimeTrajectory = { regime: 'mid', rows };
-    expect(regimeScore(traj, DEFAULT_ENVELOPES)).toBe(-1e9 + 20);
+    expect(regimeScore(traj, LEGACY_LEVEL_CRUISE_ENVELOPES)).toBe(-1e9 + 20);
   });
 });
 
@@ -418,7 +431,7 @@ describe('regimeScore — case (e) D21 precedence: criterion 0 PASS → criterio
     const lf = levelFlightMaintenanceCheck(rows, DEFAULT_ENVELOPES);
     expect(lf.passed).toBe(true);
     const traj: RegimeTrajectory = { regime: 'mid', rows };
-    const s = regimeScore(traj, DEFAULT_ENVELOPES);
+    const s = regimeScore(traj, LEGACY_LEVEL_CRUISE_ENVELOPES);
     expect(s).toBe(-100);
     expect(s).toBeGreaterThan(-1e8); // confirms NOT a NaN/criterion-0 floor score
   });
@@ -427,7 +440,7 @@ describe('regimeScore — case (e) D21 precedence: criterion 0 PASS → criterio
     // A trajectory whose mild phugoid is inside criterion 0 thresholds AND inside the new
     // tighter AS_ENVELOPE produces a near-zero score (criterion 2's envelope-penalty path).
     const traj: RegimeTrajectory = { regime: 'mid', rows: mildPhugoid(600) };
-    const s = regimeScore(traj, DEFAULT_ENVELOPES);
+    const s = regimeScore(traj, LEGACY_LEVEL_CRUISE_ENVELOPES);
     // mildPhugoid post-D21 is centered on (50, 60), ±5m altitude (<<20m drop threshold)
     // and ±2 m/s airspeed (<<25 AS_ENVELOPE, well above 10 m/s min). Both criteria pass,
     // envelope penalty is zero.
@@ -457,5 +470,267 @@ describe('DEFAULT_ENVELOPES — D21 anti-regression on the recalibrated constant
     // If a refactor ever sets targetAirspeed.mid back to 30 it would silently
     // re-introduce the bug that the entire D14/D17/D18/D19/D20 cascade ran on.
     expect(DEFAULT_ENVELOPES.targetAirspeed.mid).not.toBe(30);
+  });
+});
+
+// =============================================================================
+// WP14.17 (D23-γ-evolved) — per-regime throttle-mode reframe + T=D regime guard
+// Seven new cases per arch.md Revision 2026-05-24 (night) "Test additions
+// binding for WP14.17" list. Tests use non-round numbers per
+// `project_test_param_round_numbers.md` convention where applicable.
+// =============================================================================
+
+/** Build a trajectory with explicit per-tick (posY, vY, pitch, airspeed) for D23 mode tests. */
+function buildTrajectory(spec: {
+  n: number;
+  posY: (i: number) => number;
+  vY: (i: number) => number;
+  pitchRad: (i: number) => number;
+  airspeed: (i: number) => number;
+}): TrajectoryRow[] {
+  const out: TrajectoryRow[] = [];
+  for (let i = 0; i < spec.n; i++) {
+    out.push(makeRow({
+      tick: i,
+      posY: spec.posY(i),
+      vY: spec.vY(i),
+      pitch: spec.pitchRad(i),
+      airspeed: spec.airspeed(i),
+    }));
+  }
+  return out;
+}
+
+describe('regimeScore D23 t1 — controlled-descent mode, descending trajectory', () => {
+  it('returns near-zero score for sink≈3.1 m/s, AS finite, pitch nose-down 20°', () => {
+    // Sink rate 3.1 m/s is within [1, 5] envelope; pitch -20° (nose-down) is within [-30, +10].
+    // AS positive throughout. No criterion-0 failures, no envelope excursions → score ≈ 0.
+    const rows = buildTrajectory({
+      n: 600,
+      posY: (i) => 100 - 3.1 * (i / 60),
+      vY: () => -3.1,
+      pitchRad: () => -20 * Math.PI / 180,
+      airspeed: () => 42.1,
+    });
+    const traj: RegimeTrajectory = { regime: 'low', rows };
+    const s = regimeScore(traj, DEFAULT_ENVELOPES);
+    expect(s).toBeGreaterThanOrEqual(-10);
+    expect(s).toBeLessThanOrEqual(0);
+  });
+});
+
+describe('regimeScore D23 t2 — controlled-descent mode, climbing trajectory (sink-rate violation)', () => {
+  it('returns penalty proportional to sink-rate violation when trajectory climbs', () => {
+    // Sink rate -2.1 m/s = climbing — outside [1, 5] envelope (below min).
+    // Criterion 0 passes (pitch nose-down 5° within [-30, +10], AS positive, not inverted in first 1s).
+    // Per-tick sink excess = SINK_RATE_LOW_MIN(1) - (-2.1) = 3.1; max excess = 3.1; pitch within envelope so 0.
+    // Score = -(3.1² + 0²) = -9.61.
+    const rows = buildTrajectory({
+      n: 600,
+      posY: (i) => 50 + 2.1 * (i / 60),
+      vY: () => 2.1,
+      pitchRad: () => -5 * Math.PI / 180,
+      airspeed: () => 42.1,
+    });
+    const traj: RegimeTrajectory = { regime: 'low', rows };
+    const s = regimeScore(traj, DEFAULT_ENVELOPES);
+    expect(s).toBeLessThanOrEqual(-9);
+    expect(s).toBeGreaterThan(-15);
+  });
+});
+
+describe('regimeScore D23 t3 — slow-flight-or-shallow-descent mode, in-envelope trajectory', () => {
+  it('returns near-zero score for AS=35 m/s, sink=1.1 m/s, level pitch', () => {
+    // AS 35 within [25, 50], sink 1.1 within [-1, 3], pitch 0 within ±20° → score ≈ 0.
+    const rows = buildTrajectory({
+      n: 600,
+      posY: (i) => 100 - 1.1 * (i / 60),
+      vY: () => -1.1,
+      pitchRad: () => 0,
+      airspeed: () => 35.1,
+    });
+    const traj: RegimeTrajectory = { regime: 'mid', rows };
+    const s = regimeScore(traj, DEFAULT_ENVELOPES);
+    expect(s).toBeGreaterThanOrEqual(-10);
+    expect(s).toBeLessThanOrEqual(0);
+  });
+});
+
+describe('regimeScore D23 t4 — level-cruise mode preserves D21 behavior (parity)', () => {
+  it('returns the same score as legacy D21 behavior for a level-cruise trajectory', () => {
+    // Steady cruise at high-target AS (85 m/s); regime='high' routes through level-cruise mode.
+    // Should match legacy (regimeMode=undefined) score bit-for-bit.
+    const rows = levelCruise(600, 85);
+    const traj: RegimeTrajectory = { regime: 'high', rows };
+    const d23Score = regimeScore(traj, DEFAULT_ENVELOPES);
+    const legacyScore = regimeScore(traj, LEGACY_LEVEL_CRUISE_ENVELOPES);
+    expect(d23Score).toBe(legacyScore);
+    expect(d23Score).toBeCloseTo(0, 12);
+  });
+});
+
+describe('regimeScore D23 t5 — back-compat: regimeMode missing falls back to level-cruise', () => {
+  it('produces identical output to regimeMode=level-cruise when regimeMode is undefined', () => {
+    const rows = levelCruise(600, 85);
+    const traj: RegimeTrajectory = { regime: 'high', rows };
+    // LEGACY envelopes have regimeMode: undefined.
+    const legacyScore = regimeScore(traj, LEGACY_LEVEL_CRUISE_ENVELOPES);
+    // Build an envelope that explicitly maps 'high' to level-cruise.
+    const explicitLevelCruise: ScoreEnvelopes = {
+      ...DEFAULT_ENVELOPES,
+      regimeMode: { high: 'level-cruise' },
+    };
+    const explicitScore = regimeScore(traj, explicitLevelCruise);
+    expect(legacyScore).toBe(explicitScore);
+  });
+
+  it('falls back to level-cruise when regimeMode is present but regime label is missing from it', () => {
+    const rows = levelCruise(600, 85);
+    const traj: RegimeTrajectory = { regime: 'unknown-regime', rows };
+    // 'unknown-regime' is not in DEFAULT_ENVELOPES.regimeMode → fallback to level-cruise.
+    // levelCruiseScore uses targetAirspeed; 'unknown-regime' isn't in targetAirspeed either,
+    // so the fallback target is 30 m/s (per levelCruiseScore line in score.ts).
+    // AS 85 vs target 30 = 55 dev; AS_ENVELOPE 25 → excess 30 → penalty 900.
+    const sD23 = regimeScore(traj, DEFAULT_ENVELOPES);
+    const sLegacy = regimeScore(traj, LEGACY_LEVEL_CRUISE_ENVELOPES);
+    expect(sD23).toBe(sLegacy);
+    expect(sD23).toBe(-900);
+  });
+});
+
+describe('regimeScore D23 t6 — T=D regime guard (level-cruise mode)', () => {
+  it('fires when |T-D| > limit at tick >= TD_GUARD_TICK_START', () => {
+    // Build a level-cruise trajectory at the airframe's high-regime equilibrium (V≈85 m/s).
+    // Then construct two test scenarios:
+    //  (balanced) airframe constants such that at V=85, D ≈ T (small imbalance, within limit).
+    //  (imbalanced) AS sufficiently below equilibrium that D >> T (induced drag explodes at low V).
+    const airframe = {
+      mass: 1000,
+      thrust_max: 6000,
+      S_wing: 12,
+      CD0: 0.02,
+      k_wing: 0.278,           // WP14.16 globalBest
+      cd0_fus_area: 0.190,     // WP14.16 globalBest cd0_fus * area_fus
+      throttleByRegime: { high: 0.40 },
+    };
+    const envelopesWithAirframe: ScoreEnvelopes = {
+      ...DEFAULT_ENVELOPES,
+      airframe,
+    };
+
+    // Balanced: cruise at V≈85 m/s where D≈T=2400N. Should produce 0 or small TD penalty.
+    const balancedRows = levelCruise(1800, 85);
+    const balancedTraj: RegimeTrajectory = { regime: 'high', rows: balancedRows };
+    const balancedScore = regimeScore(balancedTraj, envelopesWithAirframe);
+
+    // Imbalanced after tick 600: AS collapses to 30 m/s (way below equilibrium → induced drag blows up).
+    // Construct rows: level at V=85 for first 600 ticks, then drop AS to 30 for ticks 600..1800.
+    // But criterion 0 fires at tick 0 if posY drop > 20 — keep posY constant; only change AS.
+    const imbalancedRows: TrajectoryRow[] = [];
+    for (let i = 0; i < 1800; i++) {
+      const airspeed = i < 600 ? 85 : 30;
+      imbalancedRows.push(makeRow({ tick: i, posY: 50, airspeed }));
+    }
+    const imbalancedTraj: RegimeTrajectory = { regime: 'high', rows: imbalancedRows };
+    const imbalancedScore = regimeScore(imbalancedTraj, envelopesWithAirframe);
+
+    // Imbalanced has a TD penalty contribution AND an AS-envelope penalty (AS=30 vs target=85 → 55 dev,
+    // AS_ENVELOPE=25 → excess 30 → asPenalty²=900). So we expect imbalanced < balanced.
+    expect(imbalancedScore).toBeLessThan(balancedScore);
+
+    // To prove the TD guard specifically fires (not just AS envelope), compare to the same imbalanced
+    // trajectory under envelopes WITHOUT airframe (TD guard no-op):
+    const envelopesNoAirframe: ScoreEnvelopes = { ...DEFAULT_ENVELOPES, airframe: undefined };
+    const imbalancedNoTdScore = regimeScore(imbalancedTraj, envelopesNoAirframe);
+    // The score with airframe should be MORE negative (additional TD penalty term):
+    expect(imbalancedScore).toBeLessThan(imbalancedNoTdScore);
+  });
+
+  it('is a no-op before TD_GUARD_TICK_START (transient allowance)', () => {
+    const airframe = {
+      mass: 1000,
+      thrust_max: 6000,
+      S_wing: 12,
+      CD0: 0.02,
+      k_wing: 0.278,
+      cd0_fus_area: 0.190,
+      throttleByRegime: { high: 0.40 },
+    };
+    // Trajectory with imbalance only in first 500 ticks (before TD_GUARD_TICK_START=600).
+    // After tick 500, AS settles at equilibrium and stays there.
+    const rows: TrajectoryRow[] = [];
+    for (let i = 0; i < 1800; i++) {
+      const airspeed = i < 500 ? 30 : 85;
+      rows.push(makeRow({ tick: i, posY: 50, airspeed }));
+    }
+    const traj: RegimeTrajectory = { regime: 'high', rows };
+    const envWithAf: ScoreEnvelopes = { ...DEFAULT_ENVELOPES, airframe };
+    const envNoAf: ScoreEnvelopes = { ...DEFAULT_ENVELOPES, airframe: undefined };
+    const scoreWithGuard = regimeScore(traj, envWithAf);
+    const scoreNoGuard = regimeScore(traj, envNoAf);
+    // Should be approximately equal — the TD guard is no-op before tick 600 and zero penalty after
+    // because AS settled at equilibrium. The AS-envelope penalty (AS=30 vs target=85, capped at maxAsDev)
+    // dominates both scores identically.
+    expect(scoreWithGuard).toBe(scoreNoGuard);
+  });
+});
+
+describe('score D23 t7 — multi-regime dispatch sums correctly per mode', () => {
+  it('returns weighted sum dispatching each regime to its mode', () => {
+    // Construct 3 trajectories each in their mode's "near-zero penalty" region:
+    //   low (controlled-descent): sink 3.1 m/s, pitch -20°, AS 42 — near-zero.
+    //   mid (slow-flight): AS 35.1, sink 1.1 m/s, level pitch — near-zero.
+    //   high (level-cruise): AS 85 cruise — near-zero (matches D21 mid-target dispatch).
+    const lowRows = buildTrajectory({
+      n: 600,
+      posY: (i) => 100 - 3.1 * (i / 60),
+      vY: () => -3.1,
+      pitchRad: () => -20 * Math.PI / 180,
+      airspeed: () => 42.1,
+    });
+    const midRows = buildTrajectory({
+      n: 600,
+      posY: (i) => 100 - 1.1 * (i / 60),
+      vY: () => -1.1,
+      pitchRad: () => 0,
+      airspeed: () => 35.1,
+    });
+    const highRows = levelCruise(600, 85);
+    const trajectories: RegimeTrajectory[] = [
+      { regime: 'low', rows: lowRows },
+      { regime: 'mid', rows: midRows },
+      { regime: 'high', rows: highRows },
+    ];
+    const total = score(trajectories, DEFAULT_ENVELOPES);
+    // Each individual regime's score should be ≥ -10 (near-zero region per t1/t3/t4).
+    // Total = sum ≥ -30 and ≤ 0.
+    expect(total).toBeGreaterThanOrEqual(-30);
+    expect(total).toBeLessThanOrEqual(0);
+
+    // Sanity: verify each per-regime call dispatches to its mode by comparing to direct mode calls.
+    const sLow = regimeScore({ regime: 'low', rows: lowRows }, DEFAULT_ENVELOPES);
+    const sMid = regimeScore({ regime: 'mid', rows: midRows }, DEFAULT_ENVELOPES);
+    const sHigh = regimeScore({ regime: 'high', rows: highRows }, DEFAULT_ENVELOPES);
+    expect(total).toBeCloseTo(sLow + sMid + sHigh, 9);
+  });
+
+  it('penalizes mode-inappropriate trajectories (low-regime cruise scores far worse than low-regime descent)', () => {
+    // A "level cruise" trajectory submitted as the low regime → controlled-descent mode
+    // criterion 0 fires (sink=0 outside [1, 5], pitch=0 within bounds; criterion 0 only checks AS+pitch
+    // in first window. So criterion 0 passes; envelope penalty for sink violation kicks in:
+    // per-tick sink rate is 0, SINK_RATE_LOW_MIN=1 → excess 1 → penalty 1.
+    const cruiseRows = levelCruise(600, 42);
+    const lowCruiseTraj: RegimeTrajectory = { regime: 'low', rows: cruiseRows };
+    const sCruiseAsLow = regimeScore(lowCruiseTraj, DEFAULT_ENVELOPES);
+    // Compare to the proper descent at same regime — descent should score better.
+    const descentRows = buildTrajectory({
+      n: 600,
+      posY: (i) => 100 - 3.1 * (i / 60),
+      vY: () => -3.1,
+      pitchRad: () => -20 * Math.PI / 180,
+      airspeed: () => 42.1,
+    });
+    const sDescentAsLow = regimeScore({ regime: 'low', rows: descentRows }, DEFAULT_ENVELOPES);
+    expect(sDescentAsLow).toBeGreaterThan(sCruiseAsLow);
   });
 });
