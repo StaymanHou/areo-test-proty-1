@@ -1,6 +1,20 @@
 import type { TrajectoryRow } from '../../src/aircraft/physics-core/trajectory-buffer';
 
 // WP14.8 Phase 1 — envelope-probing fitness function per arch.md §D14.4.
+// WP14.14b (D21, 2026-05-24) — criterion 0 "level-flight-maintenance" probe
+// added + per-regime targetAirspeed re-calibrated to L=W equilibrium values
+// (45/60/85 m/s) + AS_ENVELOPE tightened 30→25 m/s. See arch.md Revision
+// 2026-05-24 (evening) D21 for the L=W equilibrium derivation and the
+// "diagnostic infrastructure precedes mechanism interpretation" rule.
+//
+// Precedence ordering (binding):
+//   1. NaN/Infinity in any row → return -1e9 + firstNanTick (criterion 1)
+//   2. Finite but fails criterion 0 (level-flight-maintenance in first
+//      LEVEL_FLIGHT_WINDOW_SEC) → return -1e9 + failTick (criterion 0)
+//   3. Finite and passes criterion 0 → existing envelope-penalty sum
+//      (criterion 2)
+// Both criterion 1 and criterion 0 use the same -1e9 + tick encoding so the
+// optimizer's gradient prefers later-failing points uniformly.
 //
 // Higher score is better. NaN trajectories receive a large negative penalty
 // that ENCODES TIME-TO-FIRST-NAN as a GRADIENT TOWARD LATER NaN: the
@@ -54,17 +68,71 @@ export interface ScoreEnvelopes {
   PHUGOID_WEIGHT: number;
   /** Physics tick rate (Hz). Used to convert tick indices → seconds. */
   TICK_HZ: number;
+  /** D21 criterion 0: duration of the level-flight-maintenance check window (seconds from spawn). */
+  LEVEL_FLIGHT_WINDOW_SEC: number;
+  /** D21 criterion 0: max allowable altitude drop in the window before criterion 0 fails (meters, positive). */
+  LEVEL_FLIGHT_ALT_DROP_MAX: number;
+  /** D21 criterion 0: min allowable airspeed at any point in the window before criterion 0 fails (m/s). */
+  LEVEL_FLIGHT_AS_MIN: number;
 }
 
 export const DEFAULT_ENVELOPES: ScoreEnvelopes = {
   ALT_ENVELOPE: 50,
-  AS_ENVELOPE: 30,
+  AS_ENVELOPE: 25,
   PITCH_RATE_LIMIT: 360,
-  targetAirspeed: { low: 25, mid: 30, high: 40 },
+  // D21 — re-calibrated from {low:25, mid:30, high:40} to airframe L=W
+  // equilibrium AS at throttles 0.05/0.15/0.40 per arch.md Revision
+  // 2026-05-24 (evening). See the L=W derivation in arch.md §D21.
+  targetAirspeed: { low: 45, mid: 60, high: 85 },
   weightRegime: { low: 1, mid: 1, high: 1 },
   PHUGOID_WEIGHT: 1,
   TICK_HZ: 60,
+  LEVEL_FLIGHT_WINDOW_SEC: 1.0,
+  LEVEL_FLIGHT_ALT_DROP_MAX: 20,
+  LEVEL_FLIGHT_AS_MIN: 10,
 };
+
+/**
+ * Result of the D21 criterion 0 "level-flight-maintenance" check.
+ * `passed: true` → trajectory maintained altitude and airspeed thresholds
+ * across the first `LEVEL_FLIGHT_WINDOW_SEC` from spawn.
+ * `passed: false` → the trajectory either dropped more than
+ * `LEVEL_FLIGHT_ALT_DROP_MAX` below spawn or fell below `LEVEL_FLIGHT_AS_MIN`
+ * airspeed within the window. `failTick` is the first offending row's tick
+ * (used for the -1e9 + failTick prefer-failing-later encoding).
+ */
+export type LevelFlightCheckResult =
+  | { passed: true }
+  | { passed: false; failTick: number; failReason: 'altitude_drop' | 'airspeed_collapse' };
+
+/**
+ * D21 criterion 0: does the trajectory maintain level flight for the first
+ * `LEVEL_FLIGHT_WINDOW_SEC` seconds from spawn? "Level flight" means:
+ * altitude stays within `LEVEL_FLIGHT_ALT_DROP_MAX` of spawn altitude AND
+ * airspeed stays at or above `LEVEL_FLIGHT_AS_MIN`. Caller must ensure rows
+ * are finite (this function does not re-check for NaN — NaN takes
+ * precedence over criterion 0 per the precedence ordering documented in
+ * the file header).
+ */
+export function levelFlightMaintenanceCheck(
+  rows: readonly TrajectoryRow[],
+  envelopes: ScoreEnvelopes,
+): LevelFlightCheckResult {
+  if (rows.length === 0) return { passed: true };
+  const spawnAlt = rows[0].posY;
+  const windowTicks = Math.floor(envelopes.LEVEL_FLIGHT_WINDOW_SEC * envelopes.TICK_HZ);
+  const end = Math.min(windowTicks, rows.length);
+  for (let i = 0; i < end; i++) {
+    const r = rows[i];
+    if (r.posY < spawnAlt - envelopes.LEVEL_FLIGHT_ALT_DROP_MAX) {
+      return { passed: false, failTick: r.tick, failReason: 'altitude_drop' };
+    }
+    if (r.airspeed < envelopes.LEVEL_FLIGHT_AS_MIN) {
+      return { passed: false, failTick: r.tick, failReason: 'airspeed_collapse' };
+    }
+  }
+  return { passed: true };
+}
 
 /** First tick at which any per-row column is non-finite, or null if all rows finite. */
 export function firstNanTick(rows: readonly TrajectoryRow[]): number | null {
@@ -131,6 +199,14 @@ export function regimeScore(
     // Prefer-failing-later gradient: later NaN scores higher (less negative).
     // See file-header note on the arch.md sign typo.
     return -1e9 + nanTick;
+  }
+
+  // D21 criterion 0 — level-flight-maintenance probe. Only fires for finite
+  // trajectories; NaN takes precedence above. Failure uses the same
+  // -1e9 + failTick prefer-failing-later encoding as criterion 1.
+  const lfCheck = levelFlightMaintenanceCheck(rows, envelopes);
+  if (!lfCheck.passed) {
+    return -1e9 + lfCheck.failTick;
   }
 
   const spawnAlt = rows[0].posY;

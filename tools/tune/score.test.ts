@@ -5,6 +5,7 @@ import {
   regimeScore,
   firstNanTick,
   phugoidGrowthPenalty,
+  levelFlightMaintenanceCheck,
   DEFAULT_ENVELOPES,
   type RegimeTrajectory,
 } from './score';
@@ -29,16 +30,16 @@ function makeRow(overrides: Partial<TrajectoryRow> & { tick: number }): Trajecto
     posZ: overrides.posZ ?? 0,
     vX: overrides.vX ?? 0,
     vY: overrides.vY ?? 0,
-    vZ: overrides.vZ ?? -30,
+    vZ: overrides.vZ ?? -60,
     pitch: overrides.pitch ?? 0,
     yaw: overrides.yaw ?? 0,
     roll: overrides.roll ?? 0,
-    airspeed: overrides.airspeed ?? 30,
+    airspeed: overrides.airspeed ?? 60,
   };
 }
 
-/** Steady level cruise — posY constant at 50, airspeed constant at 30 m/s. */
-function levelCruise(n: number, airspeed = 30): TrajectoryRow[] {
+/** Steady level cruise — posY constant at 50, airspeed constant at 60 m/s (mid-target post-D21). */
+function levelCruise(n: number, airspeed = 60): TrajectoryRow[] {
   const out: TrajectoryRow[] = [];
   for (let i = 0; i < n; i++) {
     out.push(makeRow({ tick: i, posY: 50, airspeed }));
@@ -46,7 +47,7 @@ function levelCruise(n: number, airspeed = 30): TrajectoryRow[] {
   return out;
 }
 
-/** Mild phugoid: ±5m altitude sinusoid, constant amplitude. */
+/** Mild phugoid: ±5m altitude sinusoid, constant amplitude, centered on the post-D21 mid target. */
 function mildPhugoid(n: number): TrajectoryRow[] {
   const out: TrajectoryRow[] = [];
   for (let i = 0; i < n; i++) {
@@ -54,32 +55,32 @@ function mildPhugoid(n: number): TrajectoryRow[] {
     out.push(makeRow({
       tick: i,
       posY: 50 + 5 * Math.sin(2 * Math.PI * t / 5), // 5m amplitude, 5s period
-      airspeed: 30 + 2 * Math.cos(2 * Math.PI * t / 5),
+      airspeed: 60 + 2 * Math.cos(2 * Math.PI * t / 5),
     }));
   }
   return out;
 }
 
-/** Trajectory that NaNs at a specific tick. Rows before are finite cruise. */
+/** Trajectory that NaNs at a specific tick. Rows before are finite cruise (post-D21 mid target). */
 function nanAtTick(n: number, nanTick: number): TrajectoryRow[] {
   const out: TrajectoryRow[] = [];
   for (let i = 0; i < n; i++) {
     if (i >= nanTick) {
       out.push(makeRow({ tick: i, posY: NaN, airspeed: NaN }));
     } else {
-      out.push(makeRow({ tick: i, posY: 50, airspeed: 30 }));
+      out.push(makeRow({ tick: i, posY: 50, airspeed: 60 }));
     }
   }
   return out;
 }
 
-/** Trajectory with a brief pitch-rate spike at a specific tick. */
+/** Trajectory with a brief pitch-rate spike at a specific tick (post-D21 mid target). */
 function pitchRateBlowup(n: number, blowupTick: number): TrajectoryRow[] {
   const out: TrajectoryRow[] = [];
   for (let i = 0; i < n; i++) {
     // Sudden pitch jump = high pitch-rate
     const pitch = i === blowupTick ? Math.PI / 2 : 0; // 90° in one tick → 90°*60 = 5400 deg/s
-    out.push(makeRow({ tick: i, pitch, posY: 50, airspeed: 30 }));
+    out.push(makeRow({ tick: i, pitch, posY: 50, airspeed: 60 }));
   }
   return out;
 }
@@ -216,9 +217,9 @@ describe('regimeScore — case (e) pitch-rate blowup', () => {
 describe('score — case (f) multi-regime mixed pass/fail', () => {
   it('is dominated by the NaN regime even when other regimes are clean', () => {
     const trajectories: RegimeTrajectory[] = [
-      { regime: 'low', rows: levelCruise(600, 25) }, // clean → 0
-      { regime: 'mid', rows: levelCruise(600, 30) }, // clean → 0
-      { regime: 'high', rows: nanAtTick(600, 50) },  // -1e9 + 50
+      { regime: 'low', rows: levelCruise(600, 45) },  // clean at post-D21 low target → 0
+      { regime: 'mid', rows: levelCruise(600, 60) },  // clean at post-D21 mid target → 0
+      { regime: 'high', rows: nanAtTick(600, 50) },   // -1e9 + 50
     ];
     const total = score(trajectories, DEFAULT_ENVELOPES);
     // Total = 0 + 0 + (-1e9 + 50) = -1e9 + 50
@@ -228,11 +229,11 @@ describe('score — case (f) multi-regime mixed pass/fail', () => {
     expect(total).toBeLessThan(-1e8);
   });
 
-  it('passes all regimes with score ~0 when all three are clean cruise', () => {
+  it('passes all regimes with score ~0 when all three are clean cruise (post-D21 targets)', () => {
     const trajectories: RegimeTrajectory[] = [
-      { regime: 'low', rows: levelCruise(600, 25) },
-      { regime: 'mid', rows: levelCruise(600, 30) },
-      { regime: 'high', rows: levelCruise(600, 40) },
+      { regime: 'low', rows: levelCruise(600, 45) },
+      { regime: 'mid', rows: levelCruise(600, 60) },
+      { regime: 'high', rows: levelCruise(600, 85) },
     ];
     expect(score(trajectories, DEFAULT_ENVELOPES)).toBe(0);
   });
@@ -275,5 +276,186 @@ describe('score — structural / dimension-agnostic', () => {
   it('penalizes an empty rows array with -1e9 (treat as immediate failure)', () => {
     const t: RegimeTrajectory = { regime: 'mid', rows: [] };
     expect(regimeScore(t, DEFAULT_ENVELOPES)).toBe(-1e9);
+  });
+});
+
+// =============================================================================
+// WP14.14b (D21) — criterion 0 level-flight-maintenance probe + envelope re-cal
+// Cases (a)–(e) per arch.md Revision 2026-05-24 (evening) verify-self contract.
+// =============================================================================
+
+/** Trajectory that drops `dropMeters` below spawnAlt at exactly `dropTick`, otherwise level. */
+function altitudeDropAtTick(n: number, dropTick: number, dropMeters: number, spawnAlt = 50): TrajectoryRow[] {
+  const out: TrajectoryRow[] = [];
+  for (let i = 0; i < n; i++) {
+    const posY = i >= dropTick ? spawnAlt - dropMeters : spawnAlt;
+    out.push(makeRow({ tick: i, posY, airspeed: 60 }));
+  }
+  return out;
+}
+
+/** Trajectory whose airspeed collapses to `collapseTo` m/s at `collapseTick`, otherwise level cruise. */
+function airspeedCollapseAtTick(n: number, collapseTick: number, collapseTo: number): TrajectoryRow[] {
+  const out: TrajectoryRow[] = [];
+  for (let i = 0; i < n; i++) {
+    const airspeed = i >= collapseTick ? collapseTo : 60;
+    out.push(makeRow({ tick: i, posY: 50, airspeed }));
+  }
+  return out;
+}
+
+describe('levelFlightMaintenanceCheck (D21 criterion 0) — direct unit coverage', () => {
+  it('passes for a steady level cruise across the full window', () => {
+    const result = levelFlightMaintenanceCheck(levelCruise(120), DEFAULT_ENVELOPES);
+    expect(result.passed).toBe(true);
+  });
+
+  it('passes for an empty trajectory (no failure can be detected)', () => {
+    const result = levelFlightMaintenanceCheck([], DEFAULT_ENVELOPES);
+    expect(result.passed).toBe(true);
+  });
+
+  it('passes when altitude drop is exactly at the threshold (strict < comparison)', () => {
+    // Drop exactly LEVEL_FLIGHT_ALT_DROP_MAX (20m) — should NOT trigger (strict less-than).
+    const rows = altitudeDropAtTick(120, 10, DEFAULT_ENVELOPES.LEVEL_FLIGHT_ALT_DROP_MAX);
+    const result = levelFlightMaintenanceCheck(rows, DEFAULT_ENVELOPES);
+    expect(result.passed).toBe(true);
+  });
+
+  it('honors LEVEL_FLIGHT_WINDOW_SEC — a failure beyond the window is ignored', () => {
+    // Default window is 1.0s = 60 ticks. Drop at tick 90 is beyond the window.
+    const rows = altitudeDropAtTick(120, 90, 50);
+    const result = levelFlightMaintenanceCheck(rows, DEFAULT_ENVELOPES);
+    expect(result.passed).toBe(true);
+  });
+
+  it('respects a custom LEVEL_FLIGHT_WINDOW_SEC that extends the check', () => {
+    // Same trajectory as above (drop at tick 90, 50m drop). With a 2.0s window,
+    // the check now covers ticks 0..120 and catches the drop.
+    const rows = altitudeDropAtTick(150, 90, 50);
+    const result = levelFlightMaintenanceCheck(rows, {
+      ...DEFAULT_ENVELOPES,
+      LEVEL_FLIGHT_WINDOW_SEC: 2.0,
+    });
+    expect(result.passed).toBe(false);
+    if (!result.passed) {
+      expect(result.failTick).toBe(90);
+      expect(result.failReason).toBe('altitude_drop');
+    }
+  });
+});
+
+describe('regimeScore — case (a) D21 criterion 0 altitude-drop encoding', () => {
+  it('fails criterion 0 when altitude drops 50m at tick 30 (drop exceeds 20m threshold)', () => {
+    // Spawn altitude 50m; drop to 0m at tick 30 — exceeds LEVEL_FLIGHT_ALT_DROP_MAX (20m).
+    const rows = altitudeDropAtTick(200, 30, 50);
+    const result = levelFlightMaintenanceCheck(rows, DEFAULT_ENVELOPES);
+    expect(result.passed).toBe(false);
+    if (!result.passed) {
+      expect(result.failTick).toBe(30);
+      expect(result.failReason).toBe('altitude_drop');
+    }
+    // Regime score should return -1e9 + failTick (prefer-failing-later encoding).
+    const traj: RegimeTrajectory = { regime: 'mid', rows };
+    expect(regimeScore(traj, DEFAULT_ENVELOPES)).toBe(-1e9 + 30);
+  });
+});
+
+describe('regimeScore — case (b) D21 criterion 0 passes for steady level cruise', () => {
+  it('passes criterion 0 and falls through to the envelope-penalty path', () => {
+    // Steady cruise at the post-D21 mid target (60 m/s) → criterion 0 passes,
+    // criterion 2 envelope penalties are all zero → score is 0 (or near-0 with -0 sign).
+    const traj: RegimeTrajectory = { regime: 'mid', rows: levelCruise(600) };
+    expect(regimeScore(traj, DEFAULT_ENVELOPES)).toBeCloseTo(0, 12);
+  });
+});
+
+describe('regimeScore — case (c) D21 criterion 0 airspeed-collapse encoding', () => {
+  it('fails criterion 0 when airspeed collapses to 5 m/s at tick 15 (below 10 m/s threshold)', () => {
+    const rows = airspeedCollapseAtTick(200, 15, 5);
+    const result = levelFlightMaintenanceCheck(rows, DEFAULT_ENVELOPES);
+    expect(result.passed).toBe(false);
+    if (!result.passed) {
+      expect(result.failTick).toBe(15);
+      expect(result.failReason).toBe('airspeed_collapse');
+    }
+    const traj: RegimeTrajectory = { regime: 'mid', rows };
+    expect(regimeScore(traj, DEFAULT_ENVELOPES)).toBe(-1e9 + 15);
+  });
+});
+
+describe('regimeScore — case (d) D21 precedence: NaN > criterion 0', () => {
+  it('returns NaN-tick score when both NaN-at-tick-20 and would-fail-criterion-0-at-tick-30 are present', () => {
+    // Construct a trajectory that has BOTH:
+    //   1. NaN at tick 20 (would score -1e9 + 20 under criterion 1)
+    //   2. Altitude drop > 20m starting at tick 30 (would score -1e9 + 30 under criterion 0
+    //      if NaN didn't fire first)
+    // NaN check runs first in regimeScore, so the score must be -1e9 + 20, not -1e9 + 30.
+    const rows: TrajectoryRow[] = [];
+    for (let i = 0; i < 100; i++) {
+      let posY = 50;
+      let airspeed = 60;
+      if (i === 20) {
+        posY = NaN;
+        airspeed = NaN;
+      } else if (i >= 30) {
+        posY = 0; // 50m drop — would fail criterion 0
+      }
+      rows.push(makeRow({ tick: i, posY, airspeed }));
+    }
+    const traj: RegimeTrajectory = { regime: 'mid', rows };
+    expect(regimeScore(traj, DEFAULT_ENVELOPES)).toBe(-1e9 + 20);
+  });
+});
+
+describe('regimeScore — case (e) D21 precedence: criterion 0 PASS → criterion 2 envelope evaluated normally', () => {
+  it('returns the envelope-penalty score when criterion 0 passes but airspeed deviates outside AS_ENVELOPE', () => {
+    // Steady "cruise" at airspeed 95 m/s vs post-D21 mid target 60 m/s → deviation = 35 m/s.
+    // AS_ENVELOPE post-D21 is 25 m/s, so asPenalty = max(0, 35 - 25) = 10.
+    // Per score.ts:159-164, the final score is -(altPenalty^2 + asPenalty^2 + prPenalty^2 + phuPenalty)
+    // = -(0 + 100 + 0 + 0) = -100. Criterion 0 passes; this is the envelope-penalty path.
+    const rows = levelCruise(600, 95);
+    const lf = levelFlightMaintenanceCheck(rows, DEFAULT_ENVELOPES);
+    expect(lf.passed).toBe(true);
+    const traj: RegimeTrajectory = { regime: 'mid', rows };
+    const s = regimeScore(traj, DEFAULT_ENVELOPES);
+    expect(s).toBe(-100);
+    expect(s).toBeGreaterThan(-1e8); // confirms NOT a NaN/criterion-0 floor score
+  });
+
+  it('does not short-circuit criterion 2 when criterion 0 passes', () => {
+    // A trajectory whose mild phugoid is inside criterion 0 thresholds AND inside the new
+    // tighter AS_ENVELOPE produces a near-zero score (criterion 2's envelope-penalty path).
+    const traj: RegimeTrajectory = { regime: 'mid', rows: mildPhugoid(600) };
+    const s = regimeScore(traj, DEFAULT_ENVELOPES);
+    // mildPhugoid post-D21 is centered on (50, 60), ±5m altitude (<<20m drop threshold)
+    // and ±2 m/s airspeed (<<25 AS_ENVELOPE, well above 10 m/s min). Both criteria pass,
+    // envelope penalty is zero.
+    expect(s).toBeLessThanOrEqual(0);
+    expect(s).toBeGreaterThan(-1);
+  });
+});
+
+describe('DEFAULT_ENVELOPES — D21 anti-regression on the recalibrated constants', () => {
+  it('targetAirspeed defaults match the D21-derived L=W equilibrium {low:45, mid:60, high:85}', () => {
+    expect(DEFAULT_ENVELOPES.targetAirspeed.low).toBe(45);
+    expect(DEFAULT_ENVELOPES.targetAirspeed.mid).toBe(60);
+    expect(DEFAULT_ENVELOPES.targetAirspeed.high).toBe(85);
+  });
+
+  it('AS_ENVELOPE tightened from the pre-D21 value of 30 to 25', () => {
+    expect(DEFAULT_ENVELOPES.AS_ENVELOPE).toBe(25);
+  });
+
+  it('LEVEL_FLIGHT_* criterion 0 defaults match arch.md D21 spec', () => {
+    expect(DEFAULT_ENVELOPES.LEVEL_FLIGHT_WINDOW_SEC).toBe(1.0);
+    expect(DEFAULT_ENVELOPES.LEVEL_FLIGHT_ALT_DROP_MAX).toBe(20);
+    expect(DEFAULT_ENVELOPES.LEVEL_FLIGHT_AS_MIN).toBe(10);
+  });
+
+  it('catches accidental revert to pre-D21 targetAirspeed mid=30', () => {
+    // If a refactor ever sets targetAirspeed.mid back to 30 it would silently
+    // re-introduce the bug that the entire D14/D17/D18/D19/D20 cascade ran on.
+    expect(DEFAULT_ENVELOPES.targetAirspeed.mid).not.toBe(30);
   });
 });

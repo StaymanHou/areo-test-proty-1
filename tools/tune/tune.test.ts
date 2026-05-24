@@ -122,16 +122,19 @@ describe('parseArgs — error paths', () => {
 
 // Build a synthetic level-cruise CSV for a given throttle regime so the score
 // function returns ~0 (a clean run). The exact parameter values are recorded
-// for assertion.
-function makeCleanCsv(_throttle: number): string {
+// for assertion. Airspeed matches the post-D21 per-regime targetAirspeed so
+// the regime score is 0 (no envelope deviation).
+function makeCleanCsv(throttle: number): string {
+  // Map throttle → post-D21 targetAirspeed (45/60/85 m/s at throttles 0.05/0.15/0.40).
+  const airspeed = throttle <= 0.075 ? 45 : throttle <= 0.225 ? 60 : 85;
   const rows: TrajectoryRow[] = [];
   for (let i = 0; i < 60; i++) {
     rows.push({
       tick: i,
       posX: 0, posY: 50, posZ: 0,
-      vX: 0, vY: 0, vZ: -30,
+      vX: 0, vY: 0, vZ: -airspeed,
       pitch: 0, yaw: 0, roll: 0,
-      airspeed: 30,
+      airspeed,
     });
   }
   return trajectoryToCsv(rows);
