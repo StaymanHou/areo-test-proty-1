@@ -447,7 +447,7 @@ T-shirt sizing: **XS** ≤ 2h · **S** ≤ half day · **M** ≤ 1 day · **L** 
 - [ ] Update CONVENTIONS.md with D18 sign convention (induced drag direction; fuselage drag direction).
 - [ ] Final tally: full Vitest green (525 + 4 new + 3 new + 2 parity = ~534); tsc strict clean on both configs; `npm run build` clean; harness Rule #1+#2+#4 triple gate documented in WIP. Shipped on a feature-finalize commit pointing at arch.md D18.
 
-### WP14.12: 8-dim joint tune post-D18 (replaces ESCALATED WP14.11)
+### WP14.12: 8-dim joint tune post-D18 — ESCALATED 2026-05-24 → SURFACE-2026-05-24-01 (Branch B)
 **Description:** WP14.11.5's harness verify-self proves D18 *works at a non-default coefficient*; WP14.12 finds the values that produce flyable trajectories. Run the harness optimizer over the expanded 8-dim parameter space: 4 pre-D18 knobs (clQ, clAlphaDot on wings + h-stab — held at WP14.11 narrow bounds `[0..3]×[0..10]`) plus 4 new D18 knobs (inducedDragK on wings + h-stab + fuselageDrag.cd0 + fuselageDrag.area — at textbook-grounded bounds). If a cross-threshold-flyable point exists, commit `aircraft.json` AND un-skip `tests/e2e/phugoid-probe.spec.ts` (the same un-skip WP14.11 was supposed to do, deferred one WP). Per CLAUDE.md Rule #3 (harness-driven tuning, no hand-guessing) and `feedback_tune_cli_search_vs_deploy.md` (always re-score deployed-symmetric airframe via `tools/tune/score-deployed.mjs`). Includes an explicit browser-walkthrough verify-self gate, closing the gap WP14.11 retrospect flagged ("Browser walkthrough NOT done at session end").
 **Phase:** 2
 **Dependencies:** WP14.11.5 (D18 implementation)
@@ -764,3 +764,6 @@ Paused. See `workflow/.session.md` to resume.
 WP14.11 stays in the WBS marked ESCALATED as audit trail. WP15/WP16/WP17 (Phase 2 mission content) remain paused; the pause line moves from "post-WP14" to "post-WP14.12 branch A". Critical path now: `... → WP14.10 → WP14.11(ESCALATED) → WP14.11.5 → WP14.12 → WP16 → WP17 → ...`.
 
 **Next:** under full-autopilot, the orchestrator transitions P9 → `/product-context` to refresh CLAUDE.md's "Current Phase" status (mentioning D18 / WP14.11.5 / WP14.12) before cross-workflow EXIT → feature:plan with WP14.11.5 as the entry unit.
+
+## Session Pause — 2026-05-23 17:50
+Paused. See `workflow/.session.md` to resume.
