@@ -1442,3 +1442,186 @@ The following memory anchors fired in the D21 derivation. All are pre-existing; 
 ### Why D21 over D22-or-later (timing rationale)
 
 D21's central change — "criterion 0 + per-regime AS re-cal" — IS the score-function revision that would have caught the level-flight-maintenance gap five architect cycles ago. The right time to do this revision is the moment the gap was surfaced (this session's browser inspection). Deferring to D22 to "first try a fifth mechanism" inverts the dependency: fifth-mechanism candidates are unrankable until the score function correctly measures what we want. Doing them in the wrong order would risk re-running the WP14.5-style failure mode where a mechanism is judged to "appear correct under the score function" while being defective — but at the architect-cycle layer rather than the implementation layer.
+
+## Revision 2026-05-24 (late evening) — D22: Narrow drag-knob bounds to physical-realism range (NOT D22a target_AS recalibration as SURFACE-24-06 prose suggested) — closes SURFACE-2026-05-24-06 architecturally
+
+**Entry mode:** P12 SURFACE-IN from WP14.15 ESCALATE (`workflow/archive/wp14.15-d21-tune-deploy.md`, commit `6bd2e8a`, 2026-05-24) / SURFACE-2026-05-24-06 (high — D21 score-function revision directionally correct but incompletely calibrated). The D14/D17/D18/D19/D20/D21 cascade has shipped six architectural revisions; WP14.15 is the third successive ESCALATE on the cascade's tune-deploy axis. Per `feedback_rule5_architect_cycle.md`: SURFACE-24-06's primary candidate (D22a "per-regime target_AS recalibration to drag-aware equilibrium") is a SUGGESTION, not a BINDING. D22 architect cycle independently derives.
+
+### Critical evidence from WP14.15 Phase 1 (the trigger for D22 candidate re-ranking)
+
+- Optimizer at WP14.13 widened bounds (k_wing≤1.5, area≤10) chose globalBest `surfaces.0: clQ=1.598, clAlphaDot=0.472, inducedDragK=1.235 / fuselageDrag: cd0=0.573, area=7.456`.
+- All 3 regimes finite 1800 ticks (no NaN — mechanism stack stable).
+- Deployed-symmetric per-regime: low=−999.999M (c0 fail tick 33 airspeed_collapse), mid=−999.999M (c0 fail tick 42 airspeed_collapse), high=−43.6M (c0 PASS first 60 ticks; c2 envelope penalty).
+- **Trajectory phenomenology beyond the 1-second window** (from `/tmp/wp14.15/sym-{low,mid,high}.csv`):
+  - Low (τ=0.05): t=1s AS=13, t=2s AS=10 pitch=−62°, t=5s AS=9 pitch=+74°, t=10s AS=7 pitch=+30°, t=20s AS=17 pitch=−62°. Pitch oscillates ±70°.
+  - Mid (τ=0.15): t=1s AS=4.2, t=2s AS=9.8 pitch=+53°, t=5s AS=8.7 pitch=+21°, t=10s AS=12 pitch=−55°, t=20s AS=24 pitch=+77°. AS hovers 5-25 m/s in chaotic oscillation.
+  - High (τ=0.40): t=1s AS=24.6 (c0 PASS), t=2s AS=3.9 pitch=−10°, t=5s AS=20 pitch=−71°, t=10s AS=48 pitch=+64°, t=20s AS=134 pitch=−78° (runaway).
+- **No regime sustains level flight beyond ~1 second.** The "high regime PASSES criterion 0" finding was an artifact of the 1-second window: at tick 60 AS is still 24.6 m/s but by tick 120 it's collapsed to 3.9 m/s, then begins a dive-recovery oscillation cycle.
+
+### Plan-time derivation (independent of SURFACE-24-06 prose, per CLAUDE.md Rule #5)
+
+**Inputs (current aircraft.json baseline, UNCHANGED from D21):**
+- mass = 1000 kg → W = 9810 N
+- S_wing = 12 m², CD0 ≈ 0.02, ρ = 1.225 kg/m³
+- thrust_max = 6000 N
+
+**Drag at level flight (L=W) as a function of AS V and the optimizer's drag knobs:**
+
+For level flight with L=W: CL_req(V) = W / (q·S_wing) = 9810 / (0.6125·V²·12) = **1334.7 / V²**
+
+Total drag at L=W:
+- D_parasitic = CD0·q·S_wing = 0.02·0.6125·V²·12 = **0.147·V²**
+- D_induced = k_wing·CL_req²·q·S_wing = k·(1334.7)²/V⁴ · 0.6125·V²·12 = **k·1.310·10⁷ / V²**
+- D_fuselage = cd0_fus·area_fus·q = cd0_fus·area_fus·0.6125·V²
+
+At optimizer's globalBest knobs (k_wing=1.235, cd0_fus=0.573, area_fus=7.456):
+- D_induced = 1.235·1.310·10⁷ / V² = **1.618·10⁷ / V²**
+- D_fuselage = 0.573·7.456·0.6125·V² = **2.617·V²**
+- **D_total(V) = 2.764·V² + 1.618·10⁷ / V²**
+
+Set T(τ) = D_total(V), solve for V:
+
+| Throttle | T (N) | V where T=D (m/s) | Status |
+|----------|-------|-------------------|--------|
+| 0.05 | 300 | **NO REAL SOLUTION** — min D_total occurs at V_min = (1.618·10⁷/2.764)^(1/4) = 49 m/s; at V_min, D_min = 2·√(2.764·1.618·10⁷) = 13,360 N >> 300 N | unflyable |
+| 0.15 | 900 | NO REAL SOLUTION — same V_min=49, D_min=13,360 N >> 900 N | unflyable |
+| 0.40 | 2400 | NO REAL SOLUTION — D_min=13,360 N >> 2400 N | unflyable |
+
+**The optimizer's chosen drag values make level-flight L=W physically IMPOSSIBLE at any AS at any of the 3 searched throttles.** Minimum total drag at L=W (across all V) is 13,360 N — **2× the airframe's max thrust (6000 N).**
+
+This is a stronger derivation result than SURFACE-24-06's prose. SURFACE-24-06 estimated "equilibrium AS shifts to ~10/15/25 m/s under heavy drag" — but it did not check whether equilibrium *exists* at those AS values. It does not. The optimizer's chosen drag region is **outside the airframe's flyable envelope**, full stop.
+
+### Why the optimizer chose unflyable drag (the score-function defect)
+
+The optimizer's behavior is rational given the score function:
+1. Spawn AS = 30 m/s (initial velocity in fixtures).
+2. Target AS per D21 = 45/60/85 m/s — **higher than spawn**.
+3. Without drag, throttle 0.15 produces thrust 900 N, accelerating the 1000 kg airframe at ~1 m/s² → reaches AS=60 m/s in ~30s.
+4. AS-envelope penalty (|AS − target|² per tick) accumulates while AS is below target — for 30 seconds at, say, mean deviation 25 m/s → penalty = 625·1800 = **1,125,000 per regime**.
+5. Alternative strategy: **add enough drag to crash AS DOWN to 0**, accept criterion 0 fail, score = −1e9 + 60 ≈ −999,999,940. Even one criterion-0 failure scores ≥1000× worse than the envelope penalty for slow climb.
+
+**So why does the optimizer chase criterion-0-fail?** Because **all 4 restart seeds initialize within the absurd-drag region** — the optimizer never explores low-drag corners where the slow-climb solution exists. The Nelder-Mead simplex contracts toward the local optimum, which is "make AS collapse as late as possible" (the `-1e9 + failTick` gradient). With bounds k_wing∈[0,1.5], the simplex doesn't sample k_wing=0.05 (Cessna-typical) because the seed-derived initial simplex is in the mid-range of [0,1.5].
+
+**The cascade's bound-widening trajectory (D18: k≤0.5 → D19: k≤1.5 → D20: k≤3.0) was driven by the optimizer wanting more drag at each cycle.** But the optimizer wanted more drag *for the wrong reason* — to game the AS-envelope penalty, not to achieve physical realism. The "Failure mode at second widening" appendix in `feedback_optimizer_bounds_are_floor.md` was the symptom; the cause is that the bounds were always too wide for the physically-flyable region.
+
+### D22 derivation: what drag values DO support level flight?
+
+For level flight at AS=60 m/s (mid-throttle D21 target), thrust=drag requires:
+- T = 900 N (τ=0.15)
+- D_total at V=60 = (0.147 + k_eff_fus)·3600 + k_wing·1.310·10⁷/3600 = (0.147 + k_eff_fus)·3600 + k_wing·3639
+- where k_eff_fus = cd0_fus·area_fus·0.6125 / 0.6125 = cd0_fus·area_fus (in our parameterization)
+
+Setting D=900 with realistic baselines:
+- At cd0_fus·area_fus = 0.04 (Cessna-typical equivalent flat plate × cd0): D_fus = 0.04·0.6125·3600 = 88 N. Leaves 812 N for parasitic+induced.
+- D_parasitic = 529 N. Leaves 283 N for D_induced.
+- k_wing = 283 / 3639 = **0.078** — close to Cessna textbook k=0.05.
+
+**Physically-realistic drag region:** k_wing ∈ [0, 0.3], cd0_fus ∈ [0, 0.5], area_fus ∈ [0, 1.0] (so cd0_fus·area_fus ≤ 0.5). The optimizer was searching k_wing ∈ [0, 1.5] — 5× the physically-realistic ceiling. The physical region IS within WP14.13's widened bounds box; the optimizer just never searches it because seed-init places the simplex in the mid-range.
+
+### Candidate menu (full D22 ranking, post-derivation)
+
+| Candidate | Why considered | Cost | D22 ranking |
+|-----------|----------------|------|-------------|
+| **D22-β (chosen): narrow drag-knob bounds to physical-realism range + re-tune at WP14.12-class bounds** | Independent derivation shows optimizer's WP14.15 chosen drag is 2× outside the airframe's flyable thrust envelope (D_min=13kN >> T_max=6kN). The "bound widening" cascade was driven by score-function gaming, not by physical need. Narrowing to physically-realistic bounds (k_wing≤0.3, cd0_fus·area_fus≤0.5) forces the optimizer's simplex to search the flyable region. No code change; just WBS command update. | XS (single WBS command change; no code; no Vitest). | **#1 — chosen** |
+| D22a (SURFACE-24-06 primary): per-regime target_AS recalibration to drag-aware equilibrium | SURFACE-24-06 prose assumed optimizer's drag is realistic and targets need to follow it. Independent derivation REFUTES the premise: under optimizer's drag, no equilibrium exists at any AS. Recalibrating targets to ~10/15/25 m/s without fixing drag would just shift the gaming, not resolve it. | S (tooling-only score.ts edit + Vitest). | **REMOVED** — derivation invalidates the premise. The targets aren't wrong; the drag region the optimizer searches is wrong. |
+| D22b (SURFACE-24-06 secondary): per-regime LEVEL_FLIGHT_AS_MIN relaxation | If equilibrium AS at heavy drag really were 8-15 m/s, AS_MIN=10 would mismeasure. But derivation shows no equilibrium exists at those AS values. AS_MIN relaxation would just delay c0 failure without fixing flyability. | S (single-constant change + Vitest). | **REMOVED** — same reasoning as D22a. |
+| D22c (SURFACE-24-06 tertiary): thrust uprating | If D21 targets 45/60/85 are physically correct, increasing thrust would let the airframe reach equilibrium at those AS. **But:** the derivation shows even at thrust=6000 N (max), D_min at optimizer's drag is 13kN — would need thrust ~14,000 N to overcome optimizer's chosen drag. That's 2.3× a typical Cessna 172 (210 hp ≈ 6kN at takeoff at sea level). Uprating to 14kN is beyond casual-sim realism. | S (aircraft.json edit + re-tune). | **REMOVED** — quantity required is unphysical for a small civilian aircraft. |
+| D22d (SURFACE-24-06 quaternary): fifth-mechanism | Mechanism stack already produces zero NaN at WP14.15 globalBest — adding mechanism layers won't change the fact that drag exceeds thrust. | M-L (Rule #6 two-WP split). | **REMOVED** — wrong-axis fix; mechanism stack is not the bottleneck. |
+| D22-α (alternative): add T=D criterion to score function | Force the optimizer to check that sustained thrust=drag holds across the trajectory. Cleaner architecturally; addresses the score's gaming directly. | S-M (score.ts + Vitest cases). | **#2 — deferred** — D22-β achieves the same outcome cheaper. If D22-β refutes (re-tune at narrow bounds still doesn't find equilibrium), D22-α is the next attempt. |
+| D22-γ (alternative): replace per-tick AS-envelope penalty with sustained-flight reward | Reframe scoring philosophy from "minimize per-tick deviation" to "maintain envelope for ≥10s sustained." | M (score.ts rewrite). | **#3 — deferred** — invasive; defer until D22-β + D22-α both exhausted. |
+| Further drag-bound widening | NOT in menu per `feedback_optimizer_bounds_are_floor.md`. | — | **REMOVED** |
+| Option-c "accept current state" | REMOVED at D21 per derivation; remains REMOVED at D22. | — | **REMOVED** |
+
+### D22-β — Narrow drag-knob bounds
+
+**Binding tune command for WP14.16** (replaces WP14.15's command; diffs only on bounds):
+
+```
+npm run tune -- \
+  --link surfaces.0.clQ=surfaces.1.clQ \
+  --link surfaces.0.clAlphaDot=surfaces.1.clAlphaDot \
+  --link surfaces.0.inducedDragK=surfaces.1.inducedDragK \
+  --knobs surfaces.0.clQ,surfaces.0.clAlphaDot,surfaces.0.inducedDragK,\
+          surfaces.2.clQ,surfaces.2.clAlphaDot,surfaces.2.inducedDragK,\
+          fuselageDrag.cd0,fuselageDrag.area \
+  --bounds 0..3,0..10,0..0.3,0..3,0..10,0..0.3,0..0.5,0..1.0 \
+  --regimes low,mid,high --restarts 4 --seed 42 \
+  --out tools/tune/results/wp14.16-d22-tune.json
+```
+
+**Bound diffs vs WP14.15:**
+- `surfaces.0.inducedDragK` upper 1.5 → **0.3** (NARROW — physical-realism Cessna-class ceiling, 6× Cessna textbook k=0.05)
+- `surfaces.2.inducedDragK` upper 1.5 → **0.3** (NARROW)
+- `fuselageDrag.cd0` upper 1.0 → **0.5** (NARROW — Cessna-class flat-plate CD≈0.04 at clean configuration, 0.5 leaves 12× headroom for dirty configurations or non-typical fuselage)
+- `fuselageDrag.area` upper 10.0 → **1.0** (NARROW — equivalent flat plate area; Cessna-typical ≈ 0.4 m², 1.0 leaves 2.5× headroom)
+- clQ bounds (3.0, 3.0) and clAlphaDot bounds (10.0, 10.0) unchanged — these aren't the gaming knobs.
+
+**No code change.** No `tools/tune/score.ts` edit. No Vitest update. No `aircraft.json` edit at the architect cycle. WP14.16 will edit `aircraft.json` on Branch A.
+
+### D22-β verify-self contract (binding for WP14.16)
+
+Per CLAUDE.md Rule #3 (plan-time threshold set BEFORE running, do NOT relax post-run):
+
+1. **Criterion 0 PASS across all 3 regimes** at globalBest (the D21 criterion-0 logic is unchanged; the test is whether NARROWED bounds let the optimizer find a c0-passing globalBest).
+2. **Criterion 1 PASS:** all 3 regimes finite 1800 ticks.
+3. **Criterion 2 PASS:** deployed-symmetric total score ≥ −300 under D21 envelopes (unchanged from WP14.15 plan).
+4. **Criterion 3 (browser walkthrough)** at `localhost:5173/?mission=phugoid-probe-mid&debug=true` for 30s: at t=5s altitude within 30m of spawn AND AS > 30 m/s AND no NaN.
+5. **Bound-pressure sanity:** at globalBest, if `inducedDragK_wing` saturates the new 0.3 upper, that's a Branch B signal (optimizer wants even more drag in the narrowed region — possible if the airframe's true equilibrium uses k>0.3, in which case D22-α is the next attempt).
+
+### Three-branch decision (locked at plan-time)
+
+- **(A) All 4 criteria pass:** Branch A — mirror globalBest to `aircraft.json` (surfaces.0 ↔ surfaces.1 explicit; surfaces.2 from globalBest; add top-level `fuselageDrag`); un-skip `tests/e2e/phugoid-probe.spec.ts`; full Vitest + tsc + build + e2e + browser walkthrough → finalize with **12 SURFACEs full-close** (SURFACE-24-06 + SURFACE-24-04 + chain of 10).
+- **(B) Criterion 0 PASSES on all 3 regimes but criterion 2 fails:** the mechanism stack reaches level-flight equilibrium under narrowed bounds, but envelope deviations are still too large. File SURFACE-2026-05-25-XX → D23 architect cycle for envelope re-tightening OR D22-α (T=D criterion).
+- **(C) Criterion 0 fails on any regime at globalBest in narrowed bounds:** the physically-realistic drag region does NOT contain a c0-passing point at WP14.13 baseline (mass/wing area/thrust/incidence). Possible causes: (i) score function gaming continues at narrow bounds (D22-α primary); (ii) airframe genuinely cannot sustain L=W at D21 targets without more thrust (D22c reconsidered with revised thrust value); (iii) fifth mechanism needed (D22d). File SURFACE-2026-05-25-XX with diagnostic evidence + D23 architect cycle for selection.
+
+### Memory anchors referenced by D22
+
+- **`feedback_finite_vs_flyable.md`** — criterion 0 works (the design is sound); the gap is upstream in bound choice. Mechanism stack passes #1 (finite). #2 (envelope/flyable) needs bound-narrowing to permit a physically-realistic search region.
+- **`feedback_rule5_architect_cycle.md`** — fired exactly as intended. Independent derivation REFUTED the SURFACE-24-06 prose's primary candidate. The "drag-aware equilibrium" framing was qualitatively wrong because no equilibrium exists in the optimizer-chosen drag region. The SURFACE's recommendation was a quantitative miss (10/15/25 m/s estimate) rather than the actual qualitative reality (no equilibrium at all).
+- **`feedback_optimizer_bounds_are_floor.md` "Failure mode at second widening"** — codifies the D22 insight retroactively. Cascade bounds: WP14.12 (k≤0.5) → WP14.13 (k≤1.5) → WP14.14 (k≤3.0). D22 NARROWS to k≤0.3 (tighter than WP14.12!). The rule's failure-mode appendix said "after 2 successive widenings without improvement, prior-cycle optimum is the empirical optimum" — D22 extends: **after the widening trajectory's gaming signal is identified, narrow PAST the widest cascade optimum back to physical-realism range.**
+- **`feedback_surface_or_means_or.md`** — D22 picks D22-β singularly. Does not stack with D22-α (T=D criterion) or D22-γ (sustained-reward reframe).
+- **`feedback_retune_attempt_budget.md`** — the bound-axis attempt budget (3 attempts: WP14.12/13/14) is exhausted in the *widening direction*. D22-β is a different axis (narrowing); fresh budget.
+- **`feedback_tune_cli_search_vs_deploy.md`** Tertiary use — `--link` ratio at WP14.15 was 1.47× (matches SURFACE-24-05 residual). Non-blocking. Will remain non-blocking at WP14.16.
+- **`feedback_operator_as_external.md`** — full-autopilot deviation continues; WP14.16's browser walkthrough is the operator-as-playtester gate (same as WP14.15's planned gate).
+- **CLAUDE.md Rules #1-#8:** ALL binding for WP14.16. Rule #7 (live-system observation) fires at WP14.16 browser walkthrough. Rule #8 (score function targets are physical quantities) — derivation already done at D21; D22 does NOT modify targets, it narrows the search region so the optimizer can find them.
+
+### Confidence calibration for WP14.16 Branch A
+
+- P(narrowed bounds contain a flyable globalBest) ≈ **70-80%** — the physical-realism region (k≤0.3, fuselage_cd0·area≤0.5) is what Cessna-class light aircraft inhabit, and the airframe's mass/area/thrust constants ARE Cessna-class. The derivation shows level-flight equilibrium exists at k_wing≈0.078 for τ=0.15 V=60 — well within the new bounds.
+- P(optimizer's seed-init samples the flyable region) ≈ **85%** — with k upper 0.3 and 4 restarts, simplex initialization will cover both low-k (near Cessna textbook) and mid-k (gaming corner) regions; the c0-passing region acts as a strong attractor once sampled.
+- P(deployed-symmetric score ≥ −300 | c0 pass) ≈ **75%** — D21 envelope (AS_ENVELOPE=25) is reasonable around 45/60/85 targets; if c0 passes at AS settling near targets, c2 envelope penalty is manageable.
+- P(browser walkthrough passes | criteria 0+1+2 pass) ≈ **80%** — the airframe at physical-realism drag should fly close to "Cessna-feel," matching casual-player expectation.
+- **Joint P(WP14.16 Branch A) ≈ 35-50%.** Lower than the individual factors might suggest because the cascade has consistently surfaced unexpected issues; the 50-65% downside is dominated by "the gaming might happen at narrow bounds too" (which would surface as Branch C → D22-α).
+
+**Wall-time estimate:** 1-3h for WP14.16 (tune ~15s, deploy + browser walkthrough + finalize ~1-2h). Faster than WP14.15 because no WP14.15b implementation step is needed (D22-β is WBS-command-only).
+
+### Test additions binding for WP14.16
+
+- **Vitest:** none required at the architect cycle. WP14.16 may add a single regression-anchor test asserting the new aircraft.json values are within physical-realism range (`k_wing ≤ 0.3`, etc.) — anti-regression in case a future cycle widens again.
+- **Playwright:** un-skip `tests/e2e/phugoid-probe.spec.ts` line 17 on Branch A.
+
+### WBS impact
+
+- **WP14.15b: DELETED from WBS** — D22-β requires no implementation WP. The original WP14.15b stub (D22 impl, tooling-only score.ts) was premised on D22a being chosen; D22-β bypasses it.
+- **WP14.16 (new):** "Re-tune drag polar at D22-β narrowed bounds + binding browser walkthrough." Added to `docs/product/wbs.md` (Phase 2 critical-path block). Dependencies: D22 architect cycle close. Size S (1-3h).
+- **WP14.15 (ESCALATED):** stays archived.
+- **WP15, WP16, WP17 (Phase 2 mission content):** still gated. Pause line moves from "post-WP14.15 branch A" to "post-WP14.16 branch A."
+- **No changes to mechanism layer D11/D12/D13/D14/D15/D16/D17/D18/D19/D20/D21.** D22 is a search-region revision (bound choice); no aerosurface, drag polar, β-coefficient, or methodology change. All mechanism schema and code paths are unchanged.
+
+### Open SURFACEs post-D22 (status changes)
+
+- **SURFACE-2026-05-24-06** (D22 driver): transitions from `open` to `partial — D22 architect cycle complete (D22-β chosen, D22a refuted by independent derivation); full close at WP14.16 Branch A`.
+- **SURFACE-2026-05-24-04** (D21 driver, partial-update): unchanged status. Full close at WP14.16 Branch A together with SURFACE-24-06 and the chain of 10.
+- **SURFACE-2026-05-24-05** (`--link` parity-diff): unchanged `open, medium`. Non-blocking.
+- **Chain of transitively-blocked SURFACEs (-24-03, -24-01, -23-01, -17-03, -17-01, -16-04, -16-01, -12-03, -12-01, -11-04):** unchanged. Full close fires at WP14.16 Branch A (12 SURFACEs close-by-implementation together if Branch A passes).
+- **SURFACE-24-02, SURFACE-17-02, SURFACE-11-02, SURFACE-16-03/02, SURFACE-12-02, SURFACE-04-19-01:** unchanged.
+
+### Why D22-β over D22a/b/c/d (timing rationale)
+
+The SURFACE-24-06 prose was authored at session-end without an independent derivation of L=W equilibrium under the optimizer's chosen drag. The architect cycle's job (per Rule #5 + `feedback_rule5_architect_cycle.md`) is to re-derive. The derivation revealed that the SURFACE's qualitative framing — "drag-aware equilibrium shifts AS to ~10/15/25 m/s" — is quantitatively wrong (no equilibrium exists at those AS values). The SURFACE's primary candidate (D22a) addresses a symptom of the score-function-gaming problem; D22-β addresses the cause (bound choice permits absurd-drag corners). D22-β is cheaper (no code), more architecturally honest (treats the bound choice as the diagnostic gap rather than a different score-function knob), and lower-risk (no implementation bugs possible in a bound-narrowing change).
+
+### Generalizable lesson (does NOT promote to Rule #9 yet — single observation)
+
+The cascade's bound-widening trajectory (D18→D19→D20) and bound-narrowing reversal (D22) suggest a meta-pattern: **when the optimizer's bound-saturation signal points at increasing a search-region ceiling, ask whether the optimizer is gaming a score-function gap before honoring the signal.** `feedback_optimizer_bounds_are_floor.md` rule 2 ("trust optimizer, widen") is sound when the score function is correctly calibrated; D22 shows it fails when the score function has a gaming corner. The "Failure mode at second widening" appendix proposed a clarification ("after 2 widenings without improvement, prior optimum is empirical") — D22 evidence supports a stronger clarification: **after the bound-widening trajectory's saturation pattern is identified, suspect score-function gaming before further widening or accepting the prior optimum.**
+
+Per `feedback_memory_active_recall.md` discipline: this is a single observation; awaiting a second observation in a different parameter space before promoting to a Rule #9 or a stronger memory entry. The proposed memory update at `feedback_optimizer_bounds_are_floor.md` should be considered at the next architect cycle if a similar pattern recurs.
