@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-05-24
+
+- **Feature escalated:** WP14.12 8-dim joint tune post-D18 — canonical optimizer pass over `(clQ, clAlphaDot, inducedDragK) × wings+h-stab + (fuselageDrag.cd0, fuselageDrag.area)` at WBS bounds with 4 restarts, seed 42, 1800-tick fixtures; globalBest asymmetric score −1.057e9, deployed-symmetric score (per `tools/tune/score-deployed.mjs`) −92,574,536 vs threshold −300 — ratio ~309,000× past flyable; criterion 1 (all 3 regimes finite at 1800 ticks) PASS, criterion 2 (deployed total ≥ −300) FAIL; D18 drag-polar revision alone refuted as sufficient third mechanism layer; filed SURFACE-2026-05-24-01 (D19 candidate: inertia-tensor revision halving Iyy from 3000→1500 per SURFACE-23-01 second-ranked candidate); no `aircraft.json` change, phugoid-probe.spec.ts stays skipped; 545/545 Vitest preserved.
+- **Backlog resolved:** SURFACE-2026-05-23-01 — status updated to resolved-by-cascade-but-partial; D18 chosen path closed; flyability gap remains; D19 (SURFACE-2026-05-24-01) is the actionable next architect cycle.
+
 ## 2026-05-23
 
 - **Feature shipped:** WP14.10 β5 non-dimensional AoA-rate damping (D16 implementation) — replaced the raw-rate `cl += clAlphaDot · dα/dt` form at the β5 branch with the textbook non-dimensional CL-augmentation `cl += clAlphaDot · dα/dt · c̄ / (2 · max(V, V_REF))` (Etkin & Reid §5.10–5.12), reusing the `chordLength` cache and `BETA4_V_REF` constant from WP14.9/WP14.9b; verify-self triple gate passed at clAlphaDot=5,5,8,0 across throttle-low + throttle-mid regimes (substituted for plan's throttle-high because baseline β4 setup NaN's there — WP14.11 territory); Rule #4 control bit-identical to baseline; plan-time physics derivation matched D16 prose exactly (no arch errata, unlike WP14.9b); 525/525 Vitest + tsc strict (both configs) + build clean.
