@@ -229,6 +229,7 @@ describe('composeResults — JSON shape per spec acceptance #4', () => {
     seed: 42,
     out: undefined,
     ticks: 1800,
+    links: [],
   };
 
   it('produces the documented top-level keys', () => {
@@ -277,6 +278,7 @@ describe('composeResults — JSON shape per spec acceptance #4', () => {
       ticks: 1800,
       wallClockMs: 12345,
       timestamp: '2026-05-16T12:34:56.789Z',
+      links: [],
     });
   });
 
@@ -286,5 +288,187 @@ describe('composeResults — JSON shape per spec acceptance #4', () => {
     expect(r.restarts[0].seed).toBe(1234);
     expect(r.restarts[0].finalScore).toBe(-10);
     expect(r.restarts[0].finalParams).toEqual({ 'surfaces.wings.clAlphaDot': 3.5 });
+  });
+
+  it('preserves links in meta when present (SURFACE-2026-05-24-03 reproducibility)', () => {
+    const argsWithLinks: TuneArgs = {
+      ...baseArgs,
+      links: [{ src: 'surfaces.0', dst: 'surfaces.1' }],
+    };
+    const r = composeResults(argsWithLinks, makeFakeOptimizeResult(), 0, 'ts');
+    expect(r.meta.links).toEqual([{ src: 'surfaces.0', dst: 'surfaces.1' }]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// SURFACE-2026-05-24-03 — `--link` flag for symmetric-mirror search
+// ---------------------------------------------------------------------------
+
+describe('parseArgs --link (SURFACE-2026-05-24-03)', () => {
+  it('defaults links to empty array when --link is omitted', () => {
+    const args = parseArgs(['--knobs', 'a.b', '--bounds', '0..1', '--regimes', 'mid']);
+    expect(args.links).toEqual([]);
+  });
+
+  it('parses a single --link src=dst', () => {
+    const args = parseArgs([
+      '--knobs', 'surfaces.0.clQ',
+      '--bounds', '0..3',
+      '--regimes', 'mid',
+      '--link', 'surfaces.0=surfaces.1',
+    ]);
+    expect(args.links).toEqual([{ src: 'surfaces.0', dst: 'surfaces.1' }]);
+  });
+
+  it('parses repeated --link flags into an array', () => {
+    const args = parseArgs([
+      '--knobs', 'a.b',
+      '--bounds', '0..1',
+      '--regimes', 'mid',
+      '--link', 'surfaces.0=surfaces.1',
+      '--link', 'surfaces.4=surfaces.5',
+    ]);
+    expect(args.links).toEqual([
+      { src: 'surfaces.0', dst: 'surfaces.1' },
+      { src: 'surfaces.4', dst: 'surfaces.5' },
+    ]);
+  });
+
+  it('throws on --link without an = sign', () => {
+    expect(() => parseArgs([
+      '--knobs', 'a.b', '--bounds', '0..1', '--regimes', 'mid',
+      '--link', 'surfaces.0',
+    ])).toThrow(/malformed --link/);
+  });
+
+  it('throws on --link with empty src', () => {
+    expect(() => parseArgs([
+      '--knobs', 'a.b', '--bounds', '0..1', '--regimes', 'mid',
+      '--link', '=surfaces.1',
+    ])).toThrow(/malformed --link/);
+  });
+
+  it('throws on --link with empty dst', () => {
+    expect(() => parseArgs([
+      '--knobs', 'a.b', '--bounds', '0..1', '--regimes', 'mid',
+      '--link', 'surfaces.0=',
+    ])).toThrow(/malformed --link/);
+  });
+
+  it('throws when src equals dst (self-link is meaningless)', () => {
+    expect(() => parseArgs([
+      '--knobs', 'a.b', '--bounds', '0..1', '--regimes', 'mid',
+      '--link', 'surfaces.0=surfaces.0',
+    ])).toThrow(/src and dst must differ/);
+  });
+});
+
+describe('buildObjective --link expansion (SURFACE-2026-05-24-03)', () => {
+  it('emits a mirror entry for each knob matching the src prefix', async () => {
+    const seen: Array<readonly string[]> = [];
+    const mock: HarnessFn = ({ fixture, params }) => {
+      seen.push(params);
+      return makeCleanCsv(fixture.throttle);
+    };
+    const obj = buildObjective(
+      ['surfaces.0.clQ'],
+      ['mid'],
+      60,
+      mock,
+      [{ src: 'surfaces.0', dst: 'surfaces.1' }],
+    );
+    await obj([1.5]);
+    expect(seen).toHaveLength(1);
+    expect(seen[0]).toEqual([
+      'surfaces.0.clQ=1.5',
+      'surfaces.1.clQ=1.5', // <- mirror
+    ]);
+  });
+
+  it('expands multi-knob mirror for all knobs starting with the src prefix', async () => {
+    const seen: Array<readonly string[]> = [];
+    const mock: HarnessFn = ({ fixture, params }) => {
+      seen.push(params);
+      return makeCleanCsv(fixture.throttle);
+    };
+    const obj = buildObjective(
+      ['surfaces.0.clQ', 'surfaces.0.clAlphaDot', 'surfaces.0.inducedDragK'],
+      ['mid'],
+      60,
+      mock,
+      [{ src: 'surfaces.0', dst: 'surfaces.1' }],
+    );
+    await obj([1.6, 3.5, 1.2]);
+    expect(seen[0]).toEqual([
+      'surfaces.0.clQ=1.6',
+      'surfaces.0.clAlphaDot=3.5',
+      'surfaces.0.inducedDragK=1.2',
+      'surfaces.1.clQ=1.6',
+      'surfaces.1.clAlphaDot=3.5',
+      'surfaces.1.inducedDragK=1.2',
+    ]);
+  });
+
+  it('does NOT mirror knobs that do not match the src prefix', async () => {
+    const seen: Array<readonly string[]> = [];
+    const mock: HarnessFn = ({ fixture, params }) => {
+      seen.push(params);
+      return makeCleanCsv(fixture.throttle);
+    };
+    const obj = buildObjective(
+      ['surfaces.0.clQ', 'surfaces.2.clQ', 'fuselageDrag.cd0'],
+      ['mid'],
+      60,
+      mock,
+      [{ src: 'surfaces.0', dst: 'surfaces.1' }],
+    );
+    await obj([1.6, 2.1, 0.5]);
+    expect(seen[0]).toEqual([
+      'surfaces.0.clQ=1.6',
+      'surfaces.2.clQ=2.1',
+      'fuselageDrag.cd0=0.5',
+      'surfaces.1.clQ=1.6', // mirror only of surfaces.0.*
+    ]);
+  });
+
+  it('omitting links preserves pre-link behavior (no mirror entries)', async () => {
+    const seen: Array<readonly string[]> = [];
+    const mock: HarnessFn = ({ fixture, params }) => {
+      seen.push(params);
+      return makeCleanCsv(fixture.throttle);
+    };
+    const obj = buildObjective(
+      ['surfaces.0.clQ'],
+      ['mid'],
+      60,
+      mock,
+    ); // no links arg → default empty
+    await obj([1.5]);
+    expect(seen[0]).toEqual(['surfaces.0.clQ=1.5']);
+  });
+
+  it('handles repeated links — wings AND another pair mirrored', async () => {
+    const seen: Array<readonly string[]> = [];
+    const mock: HarnessFn = ({ fixture, params }) => {
+      seen.push(params);
+      return makeCleanCsv(fixture.throttle);
+    };
+    const obj = buildObjective(
+      ['surfaces.0.clQ', 'surfaces.4.clQ'],
+      ['mid'],
+      60,
+      mock,
+      [
+        { src: 'surfaces.0', dst: 'surfaces.1' },
+        { src: 'surfaces.4', dst: 'surfaces.5' },
+      ],
+    );
+    await obj([1.1, 2.2]);
+    expect(seen[0]).toEqual([
+      'surfaces.0.clQ=1.1',
+      'surfaces.4.clQ=2.2',
+      'surfaces.1.clQ=1.1', // mirror from link 1
+      'surfaces.5.clQ=2.2', // mirror from link 2
+    ]);
   });
 });

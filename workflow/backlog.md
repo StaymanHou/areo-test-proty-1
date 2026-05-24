@@ -35,7 +35,7 @@ Surface-notes from workflow runs. Consumed and resolved by higher-level workflow
   - `feedback_retune_attempt_budget.md` — 1 optimizer run = systematic budget exhausted; escalating to next architect cycle rather than running another tune at different bounds.
   - `feedback_surface_or_means_or.md` — D19 was the singular chosen path; refuted; next architect cycle picks ONE of (tooling-fix, D19d, D19b, fifth-mechanism) singularly. Not stacking.
   - `feedback_operator_as_external.md` — full-autopilot deviation continues; SURFACE-IN documents the deviation for Phase 3 re-validation; browser walkthrough was SKIPPED on Branch B per plan (Phase 4 is Branch-A-only).
-- **Status:** open
+- **Status:** partial — TOOLING-FIX (primary candidate) landed at task `tune-cli-link-flag` close (2026-05-24). `--link <src>=<dst>` flag added to tune CLI; symmetric-mirror search verified end-to-end (search-vs-deploy ratio now exactly 1.0×, matches independent score-deployed.mjs re-score bit-for-bit). Deployed-symmetric score at the linked-search globalBest is **−6.7M** — ~14× better than WP14.12, ~447× better than WP14.13 — but still ~22,000× past flyable threshold (−300). The METHODOLOGY GAP is resolved; the FLYABILITY GAP remains. Next step: architect cycle re-evaluates remaining candidates (D19d score envelope, D19b inertia revision re-anchored to Ixx, or new fifth-mechanism) at the next tune-deploy WP. Flyability close awaits that cycle.
 - **Blocks:** WP15, WP16, WP17 (Phase 2 mission content); full close of SURFACE-2026-05-24-01, SURFACE-2026-05-23-01, SURFACE-2026-05-17-03, SURFACE-2026-05-17-01, SURFACE-2026-05-16-04, SURFACE-2026-05-16-01, SURFACE-2026-05-12-03, SURFACE-2026-05-12-01, SURFACE-2026-05-11-04
 
 

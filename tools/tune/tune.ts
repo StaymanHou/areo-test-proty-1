@@ -38,6 +38,14 @@ export interface TuneArgs {
   seed: number;
   out: string | undefined; // undefined → default timestamped path
   ticks: number;
+  /**
+   * Symmetric-mirror links (SURFACE-2026-05-24-03 — methodology fix). At every
+   * optimizer evaluation, each `{ src, dst }` entry copies any knob path starting
+   * with `${src}.` to its mirror at `${dst}.` (same suffix). Closes the
+   * asymmetric-search-vs-symmetric-deploy mismatch surfaced at WP14.13.
+   * Empty array → behavior identical to pre-link tune CLI.
+   */
+  links: Array<{ src: string; dst: string }>;
 }
 
 export interface ResultsJson {
@@ -61,6 +69,8 @@ export interface ResultsJson {
     ticks: number;
     wallClockMs: number;
     timestamp: string;
+    /** Symmetric-mirror links recorded for reproducibility (SURFACE-2026-05-24-03). */
+    links: Array<{ src: string; dst: string }>;
   };
 }
 
@@ -86,6 +96,7 @@ export function parseArgs(argv: readonly string[]): TuneArgs {
   let seed = DEFAULT_SEED;
   let out: string | undefined;
   let ticks = DEFAULT_TICKS;
+  const links: Array<{ src: string; dst: string }> = [];
 
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
@@ -112,6 +123,21 @@ export function parseArgs(argv: readonly string[]): TuneArgs {
       const n = Number(next());
       if (!Number.isInteger(n) || n <= 0) throw new Error(`tune: --ticks must be a positive integer`);
       ticks = n;
+    } else if (arg === '--link') {
+      const raw = next();
+      const eqIdx = raw.indexOf('=');
+      if (eqIdx <= 0 || eqIdx === raw.length - 1) {
+        throw new Error(`tune: malformed --link "${raw}" — expected <src>=<dst>`);
+      }
+      const src = raw.slice(0, eqIdx).trim();
+      const dst = raw.slice(eqIdx + 1).trim();
+      if (src.length === 0 || dst.length === 0) {
+        throw new Error(`tune: malformed --link "${raw}" — src and dst must both be non-empty`);
+      }
+      if (src === dst) {
+        throw new Error(`tune: --link "${raw}" — src and dst must differ`);
+      }
+      links.push({ src, dst });
     } else {
       throw new Error(`tune: unknown argument "${arg}"`);
     }
@@ -150,7 +176,7 @@ export function parseArgs(argv: readonly string[]): TuneArgs {
     }
   }
 
-  return { knobs, bounds, regimes, restarts, seed, out, ticks };
+  return { knobs, bounds, regimes, restarts, seed, out, ticks, links };
 }
 
 // ---------------------------------------------------------------------------
@@ -170,12 +196,26 @@ export function buildObjective(
   regimes: readonly string[],
   ticks: number,
   harnessFn: HarnessFn = runHarness,
+  links: ReadonlyArray<{ src: string; dst: string }> = [],
 ): (userParams: number[]) => Promise<number> {
   return async (userParams: number[]): Promise<number> => {
     if (userParams.length !== knobs.length) {
       throw new Error(`objective: param length (${userParams.length}) mismatches knob count (${knobs.length})`);
     }
-    const paramStrings = knobs.map((k, i) => `${k}=${userParams[i]}`);
+    const paramStrings: string[] = knobs.map((k, i) => `${k}=${userParams[i]}`);
+    // Symmetric-mirror expansion (SURFACE-2026-05-24-03). For each link, scan
+    // knobs for any starting with `${src}.` and emit a mirror entry at the
+    // same suffix under `${dst}.`. The harness consumes these as additional
+    // --params overrides, making the search-airframe match the deployment.
+    for (const { src, dst } of links) {
+      const srcPrefix = `${src}.`;
+      knobs.forEach((k, i) => {
+        if (k.startsWith(srcPrefix)) {
+          const suffix = k.slice(srcPrefix.length);
+          paramStrings.push(`${dst}.${suffix}=${userParams[i]}`);
+        }
+      });
+    }
     const trajectories: RegimeTrajectory[] = [];
     for (const regime of regimes) {
       const fixtureId = REGIME_TO_FIXTURE[regime];
@@ -223,6 +263,7 @@ export function composeResults(args: TuneArgs, opt: OptimizeResult, wallClockMs:
       ticks: args.ticks,
       wallClockMs,
       timestamp,
+      links: args.links.map((l) => ({ src: l.src, dst: l.dst })),
     },
   };
 }
@@ -235,7 +276,7 @@ async function main(argv: readonly string[]): Promise<void> {
   const args = parseArgs(argv);
   await RAPIER.init();
 
-  const objective = buildObjective(args.knobs, args.regimes, args.ticks);
+  const objective = buildObjective(args.knobs, args.regimes, args.ticks, runHarness, args.links);
   const optimizeOpts: OptimizeOpts = {
     dim: args.knobs.length,
     bounds: args.bounds,
