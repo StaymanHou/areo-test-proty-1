@@ -4,6 +4,45 @@ Surface-notes from workflow runs. Consumed and resolved by higher-level workflow
 
 ## Open
 
+### SURFACE-2026-05-25-02 — WP14.19 Phase 2 re-run under D25-ζ ESCALATE Branch B: c0-floor gone, all 3 regimes finite + c0 PASS, optimizer best deployed -14,881 (~50× past -300 threshold); `inducedDragK_wing` bound-pressure 88% = clean "widen" signal per `feedback_optimizer_bounds_are_floor.md` updated rule 2 — first time in the cascade this signal is unambiguous
+- **Source:** feature:build (WP14.19 Phase 2 re-run, 2026-05-25)
+- **Target level:** product:arch (D26 architect cycle driver — damping-bound widening + possibly envelope re-calibration with clean evidence base)
+- **Type:** arch-gap / branch-b-of-d25-ζ / bound-pressure-as-clean-widen-signal
+- **Priority:** medium-high (D26 cycle driver; gates WP14.19 Branch A close + the 13-SURFACE cascade chain full close + Phase 2 mission content; lower than -25-01 because the cascade root cause + score-function structure are now fully resolved and the remaining gap is calibration only)
+- **Summary:** WP14.19 Phase 2 re-ran the canonical D22-β linked-search tune VERBATIM under D25-ζ envelopes (uniform spawn AS=78 + all-level-cruise + target=78 + AS_ENVELOPE=30). **All 3 regimes finite 1800 ticks at baseline + tuned + control (no NaN, no Infinity).** **All 3 regimes pass criterion 0** (first-second window: no alt drop >20m, no AS<10 m/s). Optimizer best deployed -14,881 vs baseline -63,002 (4.2× improvement; concentrated on high regime where drag mechanisms suppress rocket-climb). Knob values are physically sensible — no gaming-corner saturation; `inducedDragK_wing` at 88% of 0.3 bound is a CLEAN widen signal under fixed integration + correctly-specified score function (per `feedback_optimizer_bounds_are_floor.md` updated rule 2: bound saturation under correct upstream IS the actionable signal). Branch B per WP14.19 locked decision: criterion 2 deployed in [-1e6, -300) → D26 architect cycle.
+- **Diagnostic interpretation:**
+  1. **The cascade root cause + structural causes are fully resolved.** Phase 2 D25-ζ re-run is the cleanest evidence yet: integrator correct (Rule #7 holds), spawn AS correct (V_trim), score function correctly specified (D25-ζ all-level-cruise + uniform target=78), mechanism stack correctness-preserving (β4 + β5 + D18). The remaining ~50× gap is pure calibration — bound choice + per-regime envelope sizing + possibly per-regime weighting.
+  2. **Per-regime breakdown reveals the gap structure:**
+     - Low (target 78, spawn 78, T<<D, naturally descending): tuned -5777 (WORSE than baseline -1861). The optimizer accepted worse low for big high improvement. Suggests per-regime weighting needs revisiting OR mode-aware envelope for descent regime.
+     - Mid (target 78, spawn 78, T≈D, level cruise): tuned -4707 (≈ baseline -5085 ≈ control -5164). Mid is already near its envelope-optimum; damping doesn't help much; the natural phugoid amplitude is the binding penalty.
+     - High (target 78, spawn 78, T>>D, naturally climbing): tuned -4395 vs baseline -56054 vs control -55277 (13× improvement via drag suppression). Drag mechanisms doing their job; the residual is climb altitude excess (alt rises ~270m at t=30s even under tuned drag).
+  3. **The high regime's residual is structurally a "climb is not bad behavior" question.** At spawn AS=78 + throttle=0.40, T>>D ⇒ airframe converts excess thrust into altitude (climbs). The ALT_ENVELOPE=50 penalizes this. But at high throttle the airframe SHOULD climb (real aircraft do). The D25-ζ "all level-cruise + target=78" framing assumes high regime should stay at 78 AND stay at alt 50 — those are inconsistent at high thrust. **This is structurally the same insight D23 had** ("different throttles → different behaviors") but applied at the alt/sink-rate envelope dimension rather than the AS dimension. Possible D26 candidates re-introduce per-throttle alt/sink-rate envelopes (climb OK at high; descent OK at low; level at mid).
+- **Bound-pressure at globalBest:**
+  - surfaces.0.clQ: 1.427/3.0 (48%) — mid-range
+  - surfaces.0.clAlphaDot: 2.567/10.0 (26%) — low-side
+  - **surfaces.0.inducedDragK: 0.265/0.3 (88%) — ⚠ NEAR-BOUND (clean widen signal per updated rule 2)**
+  - surfaces.2.clQ: 2.258/3.0 (75%) — high-side
+  - surfaces.2.clAlphaDot: 3.024/10.0 (30%) — mid-range
+  - surfaces.2.inducedDragK: 0.057/0.3 (19%) — low-side
+  - fuselageDrag.cd0: 0.298/0.5 (60%) — mid-range
+  - fuselageDrag.area: 0.690/1.0 (69%) — high-side
+- **Evidence:**
+  - Results JSON: `tools/tune/results/wp14.19-d24-tune.json` (gitignored)
+  - Symmetric-mirror harness CSVs: `/tmp/wp14.19/sym-{low,mid,high}.csv` (deterministic)
+  - Per-regime deployed scores: `/tmp/wp14.19/deployed-score.log` + `/tmp/wp14.19/baseline-score.log` + `/tmp/wp14.19/control-score.log`
+  - Tune CLI stdout: `/tmp/wp14.19/tune.log`
+- **D26 candidate menu (suggestion, NOT binding — D26 architect cycle independently derives per CLAUDE.md Rule #5):**
+  1. **D26-α (primary candidate per current evidence): widen `inducedDragK_wing` upper bound 0.3 → 0.6** (and possibly other near-bound knobs like surfaces.2.clQ 3.0→4.0, fuselageDrag.area 1.0→2.0) + re-tune. The 88% bound-pressure under correct integration + correct score function is the FIRST clean widen signal in the cascade history. Per updated `feedback_optimizer_bounds_are_floor.md` rule 2: trust this signal. Tooling-only change (tune.ts CLI args at WP14.19 next attempt or new task).
+  2. **D26-β (secondary): per-throttle alt/sink-rate envelopes** — re-introduce mode-aware envelopes for the alt dimension (low: descent acceptable up to 50m drop; mid: ±25m around spawn; high: climb acceptable up to 200m above spawn). Restores some of D23's per-regime spirit but at the alt dimension (not the AS dimension). The high regime's 270m climb excursion is currently penalized; allowing climb at high throttle is physically correct.
+  3. **D26-γ (tertiary): fifth-mechanism — longitudinal damper or dα/dt smoothing** — adds a new aircraft-level damping mechanism beyond β4/β5. Defer until D26-α + D26-β are tried; per `feedback_retune_attempt_budget.md` the calibration budget hasn't been exhausted yet.
+  4. **D26-δ (quaternary): per-regime weighting changes** — currently all 3 regimes weighted 1.0 in score sum. Low + high together produce ~⅔ of the penalty; mid is the natural cruise regime. Reduce low + high weight to 0.5 each. Risk: lets optimizer ignore non-mid regimes; explicit anti-pattern in cascade history.
+- **What this implies for the cascade-end confidence anchor:**
+  - WP14.18b deployed -26,306; WP14.19 D24-state -1e9 (c0-floor); WP14.19 D25-ζ-state -14,881. The cascade's deployed score has improved 4× over WP14.18b (the prior best) and dramatically over the D24-state intermediate. **All 3 regimes finite, all c0 PASS** is a major qualitative milestone unique to D25-ζ.
+  - P(D26-α + 1 more tune cycle hits ≥ -300) ≈ **45-60%** (88% bound-pressure under clean evidence is a high-leverage single change; widening to 0.6 gives ~2× drag headroom).
+  - P(WP14.19 Branch A within 1 more architect+tune cycle) ≈ **55-70%**; within 2 cycles ≈ **80-90%**. The cascade is in its final 1-2 cycles.
+- **Status:** open
+- **Blocks:** WP14.19 Branch A; transitively SURFACE-2026-05-25-01 close + SURFACE-2026-05-24-09 behavioral close + the 13-SURFACE cascade chain + WP15/WP16/WP17 Phase 2 mission content.
+
 ### SURFACE-2026-05-25-01 — WP14.19 Phase 2 ESCALATE (Branch B): D24 spawn-AS recalibration + integrator fix produce all-3-regimes-finite + damped phugoid dynamics, BUT D23 per-regime mode-dispatch envelopes are calibrated for the pre-fix WP14.5-era spawn AS=30 and mis-classify the new mid spawn AS=78 as outside the slow-flight [25, 50] AS window — mid scores -1e9 c0-floor on every parameter setting (baseline, optimizer globalBest, control)
 - **Source:** feature:build (WP14.19 Phase 2, 2026-05-25)
 - **Target level:** product:arch (D25 architect cycle driver — score-function envelope re-derivation under post-fix + post-spawn-AS-recalibration conditions)
@@ -31,7 +70,7 @@ Surface-notes from workflow runs. Consumed and resolved by higher-level workflow
   - P(D25-α + 1 more tune cycle hits ≥-300) ≈ **35-50%**; possibly D25-β (envelope re-calibration on D23 mode dispatch) instead.
   - P(WP14.19 Branch A within 2 architect cycles + 2 tune cycles) ≈ **75-90%** — the structural problem is solved; what remains is calibration.
 - **Recommended next architect cycle:** Per CLAUDE.md Rule #5 + `feedback_rule5_architect_cycle.md` + `feedback_investigation_before_architect.md`: independently derive at D25. Plan-time question to derive: under D24 fixtures + production aircraft.json baseline + fixed integration, what trajectory pattern does the airframe exhibit per regime, and what envelope shape captures that as "good flight"? The probe at `tools/tune/probe-wp14.19-envelope.mjs` is a useful diagnostic for D25 plan-time work.
-- **Status:** open
+- **Status:** **partial — D25 architect cycle landed 2026-05-25 afternoon** (arch.md Revision 2026-05-25 afternoon — D25-ζ). Independent CLAUDE.md Rule #5 derivation REFINED the brief's primary candidate D25-α into D25-ζ: L=W trim AS at a fixed-α airframe is throttle-independent (V_trim ≈ 78 m/s for this airframe); D24's per-throttle T=D-derived {45, 78, 128} was structurally wrong on 2 of 3 regimes. D25-ζ: uniform spawn AS=78 + revert score.ts DEFAULT_ENVELOPES to all-level-cruise + targetAirspeed={78,78,78} + AS_ENVELOPE=30. CLAUDE.md Rule #9 amended to remove "at the fixture's throttle" qualifier. WP14.19 Phase 2 re-ran under D25-ζ: all 3 regimes finite + c0 PASS; optimizer best deployed **-14,881** (~50× past -300, 4× better than baseline -63k). Branch B again, but in a much cleaner shape — bound-pressure 88% on `inducedDragK_wing` is now a clean widen signal. Filed SURFACE-2026-05-25-02 (D26 cycle driver). Full close of -25-01 pending WP14.19 Branch A under D26.
 - **Blocks:** WP14.19 Branch A; transitively SURFACE-2026-05-24-09 behavioral close, the 13-SURFACE cascade chain full close, WP15/WP16/WP17 Phase 2 mission content.
 
 ### SURFACE-2026-05-24-09 — CRITICAL: Rapier per-tick force accumulator never cleared; `body.resetForces()` + `body.resetTorques()` missing from `src/aircraft/physics-core/step.ts:32-36`; forces compound multiplicatively (at tick n applied force = (n+1) × intended); this is the root cause of the entire D14→D23 cascade — 8 architect revisions chased symptoms of a one-line integrator bug

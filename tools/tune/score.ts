@@ -140,30 +140,47 @@ export interface ScoreEnvelopes {
   airframe?: AirframeConstants;
 }
 
+// D25 (arch.md Revision 2026-05-25 afternoon) — DEFAULT_ENVELOPES reverted to
+// all-level-cruise framing with single L=W trim AS target=78 for all regimes.
+// D24's per-throttle T=D-derived `targetAirspeed: {45, 60, 85}` (originally
+// from D21) conflated T=D balance with L=W balance; under fixed integration +
+// post-D24 fixtures + Rule #5 independent re-derivation, L=W trim AS is
+// throttle-independent (V_trim = √(2·W/(ρ·S·CL_at_trim_α)) ≈ 78 m/s for the
+// production WP14.10 aircraft.json). Throttle alone differentiates
+// climb/cruise/descent FROM the common V_trim start. The D23 per-regime
+// mode-dispatch (controlled-descent / slow-flight-or-shallow-descent /
+// level-cruise) was an artifact of pre-fix integrator + pre-D24-fixture-recal
+// era; under correct integration + V_trim spawn, all regimes ARE level cruise
+// (just at different energy trajectories given throttle). The D23 mode-
+// dispatch code (controlledDescentScore / slowFlightScore / regimeMode field)
+// stays in score.ts as back-compat-callable; legacy Vitest cases may
+// construct envelopes explicitly with `regimeMode` set per D23 framing.
 export const DEFAULT_ENVELOPES: ScoreEnvelopes = {
   ALT_ENVELOPE: 50,
-  AS_ENVELOPE: 25,
+  // D25 — AS_ENVELOPE 25→30 (+5 m/s for natural phugoid amplitude observed
+  // in WP14.19 Phase 2 trajectories where AS oscillates 50-78 at mid). This
+  // is a natural-amplitude widening, not a target-mismatch widening.
+  AS_ENVELOPE: 30,
   PITCH_RATE_LIMIT: 360,
-  // D21 — re-calibrated from {low:25, mid:30, high:40} to airframe L=W
-  // equilibrium AS at throttles 0.05/0.15/0.40 per arch.md Revision
-  // 2026-05-24 (evening). See the L=W derivation in arch.md §D21.
-  targetAirspeed: { low: 45, mid: 60, high: 85 },
+  // D25 — uniform L=W trim AS=78 for all regimes (replacing D21's per-regime
+  // {45, 60, 85}). The L=W trim AS is throttle-independent for a fixed-α
+  // airframe; throttle determines T-vs-D balance AT V_trim (climb/cruise/
+  // descent) not V_trim itself. See arch.md Revision 2026-05-25 afternoon § D25.
+  targetAirspeed: { low: 78, mid: 78, high: 78 },
   weightRegime: { low: 1, mid: 1, high: 1 },
   PHUGOID_WEIGHT: 1,
   TICK_HZ: 60,
   LEVEL_FLIGHT_WINDOW_SEC: 1.0,
   LEVEL_FLIGHT_ALT_DROP_MAX: 20,
   LEVEL_FLIGHT_AS_MIN: 10,
-  // D23 — per-regime throttle-mode dispatch per arch.md Revision
-  // 2026-05-24 (night). Low/mid throttles measure mode-appropriate
-  // behavior (descent / slow-flight) rather than level cruise — real
-  // Cessna at idle DESCENDS by design; no level-flight equilibrium
-  // exists at low/mid throttles under D22-β drag.
-  regimeMode: {
-    low: 'controlled-descent',
-    mid: 'slow-flight-or-shallow-descent',
-    high: 'level-cruise',
-  },
+  // D25 — regimeMode reverted to undefined (engages back-compat level-cruise
+  // fallback for all regimes; equivalently could set all to 'level-cruise').
+  // The D23 mode dispatch was a pre-D24-fixture-recal-era artifact; under
+  // V_trim spawn all regimes start at level flight regardless of throttle.
+  // D23 mode-dispatch fields below (SINK_RATE_*, AS_MID_*, PITCH_*_DEG, TD_*)
+  // are retained for back-compat callers that opt into D23 framing
+  // explicitly; they are inert under the new default `regimeMode: undefined`.
+  regimeMode: undefined,
   SINK_RATE_LOW_MIN: 1,
   SINK_RATE_LOW_MAX: 5,
   SINK_RATE_MID_MIN: -1,

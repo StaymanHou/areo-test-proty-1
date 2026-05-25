@@ -122,33 +122,27 @@ describe('parseArgs — error paths', () => {
 
 // Build a synthetic clean CSV for a given throttle regime so the score
 // function returns ~0 under D23 per-regime mode dispatch. Trajectory shape
-// matches mode-appropriate behavior:
-//   throttle ≤ 0.075 → low (controlled-descent): sink 3 m/s, pitch -20°, AS 42
-//   throttle ≤ 0.225 → mid (slow-flight): sink 1 m/s, level pitch, AS 35
-//   else → high (level-cruise): no sink, level pitch, AS 85 (post-D21 high target)
-// Pre-D23 this function produced level-cruise at all 3 throttles; D23
-// reframes low/mid to mode-appropriate behavior. AS values land near-zero
-// in each mode's envelope.
-function makeCleanCsv(throttle: number): string {
-  const isLow = throttle <= 0.075;
-  const isMid = !isLow && throttle <= 0.225;
-  const isHigh = !isLow && !isMid;
-  const airspeed = isLow ? 42 : isMid ? 35 : 85;
-  const vY = isLow ? -3 : isMid ? -1 : 0; // sink rate (vY up-positive; sink = -vY)
-  const pitchRad = isLow ? -20 * Math.PI / 180 : 0;
+// D25 (2026-05-25 afternoon) — DEFAULT_ENVELOPES is now all-level-cruise with
+// uniform target=78. Clean = "level cruise at V_trim=78 with no descent or
+// pitch transient." All three throttles produce the same synthetic trajectory
+// (the test isolates buildObjective's harness-dispatch behavior, not the
+// per-regime mode dispatch — that's score.test.ts's domain). Under D25 score
+// function: AS=78 vs target=78 = 0 dev → score 0; objective = -score = 0.
+//
+// History: pre-D23, this function produced level-cruise at all 3 throttles
+// (AS=60). D23 (2026-05-24) reframed to mode-appropriate per-regime values
+// {42/35/85}. D25 (2026-05-25) reverts to uniform level-cruise at V_trim=78.
+function makeCleanCsv(_throttle: number): string {
   const rows: TrajectoryRow[] = [];
   for (let i = 0; i < 60; i++) {
-    const posY = 50 + vY * (i / 60); // descend at sink rate over the window
     rows.push({
       tick: i,
-      posX: 0, posY, posZ: 0,
-      vX: 0, vY, vZ: -airspeed,
-      pitch: pitchRad, yaw: 0, roll: 0,
-      airspeed,
+      posX: 0, posY: 50, posZ: 0,
+      vX: 0, vY: 0, vZ: -78,
+      pitch: 0, yaw: 0, roll: 0,
+      airspeed: 78,
     });
   }
-  // Suppress unused-var lint
-  void isHigh;
   return trajectoryToCsv(rows);
 }
 

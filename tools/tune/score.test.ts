@@ -11,16 +11,37 @@ import {
   type ScoreEnvelopes,
 } from './score';
 
-// D23 (2026-05-24 night) — DEFAULT_ENVELOPES now ships per-regime mode
-// dispatch (low='controlled-descent', mid='slow-flight-or-shallow-descent',
-// high='level-cruise'). The D14/D21 tests below assume "all regimes are
-// level-cruise" semantics — preserve that intent by overriding regimeMode
-// to undefined (= back-compat fallback to levelCruiseScore for any regime).
-// This is the explicit opt-out per arch.md Revision 2026-05-24 (night)
-// "Back-compat" section.
+// D25 (2026-05-25 afternoon) — DEFAULT_ENVELOPES now ships uniform target=78
+// + AS_ENVELOPE=30 + regimeMode=undefined (per arch.md Revision 2026-05-25
+// afternoon — D25-ζ). D23's per-regime mode dispatch is still callable but
+// no longer default; D21's per-regime targets {45, 60, 85} + AS_ENVELOPE=25
+// are no longer default either. The D14/D21-era tests below were authored
+// against the D21 numeric semantics (target_mid=60, AS_ENVELOPE=25) — preserve
+// that intent by pinning the legacy D21 targets + envelope explicitly. New
+// D25-era anti-regression tests at the DEFAULT_ENVELOPES describe block below
+// assert on the new D25 defaults.
 const LEGACY_LEVEL_CRUISE_ENVELOPES: ScoreEnvelopes = {
   ...DEFAULT_ENVELOPES,
   regimeMode: undefined,
+  // D21 historical values — preserve the numeric expectations of D14/D21-era
+  // tests authored against these constants. D25 changed only the defaults.
+  targetAirspeed: { low: 45, mid: 60, high: 85 },
+  AS_ENVELOPE: 25,
+};
+
+// D25 (2026-05-25 afternoon) — DEFAULT_ENVELOPES.regimeMode is now undefined.
+// D23 mode-dispatch unit tests below relied on the previous DEFAULT_ENVELOPES
+// having `regimeMode = {low:'controlled-descent', mid:'slow-flight-...',
+// high:'level-cruise'}` and called `regimeScore(traj, DEFAULT_ENVELOPES)`
+// expecting that dispatch. Under D25 they must explicitly opt into D23
+// framing via this constant.
+const D23_MODE_ENVELOPES: ScoreEnvelopes = {
+  ...DEFAULT_ENVELOPES,
+  regimeMode: {
+    low: 'controlled-descent',
+    mid: 'slow-flight-or-shallow-descent',
+    high: 'level-cruise',
+  },
 };
 
 // WP14.8 Phase 1 — score function coverage. Per the plan's case list:
@@ -449,27 +470,45 @@ describe('regimeScore — case (e) D21 precedence: criterion 0 PASS → criterio
   });
 });
 
-describe('DEFAULT_ENVELOPES — D21 anti-regression on the recalibrated constants', () => {
-  it('targetAirspeed defaults match the D21-derived L=W equilibrium {low:45, mid:60, high:85}', () => {
-    expect(DEFAULT_ENVELOPES.targetAirspeed.low).toBe(45);
-    expect(DEFAULT_ENVELOPES.targetAirspeed.mid).toBe(60);
-    expect(DEFAULT_ENVELOPES.targetAirspeed.high).toBe(85);
+describe('DEFAULT_ENVELOPES — D25 anti-regression on the corrected constants', () => {
+  it('targetAirspeed defaults are uniform L=W trim AS=78 for all regimes (D25-ζ; throttle-independent)', () => {
+    // D25 corrected D24's per-throttle T=D-derived {45, 78, 128} (and D21's
+    // {45, 60, 85}) to uniform V_trim=78 — L=W trim AS is throttle-independent
+    // for a fixed-α airframe. See arch.md Revision 2026-05-25 afternoon § D25.
+    expect(DEFAULT_ENVELOPES.targetAirspeed.low).toBe(78);
+    expect(DEFAULT_ENVELOPES.targetAirspeed.mid).toBe(78);
+    expect(DEFAULT_ENVELOPES.targetAirspeed.high).toBe(78);
   });
 
-  it('AS_ENVELOPE tightened from the pre-D21 value of 30 to 25', () => {
-    expect(DEFAULT_ENVELOPES.AS_ENVELOPE).toBe(25);
+  it('AS_ENVELOPE widened from 25 to 30 (+5 m/s for natural phugoid amplitude)', () => {
+    // D25 widened AS_ENVELOPE from D21's 25 to 30 to accommodate the natural
+    // phugoid amplitude observed under fixed integration at V_trim spawn.
+    expect(DEFAULT_ENVELOPES.AS_ENVELOPE).toBe(30);
   });
 
-  it('LEVEL_FLIGHT_* criterion 0 defaults match arch.md D21 spec', () => {
+  it('regimeMode default is undefined (D25 reverted D23 mode dispatch; back-compat fallback to all-level-cruise)', () => {
+    // D25 reverted D23's per-regime mode-dispatch default. D23 mode-dispatch
+    // code stays in score.ts as back-compat-callable; legacy tests construct
+    // envelopes with `regimeMode` explicitly per D23 framing.
+    expect(DEFAULT_ENVELOPES.regimeMode).toBeUndefined();
+  });
+
+  it('LEVEL_FLIGHT_* criterion 0 defaults match arch.md D21 spec (unchanged at D25)', () => {
     expect(DEFAULT_ENVELOPES.LEVEL_FLIGHT_WINDOW_SEC).toBe(1.0);
     expect(DEFAULT_ENVELOPES.LEVEL_FLIGHT_ALT_DROP_MAX).toBe(20);
     expect(DEFAULT_ENVELOPES.LEVEL_FLIGHT_AS_MIN).toBe(10);
   });
 
-  it('catches accidental revert to pre-D21 targetAirspeed mid=30', () => {
-    // If a refactor ever sets targetAirspeed.mid back to 30 it would silently
-    // re-introduce the bug that the entire D14/D17/D18/D19/D20 cascade ran on.
-    expect(DEFAULT_ENVELOPES.targetAirspeed.mid).not.toBe(30);
+  it('catches accidental revert to pre-D25 targetAirspeed (D21 {45, 60, 85} or D24/early-WP14 {25, 30, 40})', () => {
+    // The D14→D24 cascade went through multiple per-regime targetAirspeed
+    // sets ({25, 30, 40}, {45, 60, 85}, {45, 78, 128}). D25 corrected to
+    // uniform 78 per Rule #5 derivation. Catch any silent regression to a
+    // per-regime non-uniform default.
+    expect(DEFAULT_ENVELOPES.targetAirspeed.mid).not.toBe(30); // pre-D21 value
+    expect(DEFAULT_ENVELOPES.targetAirspeed.mid).not.toBe(60); // D21 value
+    // low/high must equal mid under D25 (uniform V_trim).
+    expect(DEFAULT_ENVELOPES.targetAirspeed.low).toBe(DEFAULT_ENVELOPES.targetAirspeed.mid);
+    expect(DEFAULT_ENVELOPES.targetAirspeed.high).toBe(DEFAULT_ENVELOPES.targetAirspeed.mid);
   });
 });
 
@@ -513,7 +552,7 @@ describe('regimeScore D23 t1 — controlled-descent mode, descending trajectory'
       airspeed: () => 42.1,
     });
     const traj: RegimeTrajectory = { regime: 'low', rows };
-    const s = regimeScore(traj, DEFAULT_ENVELOPES);
+    const s = regimeScore(traj, D23_MODE_ENVELOPES);
     expect(s).toBeGreaterThanOrEqual(-10);
     expect(s).toBeLessThanOrEqual(0);
   });
@@ -533,7 +572,7 @@ describe('regimeScore D23 t2 — controlled-descent mode, climbing trajectory (s
       airspeed: () => 42.1,
     });
     const traj: RegimeTrajectory = { regime: 'low', rows };
-    const s = regimeScore(traj, DEFAULT_ENVELOPES);
+    const s = regimeScore(traj, D23_MODE_ENVELOPES);
     expect(s).toBeLessThanOrEqual(-9);
     expect(s).toBeGreaterThan(-15);
   });
@@ -550,7 +589,7 @@ describe('regimeScore D23 t3 — slow-flight-or-shallow-descent mode, in-envelop
       airspeed: () => 35.1,
     });
     const traj: RegimeTrajectory = { regime: 'mid', rows };
-    const s = regimeScore(traj, DEFAULT_ENVELOPES);
+    const s = regimeScore(traj, D23_MODE_ENVELOPES);
     expect(s).toBeGreaterThanOrEqual(-10);
     expect(s).toBeLessThanOrEqual(0);
   });
@@ -587,14 +626,18 @@ describe('regimeScore D23 t5 — back-compat: regimeMode missing falls back to l
   it('falls back to level-cruise when regimeMode is present but regime label is missing from it', () => {
     const rows = levelCruise(600, 85);
     const traj: RegimeTrajectory = { regime: 'unknown-regime', rows };
-    // 'unknown-regime' is not in DEFAULT_ENVELOPES.regimeMode → fallback to level-cruise.
-    // levelCruiseScore uses targetAirspeed; 'unknown-regime' isn't in targetAirspeed either,
-    // so the fallback target is 30 m/s (per levelCruiseScore line in score.ts).
-    // AS 85 vs target 30 = 55 dev; AS_ENVELOPE 25 → excess 30 → penalty 900.
-    const sD23 = regimeScore(traj, DEFAULT_ENVELOPES);
+    // 'unknown-regime' is not in regimeMode → fallback to level-cruise.
+    // levelCruiseScore uses targetAirspeed; 'unknown-regime' isn't in
+    // targetAirspeed either, so the fallback target is 30 m/s (per
+    // levelCruiseScore default in score.ts).
+    // Under LEGACY (AS_ENVELOPE=25): AS 85 vs target 30 = 55 dev; excess 30 → penalty 900.
+    // Under DEFAULT (D25: AS_ENVELOPE=30): AS 85 vs target 30 = 55 dev; excess 25 → penalty 625.
+    // The fallback PATH (level-cruise) is taken identically by both; the numeric values
+    // differ because LEGACY pins D21's AS_ENVELOPE=25 and DEFAULT now has D25's 30.
     const sLegacy = regimeScore(traj, LEGACY_LEVEL_CRUISE_ENVELOPES);
-    expect(sD23).toBe(sLegacy);
-    expect(sD23).toBe(-900);
+    expect(sLegacy).toBe(-900);
+    const sD23 = regimeScore(traj, DEFAULT_ENVELOPES);
+    expect(sD23).toBe(-625);
   });
 });
 
@@ -701,16 +744,17 @@ describe('score D23 t7 — multi-regime dispatch sums correctly per mode', () =>
       { regime: 'mid', rows: midRows },
       { regime: 'high', rows: highRows },
     ];
-    const total = score(trajectories, DEFAULT_ENVELOPES);
+    // D25: explicit D23 mode envelopes (DEFAULT_ENVELOPES.regimeMode is now undefined).
+    const total = score(trajectories, D23_MODE_ENVELOPES);
     // Each individual regime's score should be ≥ -10 (near-zero region per t1/t3/t4).
     // Total = sum ≥ -30 and ≤ 0.
     expect(total).toBeGreaterThanOrEqual(-30);
     expect(total).toBeLessThanOrEqual(0);
 
     // Sanity: verify each per-regime call dispatches to its mode by comparing to direct mode calls.
-    const sLow = regimeScore({ regime: 'low', rows: lowRows }, DEFAULT_ENVELOPES);
-    const sMid = regimeScore({ regime: 'mid', rows: midRows }, DEFAULT_ENVELOPES);
-    const sHigh = regimeScore({ regime: 'high', rows: highRows }, DEFAULT_ENVELOPES);
+    const sLow = regimeScore({ regime: 'low', rows: lowRows }, D23_MODE_ENVELOPES);
+    const sMid = regimeScore({ regime: 'mid', rows: midRows }, D23_MODE_ENVELOPES);
+    const sHigh = regimeScore({ regime: 'high', rows: highRows }, D23_MODE_ENVELOPES);
     expect(total).toBeCloseTo(sLow + sMid + sHigh, 9);
   });
 
