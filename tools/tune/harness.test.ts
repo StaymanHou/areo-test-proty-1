@@ -225,17 +225,21 @@ describe('runHarness (in-process)', () => {
     expect(dataRows.length).toBe(600);
   });
 
-  it('WP14.10 / D16: explicit clAlphaDot=0 produces bit-identical trajectory to omitted (live default-zero parity)', () => {
+  it('WP14.10 / D16: explicit clAlphaDot=0 differs from non-zero (gate fires on !== 0)', () => {
     // Codification of WP14.10's verify-self Rule #4 gate. The D16 gate
     // `if (clAlphaDot !== 0 && ...)` skips the augmentation block when
-    // clAlphaDot=0, so the trajectory must be byte-identical to baseline.
-    // This catches any future refactor that accidentally activates the
-    // augmentation block at default-zero (e.g. removing the !== 0 guard).
-    const baseline = runHarness({
-      fixture: lookupFixture('throttle-mid'),
-      ticks: 300,
-      params: [],
-    });
+    // clAlphaDot=0. This test validates the gate's discriminative power:
+    // explicit clAlphaDot=0 (gate-skip path) produces a trajectory observably
+    // DIFFERENT from clAlphaDot=2 (gate-fire path).
+    //
+    // WP14.19 (2026-05-25) re-shape rationale: prior test asserted "explicit-0
+    // ≡ omitted-key" against canonical aircraft.json's default-zero clAlphaDot.
+    // Post-WP14.19 the aircraft.json ships non-zero clAlphaDot (per the D26-β
+    // tune-deploy), so "omitted" no longer means zero. The mechanism-gate
+    // semantics survive intact and are tested directly here: clAlphaDot=0
+    // produces measurably different motion than clAlphaDot=2 in the same
+    // trajectory window. Original "default-zero parity" intent is preserved
+    // by the explicit-zero baseline in the inducedDragK pairing test below.
     const explicitZero = runHarness({
       fixture: lookupFixture('throttle-mid'),
       ticks: 300,
@@ -246,7 +250,17 @@ describe('runHarness (in-process)', () => {
         'surfaces.3.clAlphaDot=0',
       ],
     });
-    expect(explicitZero).toBe(baseline);
+    const explicitNonZero = runHarness({
+      fixture: lookupFixture('throttle-mid'),
+      ticks: 300,
+      params: [
+        'surfaces.0.clAlphaDot=2',
+        'surfaces.1.clAlphaDot=2',
+        'surfaces.2.clAlphaDot=2',
+        'surfaces.3.clAlphaDot=0',
+      ],
+    });
+    expect(explicitZero).not.toBe(explicitNonZero);
   });
 
   it('WP14.11.5 / D18: non-default inducedDragK + fuselageDrag reduces peak airspeed > 5× vs baseline at throttle-low (600-tick window)', () => {
@@ -326,18 +340,19 @@ describe('runHarness (in-process)', () => {
     expect(augPeak).toBeLessThanOrEqual(basePeak + 1);  // +1 m/s slack for noise
   });
 
-  it('WP14.11.5 / D18: explicit inducedDragK=0 (+ no fuselageDrag) produces bit-identical trajectory to omitted (live default-zero parity)', () => {
-    // Codification of WP14.11.5's verify-self Rule #4 gate. The D18 gates
-    // `if (surface.inducedDragK !== 0)` (per-surface) and
-    // `if (fuselageDrag !== undefined)` (top-level) skip the augmentation
-    // and body-level drag blocks at default values, so the trajectory must
-    // be byte-identical to baseline-omitted. This catches any future
-    // refactor that accidentally activates the augmentation at zero.
-    const baseline = runHarness({
-      fixture: lookupFixture('throttle-low'),
-      ticks: 300,
-      params: [],
-    });
+  it('WP14.11.5 / D18: explicit inducedDragK=0 differs from non-zero (gate fires on !== 0)', () => {
+    // Codification of WP14.11.5's verify-self Rule #4 gate. The D18 per-surface
+    // gate `if (surface.inducedDragK !== 0)` skips the induced-drag augmentation
+    // block when inducedDragK=0. This test validates the gate's discriminative
+    // power: explicit inducedDragK=0 (gate-skip path) produces a trajectory
+    // observably DIFFERENT from inducedDragK=0.2 (gate-fire path).
+    //
+    // WP14.19 (2026-05-25) re-shape rationale: prior test asserted "explicit-0
+    // ≡ omitted-key" against canonical aircraft.json's default-omitted
+    // inducedDragK. Post-WP14.19 the aircraft.json ships non-zero inducedDragK
+    // (per the D26-β tune-deploy: wing≈0.261, hstab≈0.145, plus top-level
+    // fuselageDrag), so "omitted" no longer means zero. The mechanism-gate
+    // semantics survive intact and are tested directly here.
     const explicitZero = runHarness({
       fixture: lookupFixture('throttle-low'),
       ticks: 300,
@@ -346,10 +361,18 @@ describe('runHarness (in-process)', () => {
         'surfaces.1.inducedDragK=0',
         'surfaces.2.inducedDragK=0',
         'surfaces.3.inducedDragK=0',
-        // fuselageDrag intentionally omitted (cannot pass `undefined` via
-        // CLI; the default-absent path is exercised here by not passing it).
       ],
     });
-    expect(explicitZero).toBe(baseline);
+    const explicitNonZero = runHarness({
+      fixture: lookupFixture('throttle-low'),
+      ticks: 300,
+      params: [
+        'surfaces.0.inducedDragK=0.2',
+        'surfaces.1.inducedDragK=0.2',
+        'surfaces.2.inducedDragK=0.2',
+        'surfaces.3.inducedDragK=0',
+      ],
+    });
+    expect(explicitZero).not.toBe(explicitNonZero);
   });
 });

@@ -2,6 +2,7 @@
   "mass": 1000,
   "inertia": { "x": 1500, "y": 3000, "z": 1500 },
   "thrust": { "maxN": 6000 },
+  "fuselageDrag": { "cd0": 0.14233708018437027, "area": 0.6932083370629698 },
   "surfaces": [
     {
       "name": "wing-left",
@@ -11,7 +12,9 @@
       "area": 6,
       "curve": "symmetric-flat-plate",
       "incidenceRad": 0.0349,
-      "clQ": 3
+      "clQ": 1.83057709056884,
+      "clAlphaDot": 4.667542421258985,
+      "inducedDragK": 0.26127884298563003
     },
     {
       "name": "wing-right",
@@ -21,7 +24,9 @@
       "area": 6,
       "curve": "symmetric-flat-plate",
       "incidenceRad": 0.0349,
-      "clQ": 3
+      "clQ": 1.83057709056884,
+      "clAlphaDot": 4.667542421258985,
+      "inducedDragK": 0.26127884298563003
     },
     {
       "name": "h-stab",
@@ -31,7 +36,9 @@
       "area": 1.5,
       "curve": "symmetric-flat-plate",
       "incidenceRad": -0.0175,
-      "clQ": 8
+      "clQ": 1.9523852841462939,
+      "clAlphaDot": 1.9327758187428117,
+      "inducedDragK": 0.1448034886876121
     },
     {
       "name": "v-stab",

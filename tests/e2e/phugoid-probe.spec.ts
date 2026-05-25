@@ -14,7 +14,14 @@ import { test, expect } from '@playwright/test';
 // diverges at t≈6s. Re-enable this spec once the mechanism is revised. The
 // three probe missions in `public/missions/phugoid-probe-{low,mid,high}.json`
 // stay in place — they're useful infrastructure for the future arch revision.
-test.skip(true, 'WP14.5 disposition — β5 mechanism needs arch revision; see SURFACE-2026-05-12-03');
+//
+// UN-SKIPPED at WP14.19 Phase 4 (2026-05-25). The D14→D26 cascade has closed:
+// fix-resetforces-bug (SURFACE-2026-05-24-09, commit `46f9b42`) resolved the
+// Rapier per-tick force accumulator pathology that drove the original skip
+// (β5 wasn't broken; the integrator was). D24+D25+D26 architect cycles
+// corrected fixture spawn AS + score-function envelope abstraction.
+// WP14.19 globalBest mirrored to aircraft.json at this commit.
+// test.skip removed.
 
 type AircraftSnapshot = {
   position: { x: number; y: number; z: number };

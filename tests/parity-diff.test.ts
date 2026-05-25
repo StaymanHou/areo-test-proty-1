@@ -161,11 +161,15 @@ describe('D26 / WP14.19 — closed-form per-tick force budget anchor (Rule #7 in
     // body (= -Z world if pitch=0). Spawn at AS=30 along -Z to match the
     // probe-thrust-only convention.
     const { world } = createPhysicsWorld();
-    // Build an aero-zeroed config by mutating area to ~0 for all surfaces.
-    // (parseAircraftConfig has already validated the JSON; we mutate a copy.)
+    // Build an aero-zeroed config by mutating area to ~0 for all surfaces
+    // AND removing body-level fuselageDrag (WP14.19 D26-β aircraft.json
+    // ships non-zero `fuselageDrag: {cd0, area}` which applies body-level
+    // drag independent of per-surface area). For the Rule #7 thrust-only
+    // invariant we need ALL aero contributions zeroed.
     const aeroZeroedConfig: AircraftConfig = {
       ...config,
       surfaces: config.surfaces.map((s) => ({ ...s, area: 1e-6 })),
+      fuselageDrag: undefined,
     };
     const aircraft = new AircraftBody(world, aeroZeroedConfig, {
       position: new Vector3(0, 50, 0),
