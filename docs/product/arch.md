@@ -1,11 +1,12 @@
 ---
 stage: arch
 state: complete
-updated: 2026-05-24 (D23 added: per-regime throttle-mode reframe + score-function T=D regime guard. Driven by WP14.16 ESCALATE → SURFACE-2026-05-24-07 (commit `fc59655`) + an independent CLAUDE.md Rule #5 derivation that REFUTES both the SURFACE's D23-α primary (envelope re-evaluation) AND D23-β secondary (thrust uprating) candidates. **Critical finding:** at WP14.16 globalBest (k_wing=0.278, cd0_fus·area_fus=0.190), the airframe's minimum total drag at L=W is D_min=1959 N at V_min=61 m/s. At τ=0.05 (low) thrust=300 N and τ=0.15 (mid) thrust=900 N — **both << D_min, so no level-flight equilibrium exists at any AS at low OR mid throttles.** Only high regime (τ=0.40, thrust=2400 N ≈ D_min) has an equilibrium, near V=85 m/s. **The c0 PASS at low/mid is a 1-second-window artifact** identical to WP14.15's high-regime artifact (D22 finding): within 60 ticks AS hasn't yet collapsed; beyond that the airframe enters chaotic stall-recovery with observed AS amplitude ±84 m/s (5-8× textbook linear phugoid) and pitch saturating ±90° (gimbal lock). The observed motion is NOT a calibratable linear phugoid; D23-α envelope-widening would accept chaotic non-flight as "good flight" and fails casual-gamer-feel. D23-β thrust uprating to make low/mid equilibrate at D21 targets requires 47kN (8× current) — unphysical for a small civilian aircraft. The structural insight: D21's per-regime equal-weight assumption that "low throttle = level cruise at low AS" was always wrong — a Cessna at idle throttle DESCENDS by design; "low throttle level-flight" is a contradiction. D23 reframes the score function to per-regime *throttle-mode* with mode-specific success criteria: low=controlled-descent (sink-rate envelope), mid=climbing-or-level (positive thrust margin), high=level-cruise (existing T=D check). Tooling-only change to `tools/tune/score.ts` + Vitest. WBS additions: **WP14.17** (D23 impl, size S, 2-3h) + **WP14.18** (re-tune at D22-β bounds under new score function + browser walkthrough, size S, 2-4h). Picks D23-γ-evolved singularly per `feedback_surface_or_means_or.md`; D23-α/β REFUTED by derivation; D23-δ fifth-mechanism deferred. Entered via P12 SURFACE-IN from WP14.16 ESCALATE / SURFACE-2026-05-24-07.)
-previous_updated: 2026-05-24 (D21 added: score-function revision — criterion 0 "level-flight-maintenance" probe + per-regime target-airspeed re-calibration to airframe equilibrium values. Driven by WP14.14 D20 refutation (commits `2ba50d6`/`fd8cf76`) + a critical in-browser inspection at session end that revealed even the cascade's empirical best CANNOT sustain 1 second of level flight at the phugoid-probe-mid entry conditions — pitch −73°, AS 16.5 m/s, nose-first dive at t≈1s. Independent plan-time derivation per CLAUDE.md Rule #5 + `feedback_rule5_architect_cycle.md`: with mass=1000kg / S_wing=12m² / incidenceRad=0.0349rad / max thrust 6000N at throttle 0.15 (900N), level-flight equilibrium AS is ~60 m/s, NOT the score function's target 30 m/s. The 22,000× harness-score gap from −6.7M to −300 threshold is dominated by an envelope-against-wrong-target mismatch, not by an unfixable physics gap. The score function has been measuring deviation from the wrong target AS for the entire D14/D17/D18/D19/D20 cascade. Per `feedback_finite_vs_flyable.md` fired harder than ever — finite ≠ flying — AND per the post-browser-inspection evidence that numerical proxies (NaN-tick, envelope-deviation) all failed to surface the "nose-first dive at t=1s" pattern that a 1-second altitude-and-airspeed probe trivially catches. D21 picks score-function revision singularly per `feedback_surface_or_means_or.md`; rejects option-c reframed-as-descending-glide because option-c still ships under the wrong score function; rejects fifth-mechanism (stall-region CD steepening) because the dive at t=1s is not a stall-region problem. Tooling-only change to `tools/tune/score.ts` + Vitest; WP14.15 runs canonical 8-dim linked-search tune at WP14.13 widened bounds (NOT further-widened — bound-widening is OFF the menu per `feedback_optimizer_bounds_are_floor.md` "Failure mode at second widening" appendix) under the new score function. Entered via P12 SURFACE-IN from WP14.14 ESCALATE / SURFACE-2026-05-24-04.)
-previous_updated_2: 2026-05-24 (D20 added: re-tune drag polar under symmetric-mirror `--link` constraint with further-widened bounds — replaces SURFACE-2026-05-24-03's quaternary "fifth-mechanism" candidates after architect-cycle re-derivation through the artifact-optima lens (per `feedback_tune_cli_search_vs_deploy.md` Quaternary use, just persisted). The `tune-cli-link-flag` task close (commit `58badfe`) landed the tooling fix; the 15s linked smoke at WP14.13 widened bounds confirmed search-vs-deploy ratio collapsed from 0.67× to 1.0× AND the linked-symmetric globalBest improved deployed score ~14× over WP14.12 + ~447× over WP14.13. Two clear "bound-is-a-floor" signals survived the methodology fix: `inducedDragK_wing = 1.290 / 1.500` at 86% of widened bound; `fuselageDrag.area = 7.897 / 10.000` at 79% of widened bound. The optimizer wants more drag than even the 3×-widened bounds permit. D20 doubles those two bounds again (1.5→3.0 on k_wing/k_hstab; 10.0→20.0 on area) under `--link surfaces.0=surfaces.1` and re-tunes. Per CLAUDE.md Rule #5 architect-cycle derivation (per `feedback_rule5_architect_cycle.md`): D19a-extended (further bound-widening) is the highest-leverage single option against the now-reliable linked-search evidence base; D19d (envelope re-calibration) is reserved as the next-cycle fallback if D20 refutes; D19b (Ixx-anchored inertia) remains rejected as causally weak per the D19 derivation. Singular not stacked per `feedback_surface_or_means_or.md`. Entered via P12 SURFACE-IN from `tune-cli-link-flag` task close / SURFACE-2026-05-24-03 partial-close.)
-previous_updated_3: 2026-05-24 (D19 added: widen D18 drag-polar bounds + re-tune — replaces SURFACE-2026-05-24-01's "inertia-tensor revision" primary candidate after plan-time derivation per CLAUDE.md Rule #5 surfaced (a) an axis-naming error in the SURFACE entry: current Ixx=1500 is already Cessna-class in our Y-up convention, not 2.2× heavy as SURFACE-2026-05-24-01 claimed about "Iyy"; (b) the optimizer-at-bounds signal from WP14.12 globalBest is a directly actionable highest-leverage single option per `feedback_optimizer_bounds_are_floor.md` + `feedback_surface_or_means_or.md`. D19 widens k_wing/area upper bounds 3× and re-tunes; if D19 still refutes, D20 candidates re-rank from this richer evidence base. Entered via P12 SURFACE-IN from WP14.12 / SURFACE-2026-05-24-01.)
-previous_updated_4: 2026-05-23 (D18 added: drag polar revision — induced drag + fuselage parasitic drag; entered via P12 SURFACE-IN from WP14.11 / SURFACE-2026-05-23-01 after D17+D16 mechanism halves achieved numerical finiteness but no flyable point in joint (clQ, clAlphaDot) space. Diagnostic: aerodynamic drag dissipation under the current per-surface-only model is too weak — α=0 cruise CD≈0.02, no CL² induced-drag coupling, no fuselage drag, resulting in gravity-PE→KE conversion that produces 373 m/s airspeed peaks at throttle=0.05. D18 adds the missing drag-polar terms as the third mechanism layer.)
+updated: 2026-05-25 (D24 added: 13-SURFACE cascade walk-back + post-fix initial-condition recalibration. Driven by SURFACE-2026-05-24-09 (CRITICAL, resolved) — Rapier per-tick force accumulator was never cleared; forces compounded multiplicatively (at tick n applied force was (n+1)× intended); fix landed at `src/aircraft/physics-core/flightmodel.ts:132-138` (commit `46f9b42`). Deployed score collapsed from -2.999e9 → -26,306 (114,000× improvement) under SAME D23 score function + SAME bounds + SAME seed. **The D14→D23 cascade has STRUCTURALLY COLLAPSED:** 8 architect revisions and 6 substantive tune cycles chased symptoms of a one-line integrator bug. D24 walks back 13 SURFACEs as "resolved by integrator fix"; the architecturally-correct mechanism layers (D17 β4, D16 β5, D18 drag polar) survive intact but their *coefficients* are not transferable across the integrator-correctness boundary. Per CLAUDE.md Rule #5 independent derivation: under fixed integration with the production WP14.10 baseline (no `inducedDragK`, no `fuselageDrag`; pure-CD0 drag), L=W equilibrium exists at all three throttles — low/mid/high ≈ 45/78/128 m/s — but spawn AS=30 m/s in `tests/parity-fixtures.ts` is well below the mid-equilibrium 78. **The residual ~88× gap is dominated by below-equilibrium-spawn initial conditions**, NOT damping mechanism gaps. D24 picks **(b): adjust spawn AS in `tests/parity-fixtures.ts`** to the per-regime equilibrium AS, so the score function measures stability around equilibrium (criterion 0's intended semantics) rather than acceleration-to-equilibrium from below. Branches (a) widen damping bounds and (c) tweak aircraft.json REMOVED from menu per Rule #5 — the recency-bias pattern (`feedback_recency_bias_in_cascades.md`) says the unchanged shared dependency (spawn AS=30) is the high-prior suspect, not the recently-tuned damping bounds. CLAUDE.md Rule #7 (per-tick energy-budget sanity check) added at fix-time; D24 adds Rule #9 (initial-condition-equilibrium-consistency for level-flight score-function fixtures). WBS additions: **WP14.19** (D24 implementation — fixture spawn-AS recalibration + 4 Vitest dispositions + re-tune + browser walkthrough; single-WP per Rule #6 because no schema change; size S 3-5h, NEXT). WP14.17 and WP14.18 archived as ESCALATED-superseded-by-integrator-fix. Entered via P12 SURFACE-IN from `fix-resetforces-bug` task close / SURFACE-2026-05-24-09 resolution.)
+previous_updated: 2026-05-24 (D23 added: per-regime throttle-mode reframe + score-function T=D regime guard. Driven by WP14.16 ESCALATE → SURFACE-2026-05-24-07 (commit `fc59655`) + an independent CLAUDE.md Rule #5 derivation that REFUTES both the SURFACE's D23-α primary (envelope re-evaluation) AND D23-β secondary (thrust uprating) candidates. **Critical finding:** at WP14.16 globalBest (k_wing=0.278, cd0_fus·area_fus=0.190), the airframe's minimum total drag at L=W is D_min=1959 N at V_min=61 m/s. At τ=0.05 (low) thrust=300 N and τ=0.15 (mid) thrust=900 N — **both << D_min, so no level-flight equilibrium exists at any AS at low OR mid throttles.** Only high regime (τ=0.40, thrust=2400 N ≈ D_min) has an equilibrium, near V=85 m/s. **The c0 PASS at low/mid is a 1-second-window artifact** identical to WP14.15's high-regime artifact (D22 finding): within 60 ticks AS hasn't yet collapsed; beyond that the airframe enters chaotic stall-recovery with observed AS amplitude ±84 m/s (5-8× textbook linear phugoid) and pitch saturating ±90° (gimbal lock). The observed motion is NOT a calibratable linear phugoid; D23-α envelope-widening would accept chaotic non-flight as "good flight" and fails casual-gamer-feel. D23-β thrust uprating to make low/mid equilibrate at D21 targets requires 47kN (8× current) — unphysical for a small civilian aircraft. The structural insight: D21's per-regime equal-weight assumption that "low throttle = level cruise at low AS" was always wrong — a Cessna at idle throttle DESCENDS by design; "low throttle level-flight" is a contradiction. D23 reframes the score function to per-regime *throttle-mode* with mode-specific success criteria: low=controlled-descent (sink-rate envelope), mid=climbing-or-level (positive thrust margin), high=level-cruise (existing T=D check). Tooling-only change to `tools/tune/score.ts` + Vitest. WBS additions: **WP14.17** (D23 impl, size S, 2-3h) + **WP14.18** (re-tune at D22-β bounds under new score function + browser walkthrough, size S, 2-4h). Picks D23-γ-evolved singularly per `feedback_surface_or_means_or.md`; D23-α/β REFUTED by derivation; D23-δ fifth-mechanism deferred. Entered via P12 SURFACE-IN from WP14.16 ESCALATE / SURFACE-2026-05-24-07.)
+previous_updated_2: 2026-05-24 (D21 added: score-function revision — criterion 0 "level-flight-maintenance" probe + per-regime target-airspeed re-calibration to airframe equilibrium values. Driven by WP14.14 D20 refutation (commits `2ba50d6`/`fd8cf76`) + a critical in-browser inspection at session end that revealed even the cascade's empirical best CANNOT sustain 1 second of level flight at the phugoid-probe-mid entry conditions — pitch −73°, AS 16.5 m/s, nose-first dive at t≈1s. Independent plan-time derivation per CLAUDE.md Rule #5 + `feedback_rule5_architect_cycle.md`: with mass=1000kg / S_wing=12m² / incidenceRad=0.0349rad / max thrust 6000N at throttle 0.15 (900N), level-flight equilibrium AS is ~60 m/s, NOT the score function's target 30 m/s. The 22,000× harness-score gap from −6.7M to −300 threshold is dominated by an envelope-against-wrong-target mismatch, not by an unfixable physics gap. The score function has been measuring deviation from the wrong target AS for the entire D14/D17/D18/D19/D20 cascade. Per `feedback_finite_vs_flyable.md` fired harder than ever — finite ≠ flying — AND per the post-browser-inspection evidence that numerical proxies (NaN-tick, envelope-deviation) all failed to surface the "nose-first dive at t=1s" pattern that a 1-second altitude-and-airspeed probe trivially catches. D21 picks score-function revision singularly per `feedback_surface_or_means_or.md`; rejects option-c reframed-as-descending-glide because option-c still ships under the wrong score function; rejects fifth-mechanism (stall-region CD steepening) because the dive at t=1s is not a stall-region problem. Tooling-only change to `tools/tune/score.ts` + Vitest; WP14.15 runs canonical 8-dim linked-search tune at WP14.13 widened bounds (NOT further-widened — bound-widening is OFF the menu per `feedback_optimizer_bounds_are_floor.md` "Failure mode at second widening" appendix) under the new score function. Entered via P12 SURFACE-IN from WP14.14 ESCALATE / SURFACE-2026-05-24-04.)
+previous_updated_3: 2026-05-24 (D20 added: re-tune drag polar under symmetric-mirror `--link` constraint with further-widened bounds — replaces SURFACE-2026-05-24-03's quaternary "fifth-mechanism" candidates after architect-cycle re-derivation through the artifact-optima lens (per `feedback_tune_cli_search_vs_deploy.md` Quaternary use, just persisted). The `tune-cli-link-flag` task close (commit `58badfe`) landed the tooling fix; the 15s linked smoke at WP14.13 widened bounds confirmed search-vs-deploy ratio collapsed from 0.67× to 1.0× AND the linked-symmetric globalBest improved deployed score ~14× over WP14.12 + ~447× over WP14.13. Two clear "bound-is-a-floor" signals survived the methodology fix: `inducedDragK_wing = 1.290 / 1.500` at 86% of widened bound; `fuselageDrag.area = 7.897 / 10.000` at 79% of widened bound. The optimizer wants more drag than even the 3×-widened bounds permit. D20 doubles those two bounds again (1.5→3.0 on k_wing/k_hstab; 10.0→20.0 on area) under `--link surfaces.0=surfaces.1` and re-tunes. Per CLAUDE.md Rule #5 architect-cycle derivation (per `feedback_rule5_architect_cycle.md`): D19a-extended (further bound-widening) is the highest-leverage single option against the now-reliable linked-search evidence base; D19d (envelope re-calibration) is reserved as the next-cycle fallback if D20 refutes; D19b (Ixx-anchored inertia) remains rejected as causally weak per the D19 derivation. Singular not stacked per `feedback_surface_or_means_or.md`. Entered via P12 SURFACE-IN from `tune-cli-link-flag` task close / SURFACE-2026-05-24-03 partial-close.)
+previous_updated_4: 2026-05-24 (D19 added: widen D18 drag-polar bounds + re-tune — replaces SURFACE-2026-05-24-01's "inertia-tensor revision" primary candidate after plan-time derivation per CLAUDE.md Rule #5 surfaced (a) an axis-naming error in the SURFACE entry: current Ixx=1500 is already Cessna-class in our Y-up convention, not 2.2× heavy as SURFACE-2026-05-24-01 claimed about "Iyy"; (b) the optimizer-at-bounds signal from WP14.12 globalBest is a directly actionable highest-leverage single option per `feedback_optimizer_bounds_are_floor.md` + `feedback_surface_or_means_or.md`. D19 widens k_wing/area upper bounds 3× and re-tunes; if D19 still refutes, D20 candidates re-rank from this richer evidence base. Entered via P12 SURFACE-IN from WP14.12 / SURFACE-2026-05-24-01.)
+previous_updated_5: 2026-05-23 (D18 added: drag polar revision — induced drag + fuselage parasitic drag; entered via P12 SURFACE-IN from WP14.11 / SURFACE-2026-05-23-01 after D17+D16 mechanism halves achieved numerical finiteness but no flyable point in joint (clQ, clAlphaDot) space. Diagnostic: aerodynamic drag dissipation under the current per-surface-only model is too weak — α=0 cruise CD≈0.02, no CL² induced-drag coupling, no fuselage drag, resulting in gravity-PE→KE conversion that produces 373 m/s airspeed peaks at throttle=0.05. D18 adds the missing drag-polar terms as the third mechanism layer.)
 ---
 
 
@@ -1911,3 +1912,242 @@ D21 added per-regime `targetAirspeed` and a 1-second level-flight criterion 0. B
 D21's "score-function-revision" axis (per `feedback_retune_attempt_budget.md`) is therefore not exhausted; it's extended with the mode abstraction. This is structurally a 2nd-order refinement of D21 (Rule #8 applied with finer abstraction), not a refutation. D21's text-claim "the score function's targets are physical quantities" still binds; D23 refines "what physical quantity per regime" from "equilibrium AS" to "mode-appropriate behavior."
 
 This distinction matters for attempt-budget accounting: D23 does NOT consume a fresh attempt on the score-function axis as if D21 had failed; it extends D21's axis with a richer abstraction. The bound-axis attempts (D18-D22) are exhausted; D23 doesn't touch them. The thrust-axis attempts (1 considered, refuted at derivation) are fresh budget. The mechanism-axis (D17/D16/D18 mechanism additions) is paused — D23 doesn't open it.
+
+## Revision 2026-05-25 — D24: Cascade walk-back post-integrator-fix + initial-condition recalibration (resolves SURFACE-2026-05-24-09; supersedes SURFACE-2026-05-24-08 and walks back 13-SURFACE chain)
+
+**Entry mode:** P12 SURFACE-IN from `fix-resetforces-bug` task close (commit `46f9b42`, 2026-05-24) / SURFACE-2026-05-24-09 (CRITICAL, resolved). The D14→D23 cascade has structurally collapsed: 8 architect revisions and 6 substantive tune cycles were chasing symptoms of a one-line integrator bug. This revision documents the walk-back and selects the next tune-deploy path under correct integration.
+
+### What the integrator fix was
+
+`src/aircraft/physics-core/flightmodel.ts:132-138` (commit `46f9b42`) — two lines added at the top of `applyForces()`:
+
+```typescript
+this.aircraft.body.resetForces(true);
+this.aircraft.body.resetTorques(true);
+```
+
+Rapier's `body.addForce()` / `body.addForceAtPoint()` accumulate into a per-tick buffer; `world.step()` integrates but does NOT auto-clear the buffer. Without the explicit reset, at tick n the cumulative force applied during integration is **(n+1)× the intended force**. Single-point enforcement at the `applyForces()` API boundary covers both the harness path (via `step.ts`) and the browser path (via `src/main.ts`).
+
+Cascade impact (post-mortem evidence at SURFACE-2026-05-24-09 backlog entry):
+- **WP14.5 finding** ("clAlphaDot=0 baseline diverges at t≈6s for high throttle"): at tick 360, effective thrust was ≈864 kN on a 1000 kg airframe → 864 m/s² acceleration. That was textbook integrator runaway from compounding forces, not a phugoid divergence.
+- **WP14.18 re-tune verification** (same D23 score function, same bounds, same seed; only the integrator fixed): optimizer best score -2,035,174,819 → **-9,422.98** (216,000× improvement); deployed-symmetric total -2,999,998,384 → **-26,306.38** (114,000× improvement); c0-floor cluster 3/4 → **0/4**; all 3 regimes finite 1800 ticks (high was NaN'ing at tick 1530); `inducedDragK_wing` bound saturation 92.4% → **1.5%**.
+
+CLAUDE.md Rule #7 (per-tick energy-budget sanity check on the integrator) was added at fix-time and codifies the rule that would have caught this bug in 60 seconds at any of WP14.5, WP14.7, WP14.11, WP14.14, or WP14.18.
+
+### 13-SURFACE cascade walk-back (each marked "resolved by integrator fix")
+
+The chain below was filed across WP14.5/11/12/13/14/15/16/18 under the broken integrator. Each SURFACE's claimed mechanism gap turned out to be a symptom of compounding-force injection. The architecturally-correct mechanism layers shipped through the cascade (D17 β4 non-dim, D16 β5 non-dim, D18 drag polar) survive intact under fixed integration — they describe real aerodynamics — but their *coefficients* (β4 clQ values, β5 clAlphaDot values, D18 inducedDragK/fuselageDrag values) are NOT transferable across the integrator boundary because they were tuned to dissipate energy that the integrator was injecting at (n+1)× per tick. Per-coefficient tuning starts fresh under fixed integration.
+
+| SURFACE | Original claimed mechanism gap | Reality post-fix | Status |
+|---------|-------------------------------|------------------|--------|
+| SURFACE-2026-05-24-09 | Rapier per-tick force accumulator never cleared | Root cause; fix landed | **resolved** |
+| SURFACE-2026-05-24-08 | D23 score function refuted (3/4 c0-floor) | Score function fine; was diagnosing pathological compounding-motion | **superseded by -09** |
+| SURFACE-2026-05-24-07 | Undamped longitudinal oscillation at WP14.16 globalBest | Oscillation was integrator-runaway, not undamped phugoid | **resolved by integrator fix** |
+| SURFACE-2026-05-24-06 | D21 c0 fails low+mid; AS collapse <10 m/s within 1s | AS collapse was compounding-drag overdamping, not target-AS mismatch | **resolved by integrator fix** |
+| SURFACE-2026-05-24-04 | D20 further-bound-widening overshoots; 4/4 c0-floor | c0-floor was integrator pathology basin, not optimizer divergence | **resolved by integrator fix** |
+| SURFACE-2026-05-24-03 | D19 widened-bounds NaN at all 3 regimes | NaN at all 3 regimes was compounding-force terminal velocity | **resolved by integrator fix** |
+| SURFACE-2026-05-24-01 | D18 8-dim tune produces unflyable trajectories | "Unflyable" was compounding motion, not drag-polar insufficiency | **resolved by integrator fix** |
+| SURFACE-2026-05-23-01 | Third-mechanism-layer needed (drag polar) | D18 drag polar is correctness-preserving; coefficients tune-only | **resolved by integrator fix** (D18 schema survives) |
+| SURFACE-2026-05-17-03 | Empirical β4 stable region narrower than textbook 1-10 | Stable region narrowness was integrator-NaN floor, not β4 saturation | **resolved by integrator fix** |
+| SURFACE-2026-05-17-01 | D15 Form A implementation refuted at verify-self | Implementation level had a real bug; D17 superseded — D17 itself survives | **resolved by integrator fix** (D17 schema survives) |
+| SURFACE-2026-05-16-04 | β4 + β5 joint NaN-poisoned at dt=1/60 | NaN-poisoning was integrator compounding, not joint instability | **resolved by integrator fix** |
+| SURFACE-2026-05-16-01 | β4 explicit-Euler instability above V_REF (~7s runaway) | Runaway was (n+1)× thrust accumulation; β4 itself is stable under fixed integration | **resolved by integrator fix** |
+| SURFACE-2026-05-12-03 | β5 mechanism diverges at any tuning value | Divergence was compounding forces; β5 mechanism is correctness-preserving | **resolved by integrator fix** (D16 schema survives) |
+| SURFACE-2026-05-12-01 | Waypoint missions need non-zero clAlphaDot tuning | β5 tunes will be different under fixed integration; mechanism survives | **resolved by integrator fix** (tuning re-starts) |
+| SURFACE-2026-05-11-04 | Phugoid (long-period) mode is undamped | "Undamped phugoid" was integrator runaway. True phugoid behavior under fixed integration is the open question for WP14.19 evidence | **resolved by integrator fix at the architectural level; behavioral re-validation pending at WP14.19** |
+
+The walk-back at `workflow/backlog.md` writes a one-line "resolved by integrator fix per SURFACE-2026-05-24-09 + commit `46f9b42`" citation onto each entry's `Status` field. The original SURFACE prose stays as historical record of the cascade's confusion.
+
+### What survives the cascade (NOT walked back)
+
+- **D2: Aerosurface primitive** (per-surface lift/drag, Khan & Nahon) — correctness-preserving; real aerodynamics.
+- **D10: Per-surface incidenceRad (β1) trim mechanism** — unaffected; integrator-independent.
+- **D14: Headless harness + Nelder-Mead optimizer** — the *infrastructure* is sound. The *optimization runs* that produced WP14.11-WP14.18 globalBests are invalidated because they searched in pathological compounding-force regimes. The harness itself is correct and runs cleanly under fixed integration.
+- **D14.3: Parity-fixtures architecture** (low/mid/high throttle) — fixture *structure* survives; the spawn AS=30 needs re-derivation (see below).
+- **D17: β4 non-dim pitch-rate damping schema** — correctness-preserving textbook form; coefficients tune-only.
+- **D16: β5 non-dim AoA-rate damping schema** — same.
+- **D18: Drag polar schema** (`inducedDragK?`, `fuselageDrag?`) — correctness-preserving textbook drag; coefficients tune-only.
+- **D21: Score function criterion 0** (1-second level-flight-maintenance probe) — correctness-preserving diagnostic infrastructure; the *thresholds* (target_AS values, ALT_DROP_MAX, AS_MIN) need re-derivation under fixed integration.
+- **D23: Per-regime throttle-mode dispatch** in score.ts — correctness-preserving framing; the per-mode envelopes need re-derivation under fixed integration.
+- **CLAUDE.md Rules #1-#7** — all survive. Rule #7 was just added at fix-time and codifies the lesson.
+
+### What's invalidated (NOT survives the cascade)
+
+- All `tools/tune/results/wp14.*-*.json` artifacts — produced under broken integrator; coefficients not transferable.
+- All globalBest knob values in WP14.11-WP14.18 cascade — invalidated.
+- D22-β narrowed bounds choice (k_wing≤0.3, area≤1.0) — the rationale was "physical-realism + don't widen because of bidirectional gaming." Under fixed integration the "gaming" is gone; bounds need re-derivation against the post-fix optimizer's actual exploration.
+- 3× `tests/parity-diff.test.ts` browser-side golden CSVs — produced under broken integrator; need regeneration via Playwright once D24 closes.
+- 1× `tools/tune/harness.test.ts:307` — asserts on bug-symptom value `basePeak > 400 m/s` (now correctly 42 m/s post-fix); needs flip or deprecate.
+
+### Plan-time derivation (per CLAUDE.md Rule #5; independent of SURFACE prose)
+
+**Inputs (production WP14.10 baseline `aircraft.json`, UNTOUCHED through entire cascade):**
+- mass = 1000 kg → W = 9810 N
+- S_wing = 12 m² (two surfaces × 6 m² each); CD0 ≈ 0.02 (symmetric flat plate)
+- ρ = 1.225 kg/m³; thrust_max = 6000 N
+- incidenceRad = 0.0349 rad (~2°) on wings → CL(α=2°) ≈ 2π·sin(0.0349) ≈ 0.22
+- **No `inducedDragK` set, no `fuselageDrag` set** → drag is per-surface CD only
+
+**Drag at level cruise (L=W) under fixed integration (post-fix):**
+
+D_total(V) ≈ q·S·CD0 = 0.5·1.225·V²·12·0.02 = **0.147·V²** N
+
+Per-regime L=W equilibrium:
+
+| Throttle τ | Thrust (N) | V_eq from T=D (m/s) | CL_req at V_eq | α_req for CL_req |
+|------------|-----------|---------------------|-----------------|-------------------|
+| 0.05 (low) | 300 | √(300/0.147) = **45.2** | W/(q·S) = 9810/(0.5·1.225·45.2²·12) = 0.65 | ~6° (above cruise incidence; achievable below stall ~12°) |
+| 0.15 (mid) | 900 | √(900/0.147) = **78.3** | 0.22 | ~2° (matches incidence — happy equilibrium) |
+| 0.40 (high) | 2400 | √(2400/0.147) = **127.9** | 0.083 | ~0.75° (below cruise incidence — airframe trims nose-down) |
+
+**Sanity:** at thrust 900 N (mid) and V=78 m/s the CL_req=0.22 matches the wings' incidence-induced CL exactly. The airframe **happens to be designed** for mid-throttle level cruise at ~78 m/s. This is consistent with the WP1-2 era airframe being sized for a Cessna-class trim at ~150 knots.
+
+**The structural finding for D24:**
+
+`tests/parity-fixtures.ts` spawns all three fixtures at **AS=30 m/s** (`linvel: { x: 0, y: 0, z: -30 }`). Under fixed integration, this is:
+- **Low (target equilibrium ~45):** spawn AS is 67% of equilibrium → mild below-equilibrium spawn, airframe accelerates toward equilibrium under thrust. Manageable transient.
+- **Mid (target equilibrium ~78):** spawn AS is 38% of equilibrium → severe below-equilibrium spawn, airframe drops nose-first while accelerating, criterion 0 fails on altitude drop within 1s.
+- **High (target equilibrium ~128):** spawn AS is 23% of equilibrium → catastrophic below-equilibrium spawn, airframe must accelerate ~4× its initial velocity before lift can support weight.
+
+The score function's criterion 0 ("alt drop ≤ 20m in first 1s; AS ≥ 10 m/s") is asking "stay level" while the initial condition guarantees the airframe is NOT in level-flight equilibrium. The airframe cannot stay level at AS=30 because L < W. The "level-flight criterion 0" is structurally measuring **acceleration-to-equilibrium from below**, not stability around equilibrium. That's the source of the residual -26,306 deployed score (~88× past the -300 threshold).
+
+This was the structural blind spot D21 partially identified (target_AS was 2× too low) but D21 only updated the *target* values in the envelope penalty term; D21 did NOT update the *spawn AS* in the parity fixtures. The fixtures still spawn the airframe far below the level-flight regime they are nominally probing. D21's criterion 0 then catches this mismatch as "alt drop in first 1s" — a true positive at the score-function level, but the fix is to spawn at equilibrium, not to add more damping mechanism.
+
+### Candidate menu (full D24 ranking, post-derivation per Rule #5)
+
+The session brief identified three candidates: (a) widen damping bounds; (b) adjust spawn AS in parity-fixtures; (c) tweak aircraft.json baseline. Independent derivation:
+
+| Candidate | Why considered | Plan-time derivation result | D24 ranking |
+|-----------|----------------|----------------------------|-------------|
+| **(b) Adjust spawn AS in `tests/parity-fixtures.ts`** | Spawn AS=30 is well below mid-throttle equilibrium ~78; criterion 0 measures acceleration-to-equilibrium not stability. | **Root cause of the residual gap.** Spawning each fixture at its per-regime equilibrium AS makes criterion 0 measure what it's intended to measure. Cheap (one-line per fixture). Honors `feedback_recency_bias_in_cascades.md`: the unchanged shared upstream dependency (spawn AS=30) is the high-prior suspect. | **#1 — chosen** |
+| (a) Widen damping bounds (clQ, clAlphaDot) | Post-fix optimizer pushes 90-100% saturation on multiple damping knobs; per `feedback_optimizer_bounds_are_floor.md` rule 1 that's a "trust the optimizer, widen the bound" signal. | **Confounded by below-equilibrium spawn.** With AS=30 spawn at mid throttle, the airframe IS undergoing rapid pitch/AoA transients as it accelerates to equilibrium — of course damping mechanisms saturate during a 78→45 AS underspeed pull. After fixing spawn AS, re-evaluate damping bounds with clean evidence. Premature without the upstream fix. | **#2 — deferred to post-WP14.19 evidence** |
+| (c) Tweak `aircraft.json` baseline (mass / wing area / thrust) | The aircraft "happens to" trim at 78 m/s mid throttle which is faster than the WP14.5-era target. Could reduce mass or increase wing area to lower equilibrium AS toward spawn AS. | **Wrong fix direction.** The airframe is sized for a Cessna-class trim at ~150 knots / ~78 m/s; that IS the design. Adjusting aircraft.json to make spawn AS=30 land in level-flight equilibrium would compromise airframe identity for diagnostic-fixture reasons. Worse: production aircraft.json is the *deployed* airframe; tests should adapt to the airframe, not vice versa. | **REMOVED — wrong direction** |
+| (a') D24-α: D23-δ fifth-mechanism longitudinal damper | SURFACE-2026-05-24-08's primary candidate; superseded by integrator fix. | **Superseded.** The "rocket climb to gimbal lock" symptom that motivated D23-δ was integrator runaway, not undamped longitudinal motion. Post-fix the airframe doesn't pitch up to +24° at t=1s anymore. | **REMOVED — symptom-driven, superseded by SURFACE-09 resolution** |
+| Bound widening on `inducedDragK` | SURFACE-2026-05-24-08 quaternary; superseded. | **Superseded.** Post-fix `inducedDragK_wing` saturation collapsed from 92.4% → 1.5%. The "gaming corner" that motivated bidirectional-bound-failure-mode lesson was integrator pathology; no longer present. | **REMOVED — superseded by integrator fix** |
+
+**Singular not stacked per `feedback_surface_or_means_or.md`.** D24 picks (b) alone. Not (b) + (a) stacked — (a) cannot be properly evaluated until the upstream confounder (b) is resolved.
+
+### D24 — Initial-condition recalibration
+
+**Schema change in `tests/parity-fixtures.ts`:** update the `linvel.z` field of each fixture from -30 to the per-regime equilibrium AS derived above.
+
+```typescript
+// Old (pre-D24):
+{ id: 'throttle-low',  position: {x:0,y:50,z:0}, linvel: {x:0,y:0,z:-30}, throttle: 0.05, ticks: 1800 },
+{ id: 'throttle-mid',  position: {x:0,y:50,z:0}, linvel: {x:0,y:0,z:-30}, throttle: 0.15, ticks: 1800 },
+{ id: 'throttle-high', position: {x:0,y:50,z:0}, linvel: {x:0,y:0,z:-30}, throttle: 0.40, ticks: 1800 },
+
+// New (D24):
+{ id: 'throttle-low',  position: {x:0,y:50,z:0}, linvel: {x:0,y:0,z:-45},  throttle: 0.05, ticks: 1800 },
+{ id: 'throttle-mid',  position: {x:0,y:50,z:0}, linvel: {x:0,y:0,z:-78},  throttle: 0.15, ticks: 1800 },
+{ id: 'throttle-high', position: {x:0,y:50,z:0}, linvel: {x:0,y:0,z:-128}, throttle: 0.40, ticks: 1800 },
+```
+
+**Why -45 / -78 / -128:** matches per-regime T=D equilibrium AS under post-fix integration with the production aircraft.json baseline (no `inducedDragK`, no `fuselageDrag`; pure CD0). Sign convention: spawn flying along -Z (per CONVENTIONS.md and the existing fixture orientation).
+
+**Position unchanged (y=50):** altitude headroom for criterion 0's 20m allowable drop remains intact.
+
+**Ticks unchanged (1800):** 30s observation window unchanged.
+
+**No change to throttle values (0.05/0.15/0.40):** these were the WP14.5-era regime probes and remain meaningful as low/mid/high throttle observations.
+
+### Vitest case dispositions (4 expected failures from WP14.18b re-tune)
+
+Per session brief: 4 Vitest cases failed at WP14.18b that need disposition at WP14.19:
+
+1. **`tools/tune/harness.test.ts:307`** asserted on bug-symptom value `basePeak > 400 m/s` (now correctly ~42 m/s post-fix). **Disposition:** flip the assertion to `basePeak < 100 m/s` (post-fix correct envelope) AND update the test name + comment to reference SURFACE-2026-05-24-09 as the rewrite trigger. Do NOT deprecate — the test still validates that the harness produces a finite trajectory, just with the correct post-fix value envelope.
+
+2-4. **3× `tests/parity-diff.test.ts` browser-side golden CSVs** stale (regenerated against broken-integrator browser output). **Disposition:** regenerate the goldens via Playwright after the spawn-AS recalibration lands. Per `feedback_parity_tests_need_truth_anchor.md`: when regenerating, add at least one closed-form sanity check anchor to the parity-diff suite (e.g. at t=0+1tick with thrust=2400 and AS=128, body.linvel.z must equal init.linvel.z + 2.4/60 within 1e-6, validating the integrator's per-tick force budget independently of the browser/harness pair).
+
+### Verify-self contract (binding for WP14.19, per CLAUDE.md Rules #4 + #7)
+
+**Per-tick energy-budget sanity check (Rule #7) — runs FIRST as a smoke test:**
+1. With all aero zeroed and thrust = throttle·6000/60 N per tick, run 60 ticks at throttle=0.4 from spawn AS=128. Expected: Δv per tick = 0.040 m/s (linear acceleration). Measured Δv must match within 1e-6 at every tick. This is the post-fix invariant; if it fails, the integrator regressed.
+
+**Three-regime verify-self at the optimizer's globalBest (Rules #4 + #2):**
+2. Baseline run: current aircraft.json (no `inducedDragK`, no `fuselageDrag`, clQ=3/3/8/-, no clAlphaDot) at the THREE new spawn AS conditions (low=45, mid=78, high=128). All 3 regimes finite 1800 ticks. Record criterion 0 + criterion 2 score.
+3. Optimizer-tuned run: re-run the WP14.18b tune command at the same bounds + seed, under the new fixture-spawn-AS conditions. Optimizer globalBest must produce:
+   - All 3 regimes finite 1800 ticks (criterion 1 PASS).
+   - All 3 regimes criterion 0 PASS (alt drop ≤ 20m in first 1s + AS ≥ 10 m/s).
+   - Deployed-symmetric total score ≥ **-300** (criterion 2 PASS — the same threshold from D21).
+4. Control regime (Rule #4): one optimizer run with all four post-fix mechanism knobs zeroed — `clQ=0` per-surface, no `inducedDragK`, no `fuselageDrag`, `clAlphaDot=0`. Compare to baseline + tuned. Control should be visibly different from tuned (proves the optimizer's chosen mechanism values are doing something); baseline and tuned may or may not differ depending on whether the optimizer finds a region better than aircraft.json default — both outcomes are diagnostic.
+
+**Browser walkthrough (operator-as-playtester gate):**
+5. Per CLAUDE.md Rule #7 + `feedback_operator_as_external.md`: at the optimizer's globalBest mirrored to `aircraft.json`, open `localhost:5173/?mission=phugoid-probe-mid&debug=true` and observe for 30s. The fixture spawn AS now matches mid-equilibrium, so the airframe should appear to start in trim — no nose-first dive at t=1s. Casual-gamer-feel: "yes, this looks like an aircraft starting in level flight." Operator-as-playtester signs off.
+
+### Three-branch decision (locked at plan-time, do NOT relax)
+
+- **(A) Verify-self gates 1+2+3+4 PASS at optimizer globalBest + Browser walkthrough PASS:** Branch A — mirror globalBest to `aircraft.json` (if globalBest is materially different from aircraft.json default); un-skip `tests/e2e/phugoid-probe.spec.ts`; regenerate the 3 parity-diff goldens via Playwright; flip the harness.test.ts:307 assertion. Full Vitest + tsc + build + e2e + browser walkthrough. Finalize with **13 SURFACEs full-close** (the cascade chain at the backlog walk-back) AND **SURFACE-2026-05-24-08 full-close** (superseded by -09 resolution) AND **SURFACE-2026-05-24-09 was already resolved at the fix task** — but D24 close cements the cascade-end.
+- **(B) Verify-self gates 1+2+3 PASS but criterion 2 deployed score is between -1e6 and -300:** the fixture-spawn recalibration is *directionally correct* but the optimizer needs more tune density or a different bound to reach -300. File SURFACE-2026-05-25-XX with bound-pressure table → D25 architect cycle to widen damping bounds (this is when (a) becomes the right next move, with clean evidence). Branch B does not close the cascade chain but DOES close SURFACE-2026-05-24-08 (the c0-floor pathology is gone — confirmed by criterion 2 score being finite and dominated by envelope deviation, not c0-floor saturation).
+- **(C) Per-tick energy-budget sanity check (gate 1) fails:** the integrator regressed since the fix-resetforces-bug task commit. File SURFACE-2026-05-25-XX CRITICAL, bisect to the regressing commit, repair. Do NOT proceed past gate 1.
+
+### Memory anchors referenced by D24
+
+- **`feedback_recency_bias_in_cascades.md`** fired as the primary lens — the spawn AS=30 has been a shared upstream dependency since WP14.5; never sanity-checked against the airframe's post-fix equilibrium. Five tune cycles + three architect revisions touched everything *downstream* of spawn AS (damping, drag, score function targets, score function modes) but never the spawn itself. The recency-bias memory says exactly this case: in a multi-WP cascade the bug lives in shared dependencies that haven't been edited.
+- **`feedback_investigation_before_architect.md`** validated: at the SURFACE-08 stage we DID route to an investigation spike before committing arch.md text on a refuted candidate — that's how the integrator fix was found. The pattern saved 8-16h of confabulation. D24 honors this by independently deriving spawn-AS rather than inheriting the brief's three candidates.
+- **`feedback_optimizer_bounds_are_floor.md` (updated rule 2)** applies in the deferred sense: post-fix damping-bound saturation may be a true "widen" signal but is *coupled* to the upstream fixture-spawn-AS mismatch. Per the updated rule's "REFRAME upstream when persistent gaming-corner" clause, the fixture spawn AS IS the upstream that the damping-bound saturation is responding to. Resolve upstream first; re-evaluate damping bounds on clean evidence at WP14.19 verify-self gate.
+- **`feedback_rule5_architect_cycle.md`** fired: independent Rule #5 derivation REMOVED candidate (c) (aircraft.json baseline tweak — wrong direction) and DEFERRED candidate (a) (damping bounds — confounded). The brief's three candidates were SUGGESTIONS, not bindings.
+- **`feedback_surface_or_means_or.md`** binds: D24 picks (b) singularly, not stacked with (a).
+- **`feedback_retune_attempt_budget.md`** fresh budget per the session note. D24 is attempt 1 of the post-fix budget. The 8 architect revisions consumed pre-fix were measuring a pathology.
+- **`feedback_parity_tests_need_truth_anchor.md`** binds at WP14.19 parity-diff regeneration: add a closed-form sanity check anchor that validates one-tick force-budget invariant independently of browser/harness pair.
+- **`feedback_operator_as_external.md`** continues — full-autopilot mode; WP14.19 browser walkthrough is operator-as-playtester touchpoint.
+- **`feedback_finite_vs_flyable.md`** still binds — verify-self gates 1+2+3 are "finite + criterion 0 + criterion 2"; the browser walkthrough is "flyable." Both halves required.
+- **`feedback_memory_active_recall.md`** discipline: D24 read 7 memory anchors at plan-entry before drafting candidate rankings, per the active-recall pattern.
+- **CLAUDE.md Rule #1 (live-system observation before sign-convention unit tests)** — applies generally; not directly fired this revision because D24 isn't a new physics-mechanism schema-add.
+- **CLAUDE.md Rule #5 (plan-time physics derivation)** — fired hard. The T=D equilibrium derivation per-regime under fixed integration is the core of D24's branch selection.
+- **CLAUDE.md Rule #7 (per-tick energy-budget sanity check)** — added at fix-time; binds at WP14.19 verify-self gate 1.
+
+### D24 — NEW physics-mechanism discipline rule
+
+This revision adds:
+
+9. **Initial-condition-equilibrium-consistency for level-flight score-function fixtures.** When the score function evaluates "level flight" (criterion 0: altitude drop ≤ threshold over a 1-second window) at a parity-fixture spawn condition, the fixture's spawn AS MUST be within ~20% of the airframe's L=W equilibrium AS at the fixture's throttle. Otherwise the criterion 0 check measures "acceleration to equilibrium from below" (or "deceleration to equilibrium from above"), not "stability around equilibrium." If the airframe's mass, wing area, thrust, or CL_α changes, the parity-fixture spawn AS must be re-derived alongside. The derivation belongs in arch.md (this revision); the constants live in `tests/parity-fixtures.ts`. **Origin:** D24 — the entire D14→D23 cascade's residual criterion-0 failure (~88× past threshold at WP14.18b post-fix) was driven by spawn AS=30 m/s being well below the mid-throttle equilibrium AS=78 m/s. The cascade tuned damping mechanisms to suppress oscillation around a starting condition that the airframe could not be in equilibrium at. Tuning mechanism for a non-equilibrium initial condition is structurally a different problem than tuning for stability around equilibrium; the score function intended the latter.
+
+### WBS impact
+
+- **WP14.19 (NEW):** "D24 implementation — fixture spawn-AS recalibration to per-regime equilibrium + 4 Vitest dispositions + post-fix tune-deploy + browser walkthrough." Single-WP per CLAUDE.md Rule #6 because there is no schema-add — only test-fixture constants change. Size S (3-5h). Dependencies: D24 architect cycle close (this revision); `fix-resetforces-bug` task close (commit `46f9b42`); D17/D16/D18/D21/D23 mechanism + score-function layers (load-bearing for the optimizer + score function).
+- **WP14.17 (DONE 2026-05-24):** stays archived. The D23-γ-evolved score function implementation is correctness-preserving and stays in score.ts. D24 does not revert D23.
+- **WP14.18 (ESCALATED 2026-05-24):** archive as ESCALATED-superseded-by-integrator-fix. The Work Tree is invalidated (it was a tune-deploy WP under the broken integrator); the parent WIP `workflow/wip/wp14.18-d23-tune-deploy.md` moves to `workflow/archive/` at D24 close. CHANGELOG.md gets a one-line "Task closed: WP14.18 ESCALATED, superseded by SURFACE-2026-05-24-09 resolution + WP14.19" entry on the D24 close commit.
+- **WP15, WP16, WP17 (Phase 2 mission content):** still gated. Pause line moves from "post-WP14.18 branch A" to "post-WP14.19 branch A." Confidence calibration (below) puts WP14.19 Branch A at 60-75%.
+- **No changes to mechanism layer D11/D12/D13/D17/D16/D18/D21/D23.** D24 is a test-fixture initial-condition recalibration; no aerosurface, drag polar, β-coefficient, thrust value, bound choice, or score-function structure change. All mechanism schema and code paths unchanged.
+
+### Open SURFACEs post-D24 (status changes)
+
+- **SURFACE-2026-05-24-09 (resolved):** unchanged — fixed at task `fix-resetforces-bug` close.
+- **SURFACE-2026-05-24-08:** transitions to `superseded by SURFACE-09 resolution + D24 walk-back`. Full close at WP14.19 Branch A.
+- **SURFACE-2026-05-24-07/06/04/03/01, -23-01, -17-03/01, -16-04/01, -12-03/01, -11-04** (the chain of 13): each transitions to `resolved-by-cascade-walk-back-pending-WP14.19-Branch-A-verification`. Full close at WP14.19 Branch A close commit. The walk-back is **architecturally** complete at D24 close (this revision documents the resolution causality); the behavioral close gate is WP14.19 Branch A (proves the cascade's claimed gaps don't re-emerge under fixed integration + corrected spawn AS).
+- **SURFACE-2026-05-24-05** (`--link` parity-diff 1.50× under broken integrator): unchanged status `open, medium`. Likely transitions when WP14.19 re-evaluates parity-diff under correct integration. Non-blocking.
+- **SURFACE-2026-05-24-02** (axis-naming docs errata): unchanged. Low-priority docs errata, addresses independently.
+- **SURFACE-2026-05-17-02** (arch.md D17 cross-product order errata): unchanged. Medium, non-blocking.
+- **SURFACE-2026-05-16-03/02, SURFACE-2026-05-12-02, SURFACE-2026-05-11-02, SURFACE-2026-04-19-01, SURFACE-2026-05-09-01:** unchanged.
+
+### Confidence calibration for WP14.19 Branch A
+
+- P(per-tick energy-budget sanity check passes at WP14.19) ≈ **99%** — invariant established at fix-resetforces-bug verification; nothing has touched the integrator since.
+- P(all 3 regimes finite 1800 ticks at spawn AS = 45/78/128 with current aircraft.json) ≈ **85-95%** — equilibrium-spawn conditions are physically the airframe's happy-place; finiteness should be near-trivial. The 5-15% buffer is for any residual β4/β5/D18 mechanism interaction I haven't surfaced in derivation.
+- P(criterion 0 PASS at all 3 regimes for the optimizer's globalBest) ≈ **80-90%** — under equilibrium-spawn the airframe IS in level flight at t=0; criterion 0's "alt drop ≤ 20m in 1s" should pass trivially unless damping mechanisms are mistuned. Optimizer should easily find a region where criterion 0 holds.
+- P(criterion 2 deployed score ≥ -300 at optimizer globalBest) ≈ **55-70%** — the per-regime mode envelopes in D23 are calibrated for behavior around equilibrium; under equilibrium-spawn they should be achievable. Uncertainty mainly from whether D23 envelopes need re-derivation post-fix (mode constants like SINK_RATE_LOW_MIN=1 may not match post-fix natural sink rate).
+- P(browser walkthrough operator-as-playtester sign-off | criteria 0+1+2 PASS) ≈ **70-80%** — equilibrium-spawn means the airframe starts in trim, not in a dive. Visual feel should be "aircraft flying straight" rather than "aircraft launched into chaos." Strong prior toward sign-off.
+- **Joint P(WP14.19 Branch A) ≈ 60-75%.** Higher than any tune-deploy WP since D14 because the structural blind spot (compounding-force integrator) is fixed AND the structural fixture-spawn confounder is being resolved in the same WP.
+
+**Realistic wall-time-to-flyable estimate:**
+- WP14.19 plan + fixture edit + tune + dispositions + browser walkthrough + finalize: 3-5h.
+- If Branch B (criterion 2 in [-1e6, -300]): D25 architect cycle for damping-bound widening (now with clean evidence) + WP14.20 tune-deploy: +3-5h.
+- **Median wall-time-to-flyable (Branch A end-to-end): ~4-5h.** Halved from D23 because the cascade has resolved its causal root.
+
+### Architectural lesson (cascade-end)
+
+The D14→D23 cascade encountered a one-line integrator bug at its first physics-tuning attempt (WP14.5, 2026-05-16) and spent ~13 days adding mechanism layers (β4, β5, drag polar) and revising score functions (per-regime targets, per-regime modes) to dissipate or measure-around the energy that the integrator was injecting at (n+1)× per tick. Each cycle interpreted its evidence under the implicit assumption that the integrator was correct.
+
+Three lessons codified in CLAUDE.md from this cascade-end:
+- **Rule #7** (per-tick energy-budget sanity check on the integrator) — added at fix-time; would have caught the bug at WP14.5 in 60 seconds.
+- **Rule #9** (initial-condition-equilibrium-consistency for level-flight score-function fixtures) — added at D24; would have prevented the cascade-residual ~88× gap at WP14.18b from being attributed to damping mechanism rather than fixture-spawn mismatch.
+- The pre-existing CLAUDE.md Rule #5 (plan-time physics derivation precedes spec-text reading) WAS firing at multiple architect cycles in the cascade (D17, D18, D21, D22, D23) — it correctly refuted SURFACE primary candidates each time — but the *scope* of the derivation was too narrow: each cycle derived mechanism-level quantities (L=W AS, D_min, T=D crossover) but none derived the *integrator* invariant (Δv per tick = F/m·dt). The lesson is that Rule #5's derivation should include the *full causal stack from initial condition through integrator through aerodynamics to score function*, not just the layer the cycle's SURFACE is nominally addressing. This is a meta-rule on Rule #5 that arch.md does not codify formally (it's already implicit in "precedes spec-text reading"); D24 records it here for the cascade post-mortem record.
+
+The cascade also validated several pre-existing rules:
+- **Rule #4** (control regime alongside baseline + non-default) — saved the day at WP14.18 investigation spike. The "zero everything" control variant cleanly isolated thrust accumulation as the test surface.
+- **`feedback_recency_bias_in_cascades.md`** — every cascade cycle assumed the recently-edited code was suspect; the actually-defective code (the integrator step) had been untouched since WP1-era Rapier integration. This memory was added late in the cascade (at session-store-learning post-fix) and codifies the pattern.
+- **`feedback_investigation_before_architect.md`** — when SURFACE-08 Rule #5 derivation refuted all 4 prose candidates, routing to investigation spike instead of arch.md commit was the move that found the bug. This memory was added at session-store-learning post-fix; D24's existence proves it.
+
+The cascade-end confidence anchor is: P(Phase 2 ships within next 2 WPs) ≈ **85-95%**, P(flyable within 1 WP) ≈ **60-75%**. The structural debt is paid; what remains is parameter tuning under correct physics.
+

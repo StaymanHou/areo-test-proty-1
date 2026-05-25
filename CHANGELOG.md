@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-05-25
+
+- **Task closed:** D24 architect cycle — arch.md Revision 2026-05-25 written + WBS updated + 13-SURFACE cascade chain walked back at `workflow/backlog.md` (each marked `resolved-by-cascade-walk-back-pending-WP14.19-Branch-A` with citation to commit `46f9b42` / SURFACE-2026-05-24-09) + WP14.18 archived as ESCALATED-superseded-by-integrator-fix + CLAUDE.md adds Rule #9 (initial-condition-equilibrium-consistency for level-flight score-function fixtures); D24 chose branch (b) "adjust spawn AS in `tests/parity-fixtures.ts`" per CLAUDE.md Rule #5 independent derivation (post-fix L=W equilibrium AS is low/mid/high ≈ 45/78/128 m/s; current spawn AS=30 m/s is well below mid-equilibrium 78; criterion 0 was measuring "acceleration to equilibrium from below" not "stability around equilibrium"); branches (a) widen damping bounds + (c) tweak aircraft.json REMOVED from menu (the former confounded by upstream spawn-AS mismatch, the latter wrong direction); WP14.19 added (NEXT) as single-WP D24 implementation; production `aircraft.json` UNTOUCHED.
+
 ## 2026-05-24
 
 - **Feature escalated:** WP14.12 8-dim joint tune post-D18 — canonical optimizer pass over `(clQ, clAlphaDot, inducedDragK) × wings+h-stab + (fuselageDrag.cd0, fuselageDrag.area)` at WBS bounds with 4 restarts, seed 42, 1800-tick fixtures; globalBest asymmetric score −1.057e9, deployed-symmetric score (per `tools/tune/score-deployed.mjs`) −92,574,536 vs threshold −300 — ratio ~309,000× past flyable; criterion 1 (all 3 regimes finite at 1800 ticks) PASS, criterion 2 (deployed total ≥ −300) FAIL; D18 drag-polar revision alone refuted as sufficient third mechanism layer; filed SURFACE-2026-05-24-01 (D19 candidate: inertia-tensor revision halving Iyy from 3000→1500 per SURFACE-23-01 second-ranked candidate); no `aircraft.json` change, phugoid-probe.spec.ts stays skipped; 545/545 Vitest preserved.
