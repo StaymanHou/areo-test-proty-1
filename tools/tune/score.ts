@@ -85,10 +85,19 @@ export interface AirframeConstants {
   throttleByRegime: Readonly<Record<string, number>>;
 }
 
-/** Score envelopes per arch.md §D14.4 (extended D21 + D23). */
+/** Score envelopes per arch.md §D14.4 (extended D21 + D23 + D26). */
 export interface ScoreEnvelopes {
-  /** Allowable |alt - spawn_alt| amplitude in meters before penalty kicks in. */
+  /** Allowable |alt - spawn_alt| amplitude in meters before penalty kicks in.
+   *  D26 fallback: consumed when `altEnvelope` is absent OR when the regime
+   *  label is not present in `altEnvelope`. Legacy callers (pre-D26) use this
+   *  scalar uniformly across regimes. */
   ALT_ENVELOPE: number;
+  /** D26 (arch.md Revision 2026-05-25 late afternoon) — per-regime alt envelope
+   *  reflecting natural per-throttle alt behavior (T<<D descends, T≈D cruises,
+   *  T>>D climbs). Missing/regime-not-present → fall back to scalar ALT_ENVELOPE.
+   *  Unlike the AS dimension (where L=W trim AS is throttle-invariant per D25-ζ),
+   *  the alt dimension legitimately differs per throttle. */
+  altEnvelope?: Readonly<Record<string, number>>;
   /** Allowable |airspeed - target_airspeed| amplitude in m/s before penalty. */
   AS_ENVELOPE: number;
   /** Max |pitch_rate| in degrees/second before penalty (matches WP6.5 budget). */
@@ -157,6 +166,13 @@ export interface ScoreEnvelopes {
 // construct envelopes explicitly with `regimeMode` set per D23 framing.
 export const DEFAULT_ENVELOPES: ScoreEnvelopes = {
   ALT_ENVELOPE: 50,
+  // D26 (arch.md Revision 2026-05-25 late afternoon) — per-regime alt envelope.
+  // Reflects natural per-throttle alt behavior under fixed integration + V_trim
+  // spawn (D25-ζ): T<<D descends (low — allow 100m drop); T≈D cruises around
+  // spawn (mid — ±50m phugoid amplitude); T>>D climbs (high — allow 200m gain).
+  // Unlike D25's AS dimension (uniform target=78 because L=W trim is throttle-
+  // independent), alt is legitimately throttle-dependent.
+  altEnvelope: { low: 100, mid: 50, high: 200 },
   // D25 — AS_ENVELOPE 25→30 (+5 m/s for natural phugoid amplitude observed
   // in WP14.19 Phase 2 trajectories where AS oscillates 50-78 at mid). This
   // is a natural-amplitude widening, not a target-mismatch widening.
@@ -398,7 +414,11 @@ function levelCruiseScore(
     }
   }
 
-  const altPenalty = Math.max(0, maxAltDev - envelopes.ALT_ENVELOPE);
+  // D26 — per-regime alt envelope with fallback to scalar ALT_ENVELOPE.
+  // Reflects natural per-throttle alt behavior (climb at T>>D, cruise at T≈D,
+  // descent at T<<D). See arch.md Revision 2026-05-25 late afternoon § D26.
+  const altEnv = envelopes.altEnvelope?.[trajectory.regime] ?? envelopes.ALT_ENVELOPE;
+  const altPenalty = Math.max(0, maxAltDev - altEnv);
   const asPenalty = Math.max(0, maxAsDev - envelopes.AS_ENVELOPE);
   const prPenalty = Math.max(0, maxPitchRateDegPerSec - envelopes.PITCH_RATE_LIMIT);
   const phuPenalty = phugoidGrowthPenalty(rows, envelopes);

@@ -27,6 +27,9 @@ const LEGACY_LEVEL_CRUISE_ENVELOPES: ScoreEnvelopes = {
   // tests authored against these constants. D25 changed only the defaults.
   targetAirspeed: { low: 45, mid: 60, high: 85 },
   AS_ENVELOPE: 25,
+  // D26 — disable per-regime alt envelope so D14/D21-era tests see the
+  // scalar ALT_ENVELOPE=50 fallback uniformly (pre-D26 behavior).
+  altEnvelope: undefined,
 };
 
 // D25 (2026-05-25 afternoon) — DEFAULT_ENVELOPES.regimeMode is now undefined.
@@ -42,6 +45,11 @@ const D23_MODE_ENVELOPES: ScoreEnvelopes = {
     mid: 'slow-flight-or-shallow-descent',
     high: 'level-cruise',
   },
+  // D26 — disable per-regime alt envelope so D23 mode-dispatch tests see the
+  // scalar ALT_ENVELOPE=50 fallback for the level-cruise branch (pre-D26
+  // behavior). controlled-descent + slow-flight modes use sink-rate envelopes,
+  // not alt envelopes, so altEnvelope is inert for those modes regardless.
+  altEnvelope: undefined,
 };
 
 // WP14.8 Phase 1 — score function coverage. Per the plan's case list:
@@ -509,6 +517,77 @@ describe('DEFAULT_ENVELOPES — D25 anti-regression on the corrected constants',
     // low/high must equal mid under D25 (uniform V_trim).
     expect(DEFAULT_ENVELOPES.targetAirspeed.low).toBe(DEFAULT_ENVELOPES.targetAirspeed.mid);
     expect(DEFAULT_ENVELOPES.targetAirspeed.high).toBe(DEFAULT_ENVELOPES.targetAirspeed.mid);
+  });
+});
+
+describe('DEFAULT_ENVELOPES — D26 anti-regression on per-regime altEnvelope', () => {
+  it('altEnvelope.low = 100 (T<<D natural descent; allow 100m drop over 30s)', () => {
+    // D26 (arch.md Revision 2026-05-25 late afternoon) — per-regime alt
+    // envelope reflects natural per-throttle alt behavior. low throttle
+    // (T<<D) → airframe naturally descends; allow 100m drop.
+    expect(DEFAULT_ENVELOPES.altEnvelope?.low).toBe(100);
+  });
+
+  it('altEnvelope.mid = 50 (T≈D natural cruise; ±50m phugoid amplitude)', () => {
+    // mid throttle (T≈D at V_trim=78) → level cruise with phugoid; matches
+    // legacy scalar ALT_ENVELOPE=50.
+    expect(DEFAULT_ENVELOPES.altEnvelope?.mid).toBe(50);
+  });
+
+  it('altEnvelope.high = 200 (T>>D natural climb; allow 200m gain over 30s)', () => {
+    // high throttle (T>>D) → airframe naturally climbs; allow 200m gain.
+    expect(DEFAULT_ENVELOPES.altEnvelope?.high).toBe(200);
+  });
+
+  it('scalar ALT_ENVELOPE = 50 preserved as fallback for legacy callers and regimes missing from altEnvelope', () => {
+    expect(DEFAULT_ENVELOPES.ALT_ENVELOPE).toBe(50);
+  });
+
+  it('levelCruiseScore uses per-regime altEnvelope under DEFAULT_ENVELOPES (high cruise +150m altDev → 0 penalty)', () => {
+    // High regime spawns at alt=50, climbs to alt=200 (altDev=150); under
+    // D26 altEnvelope.high=200, altPenalty = max(0, 150-200) = 0 → score≈0.
+    const rows: TrajectoryRow[] = [];
+    for (let i = 0; i < 600; i++) {
+      const posY = 50 + 150 * (i / 600);  // climb from 50 to 200
+      rows.push(makeRow({ tick: i, posY, airspeed: 78 }));
+    }
+    const traj: RegimeTrajectory = { regime: 'high', rows };
+    const s = regimeScore(traj, DEFAULT_ENVELOPES);
+    expect(s).toBeCloseTo(0, 6);
+  });
+
+  it('levelCruiseScore uses per-regime altEnvelope under DEFAULT_ENVELOPES (mid cruise +149.75m altDev → ~99.75² penalty)', () => {
+    // Same trajectory but regime='mid'; altEnvelope.mid=50, so
+    // altPenalty = max(0, 149.75-50) = 99.75; altPenalty² ≈ 9950.06.
+    // (Linear ramp 50→200 over 600 rows; last row posY=199.75, maxAltDev=149.75.)
+    const rows: TrajectoryRow[] = [];
+    for (let i = 0; i < 600; i++) {
+      const posY = 50 + 150 * (i / 600);  // ramp; last value = 50 + 149.75
+      rows.push(makeRow({ tick: i, posY, airspeed: 78 }));
+    }
+    const traj: RegimeTrajectory = { regime: 'mid', rows };
+    const s = regimeScore(traj, DEFAULT_ENVELOPES);
+    expect(s).toBeCloseTo(-9950.06, 1);
+  });
+
+  it('regime missing from altEnvelope falls back to scalar ALT_ENVELOPE', () => {
+    // Construct envelopes with altEnvelope present but no 'unknown' regime.
+    // 'unknown' is not in DEFAULT_ENVELOPES.targetAirspeed either, so targetAS
+    // falls back to 30 (per levelCruiseScore). AS=78 vs target=30 = 48 dev;
+    // asPenalty = max(0, 48-30) = 18; asPenalty² = 324.
+    // altDev linear 0→69.88 (last row = 50 + 70*599/600); altPenalty = 19.88;
+    // altPenalty² = 395.34. Total = -(395.34 + 324) = -719.34.
+    const rows: TrajectoryRow[] = [];
+    for (let i = 0; i < 600; i++) {
+      rows.push(makeRow({ tick: i, posY: 50 + 70 * (i / 600), airspeed: 78 }));
+    }
+    const envWithoutUnknown: ScoreEnvelopes = {
+      ...DEFAULT_ENVELOPES,
+      altEnvelope: { mid: 50 },  // no 'unknown' regime → fall back to ALT_ENVELOPE=50
+    };
+    const traj: RegimeTrajectory = { regime: 'unknown', rows };
+    const s = regimeScore(traj, envWithoutUnknown);
+    expect(s).toBeCloseTo(-719.35, 1);
   });
 });
 
