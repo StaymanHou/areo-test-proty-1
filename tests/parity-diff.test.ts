@@ -131,6 +131,74 @@ export function pickNodeSource(
   return harnessCsvExists ? 'use-harness' : 'use-synthetic';
 }
 
+// =============================================================================
+// D26 / WP14.19 — closed-form per-tick force budget anchor per
+// `feedback_parity_tests_need_truth_anchor.md`. The parity-diff goldens above
+// validate browser ≡ harness coupled-correctness; without an independent
+// closed-form anchor a coordinated regression (both sides drifting together)
+// can pass parity-diff while producing physically wrong behavior. This anchor
+// validates the per-tick force budget invariant (CLAUDE.md Rule #7) directly:
+// at thrust=2400 N (throttle=0.4) + mass=1000 kg + dt=1/60, ONE tick of
+// gravity-and-thrust integration (aero zeroed by spawning at AS=0 + zero area
+// is awkward; we use the natural-aero case and assert on per-tick acceleration
+// is bounded by the expected F=ma envelope). The Rule #7 invariant: Δvz per
+// tick under no-aero + thrust-only conditions equals exactly thrust/mass/Hz.
+// =============================================================================
+describe('D26 / WP14.19 — closed-form per-tick force budget anchor (Rule #7 invariant)', () => {
+  it('thrust-only (aero zeroed by zero-area surfaces) at throttle=0.4 gives Δvz per tick = -0.040 m/s exactly', () => {
+    // Per `feedback_parity_tests_need_truth_anchor.md`: validate the integrator
+    // invariant independently of the browser/harness pair. At thrust=2400 N
+    // (throttle=0.4) / mass=1000 kg / 60 Hz, the per-tick Δvz under no-aero
+    // conditions must equal exactly -2.4/60 = -0.040 m/s (along thrust direction
+    // = +Z body axis projected to world via identity quat at spawn). Any
+    // deviation indicates the SURFACE-2026-05-24-09 integrator bug has
+    // regressed (Rapier per-tick force accumulator not cleared) OR mass /
+    // thrust / dt invariants have changed without coordinated test update.
+    //
+    // We zero aero via `surfaces.{0..3}.area=1e-6` overrides (same pattern
+    // used by `tools/tune/probe-thrust-only.mjs` since SURFACE-09 investigation).
+    // This isolates thrust + gravity; gravity acts on Y, thrust acts on +Z
+    // body (= -Z world if pitch=0). Spawn at AS=30 along -Z to match the
+    // probe-thrust-only convention.
+    const { world } = createPhysicsWorld();
+    // Build an aero-zeroed config by mutating area to ~0 for all surfaces.
+    // (parseAircraftConfig has already validated the JSON; we mutate a copy.)
+    const aeroZeroedConfig: AircraftConfig = {
+      ...config,
+      surfaces: config.surfaces.map((s) => ({ ...s, area: 1e-6 })),
+    };
+    const aircraft = new AircraftBody(world, aeroZeroedConfig, {
+      position: new Vector3(0, 50, 0),
+      linvel: new Vector3(0, 0, -30),
+    });
+    const fm = new FlightModel(aircraft);
+    const dt = 1 / 60;
+    // First tick. Snapshot vZ to a local scalar IMMEDIATELY — `readBodyState`
+    // returns a mutable buffer that's overwritten on the next call (per the
+    // "Three.js mutable-buffer trap" convention in CLAUDE.md → Testing).
+    physicsStep(world, aircraft, fm, { throttle: 0.4 }, dt);
+    const vZ_t1 = aircraft.readBodyState().linvel.z;
+    // Expected: vZ went from -30 to -30 + (-2.4/60) = -30.040 m/s.
+    // Thrust direction is +Z body = -Z world at pitch=0 (per CONVENTIONS.md);
+    // throttle 0.4 × thrust_max=6000 = 2400 N; over dt=1/60 = 40 N·s impulse;
+    // mass=1000 → Δvz = -0.040.
+    expect(vZ_t1).toBeCloseTo(-30.040, 5);
+    // Second tick — same Δvz; if this is -0.080 (n+1× compounding), Rule #7
+    // is broken and SURFACE-09 has regressed.
+    physicsStep(world, aircraft, fm, { throttle: 0.4 }, dt);
+    const vZ_t2 = aircraft.readBodyState().linvel.z;
+    expect(vZ_t2).toBeCloseTo(-30.080, 5);
+    // Per-tick delta is constant under thrust-only (no aero damping).
+    // Tolerance: 1e-5 m/s slack accommodates Rapier's f32-internal precision
+    // through the WASM bridge (~9e-7 ULP noise per tick at this magnitude).
+    // The structural assertion is that delta is bounded near -0.040, NOT
+    // bit-exact — if SURFACE-09 regresses, delta becomes -0.080 (2× expected)
+    // which would fail this assertion by 4 orders of magnitude.
+    const deltaVz = vZ_t2 - vZ_t1;
+    expect(deltaVz).toBeCloseTo(-0.040, 4);
+  });
+});
+
 describe('parity-diff: browser-emitted trajectory == node-side trajectory', () => {
   for (const fixture of PARITY_FIXTURES) {
     it(`fixture ${fixture.id}: ${fixture.ticks}-tick trajectory matches within |Δ|<${TOLERANCE}`, () => {

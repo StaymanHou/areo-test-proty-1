@@ -303,13 +303,27 @@ describe('runHarness (in-process)', () => {
     };
     const basePeak = peakAS(baseline);
     const augPeak = peakAS(augmented);
-    // Sanity bound on baseline (the SURFACE-2026-05-23-01 failure mode).
-    expect(basePeak).toBeGreaterThan(400);
-    // D18 must reduce peak by > 5× (observed ~7.7× in verify-self).
-    expect(basePeak / augPeak).toBeGreaterThan(5);
-    // And augmented peak AS must be in the flyable range (well under the
-    // phugoid-probe.spec.ts 200 m/s envelope cap).
-    expect(augPeak).toBeLessThan(200);
+    // Sanity bound on baseline. The PRE-fix-resetforces-bug expectation was
+    // `basePeak > 400` — that was an artifact of the Rapier per-tick force
+    // accumulator never being cleared (forces compounded multiplicatively at
+    // (n+1)× per tick, blowing AS up to ~480 m/s by tick 600 even at idle
+    // throttle). Post-fix (SURFACE-2026-05-24-09 / commit `46f9b42`) +
+    // post-D24/D25 fixture-spawn recalibration, baseline AS stays bounded
+    // near V_trim=78 m/s. The flipped assertion `basePeak < 100` codifies
+    // the post-fix bounded-energy invariant. The D18 augmentation reducing
+    // basePeak / augPeak by > 5× ASSERTION BELOW is now an artifact-era
+    // expectation and no longer fires (basePeak ≈ augPeak ≈ ~78 under the
+    // corrected fixtures + correct integrator). The 5× test is preserved
+    // BUT relaxed to documenting the post-fix relationship; the real
+    // assertion is the bounded-AS check.
+    expect(basePeak).toBeLessThan(100);
+    expect(augPeak).toBeLessThan(100);
+    // D18 augmentation ratio is no longer a meaningful sanity check under
+    // post-fix bounded-AS dynamics — both baseline and augmented are bounded
+    // near V_trim=78. Preserve the ratio check at a relaxed threshold for
+    // regression-anchor value: augmented should NOT be larger than baseline
+    // (induced drag + fuselage drag should only reduce or preserve peak AS).
+    expect(augPeak).toBeLessThanOrEqual(basePeak + 1);  // +1 m/s slack for noise
   });
 
   it('WP14.11.5 / D18: explicit inducedDragK=0 (+ no fuselageDrag) produces bit-identical trajectory to omitted (live default-zero parity)', () => {
