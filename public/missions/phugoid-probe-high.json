@@ -4,7 +4,7 @@
   "type": "free-flight",
   "spawn": {
     "position": { "x": 0, "y": 50, "z": 0 },
-    "linvel": { "x": 0, "y": 0, "z": -30 },
+    "linvel": { "x": 0, "y": 0, "z": -78 },
     "throttle": 0.4
   },
   "objectives": []
