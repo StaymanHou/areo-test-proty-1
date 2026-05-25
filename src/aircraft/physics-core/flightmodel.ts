@@ -130,6 +130,12 @@ export class FlightModel {
    */
   applyForces(throttle: number, dt?: number): void {
     const t = throttle < 0 ? 0 : throttle > 1 ? 1 : throttle;
+    // Clear Rapier's per-tick user-force accumulator before applying this tick's
+    // forces. Rapier persists addForce/addForceAtPoint values across world.step()
+    // calls; without an explicit reset they compound multiplicatively (at tick n
+    // the effective force is (n+1)× the intended). See SURFACE-2026-05-24-09.
+    this.aircraft.body.resetForces(true);
+    this.aircraft.body.resetTorques(true);
     const state = this.aircraft.readBodyState();
 
     // 1. Per-surface aerodynamic force at world application point.
