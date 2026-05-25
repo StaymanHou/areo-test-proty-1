@@ -4,6 +4,25 @@ Surface-notes from workflow runs. Consumed and resolved by higher-level workflow
 
 ## Open
 
+### SURFACE-2026-05-25-03 — WP14.19 Phase 4 P4.4 browser walkthrough: ALL 5 mission JSON files (`public/missions/*.json`) still spawn at `linvel.z: -30` (WP14.5-era broken-integrator convention) while `tests/parity-fixtures.ts` was updated to V_trim=-78 at D24+D25 — recency-bias gap in the cascade's close-out audit
+- **Source:** feature:build (WP14.19 Phase 4 P4.4, 2026-05-25 evening)
+- **Target level:** product:arch (D27 architect cycle — recency-bias close-out for the player-facing surface)
+- **Type:** recency-bias-gap / shared-upstream-dependency-not-grep'd / browser-surface-vs-harness-surface-divergence
+- **Priority:** medium-high (gates WP14.19 Branch A close + the 13+1+1-SURFACE cascade chain full close + Phase 2 mission content unblocks; structurally a "trivial 5-line JSON edit" but causally load-bearing for the player-facing close-out)
+- **Summary:** WP14.19 Phase 4 P4.2/P4.3/P4.5 closed cleanly (aircraft.json mirrored to D26-β globalBest, phugoid-probe.spec.ts un-skipped, Vitest 592/592 + e2e 15/15 + build clean). At P4.4 browser walkthrough (`localhost:5173/?mission=phugoid-probe-mid&debug=true`), the airframe dropped to ground in ~5s — NOT the coherent phugoid the harness shows at V_trim=78. Investigation via `window.__aircraft.getState()` confirmed the MISSION JSON files spawn at `linvel: { x: 0, y: 0, z: -30 }` (AS=30), not V_trim=78. The cascade updated `tests/parity-fixtures.ts` at D24 then D25 but missed the mission JSON files; lift at AS=30 ≈ 1455 N << weight 9810 N → free-fall ~0.85g. Audit: ALL 5 mission JSONs are stale (`phugoid-probe-{low,mid,high}.json`, `free-flight.json`, `waypoint-patrol.json`); `index.json` is a manifest-only no-spawn file.
+- **Diagnostic interpretation:**
+  1. **The cascade's debugging discipline was harness-shaped, not user-shaped.** The 14 architect cycles operated against `tests/parity-fixtures.ts`, `tools/tune/score.ts`, and `src/aircraft/physics-core/`. The `public/missions/*.json` files were never in scope — they were treated as data, not as a derivation consumer of V_trim.
+  2. **`feedback_recency_bias_in_cascades.md` fires squarely.** The rule's text — "the shared upstream dependency that hadn't been edited is the high-prior suspect" — was honored at D24 (for parity-fixtures spawn AS=30) but not extended to ALL consumers of that derivation. Mission JSON files are a parallel consumer that was never grep'd.
+  3. **Fix is trivial: 5-line JSON edit per file × 5 files = 25 lines + 0 schema changes.** D27 picks D27-γ singularly (update all 5 mission JSON files to `linvel.z: -78`) per arch.md Revision 2026-05-25 evening.
+- **Evidence:**
+  - Browser observation at session pause 2026-05-25 11:30: phugoid-probe-mid + free-flight at `localhost:5173` both produce nose-first-drop-to-ground in ~5s; harness CSVs at V_trim=78 produce coherent phugoid (alt 50→108→73 over 18s at mid).
+  - File inspection: all 5 mission JSON files contain `linvel: { x: 0, y: 0, z: -30 }`.
+  - arch.md Revision 2026-05-25 evening D27 derivation: V_trim=78 throttle-independent for fixed-α airframe under WP14.10/19 baseline.
+- **D27 candidate (chosen):** D27-γ — update all 5 mission JSONs to `linvel.z: -78` singularly per `feedback_surface_or_means_or.md`; refutes D27-α (phugoid-probes only — leaves player-facing missions broken) and D27-β (audit-then-update — subsumed by D27-γ since audit complete); REJECTS D27-δ (schema-level `spawnAirspeed` — deferred to Phase 3 polish) + D27-ε (reverse-engineer aircraft.json to AS=30 — would invalidate WP14.19 D26-β globalBest) + D27-ζ (ship as "low-speed entry" — physics-incoherent).
+- **Status:** open (D27 architect cycle landed 2026-05-25 evening; implementation pending at WP14.19 Phase 4 back-loop)
+- **Blocks:** WP14.19 Branch A close + behavioral close of SURFACE-2026-05-25-02 + SURFACE-2026-05-25-01 + SURFACE-2026-05-24-09 + 13-SURFACE cascade chain; WP15/WP16/WP17 Phase 2 mission content downstream.
+- **Resolved-by:** WP14.19 Phase 4 back-loop implementation per arch.md D27 + 7-gate verify-self contract (3 browser walkthroughs with operator-as-playtester sign-off).
+
 ### SURFACE-2026-05-25-02 — WP14.19 Phase 2 re-run under D25-ζ ESCALATE Branch B: c0-floor gone, all 3 regimes finite + c0 PASS, optimizer best deployed -14,881 (~50× past -300 threshold); `inducedDragK_wing` bound-pressure 88% = clean "widen" signal per `feedback_optimizer_bounds_are_floor.md` updated rule 2 — first time in the cascade this signal is unambiguous
 - **Source:** feature:build (WP14.19 Phase 2 re-run, 2026-05-25)
 - **Target level:** product:arch (D26 architect cycle driver — damping-bound widening + possibly envelope re-calibration with clean evidence base)

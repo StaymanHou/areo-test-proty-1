@@ -610,7 +610,18 @@ T-shirt sizing: **XS** ≤ 2h · **S** ≤ half day · **M** ≤ 1 day · **L** 
 - [ ] **Memory-update audit on WP14.18 Branch A close** (per D23 arch revision "Generalizable lesson — third observation"): update `feedback_optimizer_bounds_are_floor.md` rule 2 from "trust optimizer, widen on next cycle" to "trust optimizer IF the score function is correctly specified; if the optimizer is pushing against a constraint that the score function rewards pushing against, REFRAME the score function before widening or narrowing." Three-observation threshold from `feedback_memory_active_recall.md` met (D22 + WP14.16 saturation + D23-α-would-have-been). Document the update in the WIP retrospect.
 - [ ] Phase 2 mission content (WP15/WP16/WP17) unblocks on Branch A. Pause line moves from "post-WP14.18 branch A" to "post-WP15."
 
-### WP14.19: D24+D25 implementation — fixture spawn-AS uniformization to L=W trim AS + score-function reversion to all-level-cruise + 4 Vitest dispositions + post-fix tune-deploy + browser walkthrough — IN-PROGRESS (D24 Phase 1+2 ran 2026-05-25; D25 BACK-LOOPS Phase 1 re-edit)
+### WP14.19: D24+D25+D26+D27 implementation — fixture spawn-AS uniformization + score-function envelope revisions + mission JSON spawn AS recalibration + 4 Vitest dispositions + post-fix tune-deploy + browser walkthrough — IN-PROGRESS (Phase 1-3 + Phase 4 P4.2/P4.3/P4.5 DONE 2026-05-25 commits `849ac83`...; Phase 4 P4.1 BLOCKED on operator sign-off; D27 BACK-LOOPS Phase 4 to add mission JSON updates)
+
+**D27 update (2026-05-25 evening — back-loop to Phase 4, third back-loop):** arch.md Revision 2026-05-25 evening (D27) extends D25-ζ + D26-β to the player-facing surface (mission JSON files). Discovery: WP14.19 Phase 4 P4.4 browser walkthrough revealed `public/missions/phugoid-probe-{low,mid,high}.json` + `free-flight.json` + `waypoint-patrol.json` ALL spawn at `linvel.z: -30` (WP14.5-era broken-integrator convention) while `tests/parity-fixtures.ts` was updated to V_trim=-78 at D24+D25. Airframe drops to ground in ~5s at browser surface despite coherent harness trajectory. Independent CLAUDE.md Rule #5 derivation per arch.md D27: spawn AS=V_trim=78 (throttle-independent) for any mission intended to start in flight. WP14.19 Phase 4 re-edit (D27 layer):
+- `public/missions/phugoid-probe-low.json`: `linvel.z: -30 → -78`.
+- `public/missions/phugoid-probe-mid.json`: `linvel.z: -30 → -78`.
+- `public/missions/phugoid-probe-high.json`: `linvel.z: -30 → -78`.
+- `public/missions/free-flight.json`: `linvel.z: -30 → -78`.
+- `public/missions/waypoint-patrol.json`: `linvel.z: -30 → -78`.
+- (`public/missions/index.json` — manifest only, no change.)
+- 7-gate verify-self contract: typecheck both configs + Vitest 592/592 + e2e 15/15 + build + 3 browser walkthroughs (phugoid-probe-mid + free-flight + waypoint-patrol) with operator-as-playtester sign-off per `feedback_operator_as_external.md`.
+- CLAUDE.md Rule #9 amended at D27 (scope extended from "level-flight score-function fixtures" to "any spawn-into-level-flight initial condition"). No new schema field; D27 is value edits only per Rule #6.
+- Phase 4 P4.1 decision branch (A vs B-accept vs C) is re-evaluated AFTER D27 implementation + browser walkthroughs.
 
 **D26 update (2026-05-25 late afternoon — back-loop to Phase 1 re-edit, second back-loop):** arch.md Revision 2026-05-25 late afternoon (D26, commit `9b9aa4e`) extends D25-ζ with per-regime `ALT_ENVELOPE` reflecting natural per-throttle alt behavior. WP14.19 Phase 1 re-edit (D26 layer):
 - `tools/tune/score.ts` `ScoreEnvelopes` interface: add `altEnvelope?: Readonly<Record<string, number>>` field (additive, optional).
