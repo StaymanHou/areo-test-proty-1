@@ -1017,3 +1017,7 @@ WP14.15 ran the canonical D21 linked-search tune at WP14.13 widened bounds (k≤
 
 ## Session Pause — 2026-05-24 18:35
 Paused at WP14.17 finalize boundary (commit `c9c5733`). D23 architect cycle DONE; D23-γ-evolved impl shipped (per-regime throttle-mode dispatch in score.ts). Next unit: WP14.18 (re-tune at D22-β narrowed bounds under D23-γ-evolved score function + binding browser walkthrough; cascade close gate for 13 SURFACEs on Branch A). See `workflow/.session.md` to resume.
+
+
+## Session Pause — 2026-05-25 16:35
+Paused post-WP14.19 ship + finalize + backlog cleanup (commit `00da3f5`). **D14→D27 cascade CLOSED on Branch B-accept.** 17 SURFACEs closed at WP14.19 ship. Production aircraft.json ships D26-β globalBest. Browser walkthrough confirms coherent V_trim flight at all 3 mission types. Operator's casual-feel signal at session end: "Not bad. Much better than before. The controls aren't there yet." Next unit: `/session-start` to route — likely a control-feel task (operator's fresh signal) then WP15 takeoff/landing (WBS critical path), or directly WP15 if operator prefers. See `workflow/.session.md` to resume.
