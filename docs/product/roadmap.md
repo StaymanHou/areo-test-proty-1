@@ -1,7 +1,7 @@
 ---
 stage: roadmap
 state: in-progress
-updated: 2026-05-12 (WP10–WP14 — Phase 2 arch revision + β5 schema + mission framework + HUD + free-flight + waypoint all shipped 2026-05-12. Mission framework + free-flight + waypoint + Mission select/HUD milestones complete; 2 mission-content WPs remaining: WP15 takeoff/landing, WP16 combat. WP14.5 clAlphaDot tuning pass inserted to unblock sustained-throttle missions.)
+updated: 2026-05-25 evening (**WP14.19 CLOSED — D14→D27 physics cascade end on Branch B-accept**, ship commit `eafc91e`. The 11-day D14→D27 cascade closed structurally + behaviorally: integrator fix at `fix-resetforces-bug` (46f9b42) + spawn AS uniformization to V_trim=78 in parity-fixtures (D24/D25) + per-regime alt envelopes (D26-β) + mission JSON spawn AS recalibration (D27). Phase 2 mission content milestones unblock: WP15 takeoff/landing + WP16 combat. Phase 2 exit-criteria gate (4 mission types playable from main screen) advances from "3-of-4 + 1 pending physics cascade" to "3-of-4 + 1 pending WP15 takeoff/landing impl + WP16 combat impl." Earlier 2026-05-12 entry: WP10–WP14 — Phase 2 arch revision + β5 schema + mission framework + HUD + free-flight + waypoint all shipped 2026-05-12.)
 ---
 
 # Roadmap
