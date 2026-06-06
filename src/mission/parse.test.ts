@@ -52,6 +52,39 @@ describe('parseMission — happy path', () => {
     expect(m.objectives[2]!.kind).toBe('destroy-target');
   });
 
+  it('parses the WP15 takeoff-landing mission JSON shape (3 reach-waypoints + 1 touchdown)', () => {
+    const raw = {
+      id: 'takeoff-landing',
+      name: 'Takeoff & Landing',
+      type: 'takeoff-landing',
+      spawn: {
+        position: { x: 0, y: 1.0, z: 280 },
+        linvel: { x: 0, y: 0, z: -78 },
+        throttle: 1.0,
+      },
+      objectives: [
+        { kind: 'reach-waypoint', position: { x: 0, y: 30, z: -200 }, radius: 80, order: 0 },
+        { kind: 'reach-waypoint', position: { x: 200, y: 150, z: -800 }, radius: 100, order: 1 },
+        { kind: 'reach-waypoint', position: { x: 0, y: 80, z: 500 }, radius: 120, order: 2 },
+        {
+          kind: 'touchdown',
+          runway: {
+            center: { x: 0, y: 0.5, z: 0 },
+            halfExtents: { x: 15, y: 0.6, z: 300 },
+          },
+          maxVSpeed: 4,
+        },
+      ],
+    };
+    const m = parseMission(raw);
+    expect(m.type).toBe('takeoff-landing');
+    expect(m.objectives).toHaveLength(4);
+    expect(m.objectives.slice(0, 3).every((o) => o.kind === 'reach-waypoint')).toBe(true);
+    expect(m.objectives[3]!.kind).toBe('touchdown');
+    expect(m.failCondition).toBe('crash');
+    expect(m.winCondition).toBe('all-objectives');
+  });
+
   it('accepts explicit winCondition + failCondition + timeoutSec + scriptHook', () => {
     const raw = validBaseline();
     raw.type = 'combat';

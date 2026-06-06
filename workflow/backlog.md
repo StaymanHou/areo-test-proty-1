@@ -8,7 +8,20 @@ Paused. See `workflow/.session.md` to resume. Operator-queued next: SURFACE-05 (
 ## Session Pause — 2026-06-06 14:30
 Paused. See `workflow/.session.md` to resume. Operator-queued IMMEDIATE-NEXT for next session: **build a jet airframe config (MiG-15-class recommended) + jet-test mission so operator can fly it manually in next session**. Vision-constraint negotiation required at spec stage (`docs/product/roadmap.md:62` "multiple aircraft" exclusion); default Option α = deep-link-only fixture, NOT in home menu, parallel to existing aerobatic-test pattern. Operator playtest IS the verify-human gate per directive "let me try it" — cannot be skipped under any drive mode for this feature.
 
+## Session Pause — 2026-06-06 15:28
+Paused. See `workflow/.session.md` to resume. Jet airframe DELIVERED — WP14.21 shipped at `01674bf` + finalized at `df09820`; operator playtest PASS. **NEXT entry point recommendation: WP15 (takeoff/landing mission)** via `/feature-spec` — Phase 2 critical path advance. Alternatives: WP16 combat, SURFACE-06-06 Phase B/C aerobatic tune (requires v1 vision re-negotiation), SURFACE-06-01 WASD keymap (small task), SURFACE-06-03 clP roll-damping arch cycle.
+
 ## Open
+
+### SURFACE-2026-06-06-09 — Cessna baseline airframe cannot take off from rest on the 600m runway; "true takeoff roll" gameplay structurally infeasible at current T/W
+- **Source:** feature:build (takeoff-landing-mission Phase 1 P1.1, 2026-06-06)
+- **Target level:** product:wbs (Phase 3 polish OR a future arch revision raising thrust / lowering mass)
+- **Type:** arch-gap / gameplay-design / discovered by scripted-input harness probe
+- **Priority:** low
+- **Summary:** Probed scripted-input harness at `?mission=takeoff-landing&script=hold:Throttle=1.0@0:15.0` with a from-rest spawn (linvel=0). Aircraft reached only AS≈18 m/s after 16s on a flat runway — well below the V_trim=78 m/s required for liftoff. Plan-time arithmetic predicted ~6 m/s² accel; live data shows ~1.1 m/s² because drag (fuselageDrag, inducedDragK) is much more aggressive at low AS than the back-of-envelope `T/m` estimate accounted for. Followup probe with rolling-start linvel=−40 confirmed the aircraft IS glued flat to the terrain (no rotation possible from box-cuboid collider resting on terrain) until natural liftoff around AS≈78 m/s, which occurs at z≈-1100 m — 800m PAST the visible runway end at z=-300.
+- **Mitigation in WP15:** Mission redesigned to spawn at V_trim=78 m/s (matches all other missions' convention per CLAUDE.md Rule #9). Gameplay becomes "rotate at takeoff speed → climb → pattern → land" rather than "takeoff roll → rotate → climb → land." Spec AC2's Rule #9 carve-out for ground-rest spawn is dropped; convention adopted instead.
+- **Suggested action (future):** Two paths to support true takeoff roll if v1.x adds it: (a) physics — increase Cessna thrust.maxN from 6000N to ~15000N (T/W from 0.6 to 1.5) so the aircraft can accelerate from rest to V_trim in <10s on a 600m runway, OR add a wheels-on-runway pitch-up mechanism so the aircraft can rotate on the ground before lift overcomes weight; (b) world — extend the runway to ~3000m via `createRunway({length: 3000})`. Path (a) is structurally more honest but conflicts with the D14→D27 cascade's tuned Cessna baseline. Path (b) makes the world unrealistic. Both deferred to Phase 3 polish unless an explicit WP raises this.
+- **Status:** mitigated-in-WP15 (V_trim spawn convention); true-takeoff-roll deferred
 
 ### SURFACE-2026-06-06-08 — `docs/product/arch.md` exceeds 300-line size guard (2645 lines); same for `wbs.md` (1023 lines)
 - **Source:** feature:spec (per-mission-airframe, 2026-06-06)

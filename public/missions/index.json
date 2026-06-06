@@ -1,4 +1,5 @@
 [
   { "id": "free-flight", "name": "Free Flight" },
-  { "id": "waypoint-patrol", "name": "Waypoint Patrol" }
+  { "id": "waypoint-patrol", "name": "Waypoint Patrol" },
+  { "id": "takeoff-landing", "name": "Takeoff & Landing" }
 ]
