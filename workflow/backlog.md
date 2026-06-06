@@ -7,6 +7,15 @@ Paused. See `workflow/.session.md` to resume. Operator-queued next: SURFACE-05 (
 
 ## Open
 
+### SURFACE-2026-06-06-08 — `docs/product/arch.md` exceeds 300-line size guard (2645 lines); same for `wbs.md` (1023 lines)
+- **Source:** feature:spec (per-mission-airframe, 2026-06-06)
+- **Target level:** product:finalize (durable-doc curation)
+- **Type:** docs / process
+- **Priority:** low
+- **Summary:** Both `arch.md` and `wbs.md` are well past the 300-line size-guard threshold that triggers truncated reads in entry-point skills. Each architect-cycle revision (D14-D27 cascade) appended a full section without summary/archive of the prior revision; the frontmatter `previous_updated_N` chain in `arch.md:4-12` is now ~9 layers deep. Skills still function (truncated read + heading grep is sufficient) but the size guard fires on every read, which is a small ongoing tax.
+- **Suggested action:** At next `/product-finalize`, consider either (a) archiving completed D-cycle sections (D14-D26 are all settled, only D27 is the current cursor) into `docs/product/archive/<cycle-name>/arch-cycle-Dnn-Dmm.md` while keeping a one-line summary in the live `arch.md`, OR (b) splitting `arch.md` into `arch-current.md` (last 1-2 cycles + durable decisions) + `arch-history.md` (everything older).
+- **Status:** pending
+
 ### SURFACE-2026-06-06-07 — `?mission=<id>` deep-link silently fell through to mission-select when `<id>` wasn't in `public/missions/index.json`
 - **Source:** task:act (phugoid-probe-harness-refactor, 2026-06-06)
 - **Target level:** task workflow (resolved inline in this task)
@@ -20,7 +29,7 @@ Paused. See `workflow/.session.md` to resume. Operator-queued next: SURFACE-05 (
 - **Source:** session pause (2026-06-06, operator directive after Path A close on SURFACE-2026-06-06-02)
 - **Target level:** product:wbs (feature workflow — multi-session)
 - **Type:** new-feature / Phase 2 mission content + Phase 3 polish bridge
-- **Priority:** **high — second-next after SURFACE-06-06-05 dogfooding refactor.** Blocks combat WP16 player-flyable aerobatic gameplay.
+- **Priority:** **partial — Phase A CLOSED by feature `per-mission-airframe` ship commit `bb1c242` (2026-06-06). Phase B + Phase C remain deferred per vision constraint (`docs/product/roadmap.md:62` "multiple aircraft selection — v1 ships with one aircraft"). Re-promote to active if multi-aircraft is negotiated into v1 scope, or absorb into WP16 combat if combat uses the aerobatic airframe.**
 - **Summary:** At Path A close 2026-06-06 a seed aerobatic config `public/config/aircraft-aerobatic.json` was committed (mass=500, T_max=12000, T/W=2.4, wings.area=4 per wing — Pitts-class). Verified to geometrically backflip from cruise (+180° at t=5.23s via the scripted-input harness `?config=aerobatic`). However the seed is NOT a finished player-flyable model — it is a scaled-down Cessna with mass/thrust/area changes only. Aero curves, `clQ`, `clAlphaDot`, `inducedDragK`, `fuselageDrag`, `incidenceRad`, `maxDeflectionRad`, `incidence` are all unchanged from production Cessna config. No mission JSON references it; the mission schema does not yet support per-mission airframe selection; mission-select UI does not surface airframe choice.
 - **Scope (~ 3 phases, similar shape to controls-feel-pass):**
   - **Phase A (schema):** add optional `config?: string` field to mission JSON (`public/missions/*.json` + `src/mission/types.ts` + `src/mission/loader.ts` + `src/main.ts` to pass mission config name through to `loadAircraftConfig`). Defaults to current behavior. Path-traversal-defended via the parser's regex.
@@ -35,8 +44,9 @@ Paused. See `workflow/.session.md` to resume. Operator-queued next: SURFACE-05 (
   - Scripted-input harness e2e at `?config=aerobatic` confirming the aerobatic flight envelope across at least 3 maneuvers (loop from cruise, level cruise hold, knife-edge or Cuban-8 if Phase B reaches that level).
   - Operator playtest verify-human at Phase B close (this is a feel-tuning cycle; only the operator can validate "feels right").
 - **Why deferred from this session:** Phase A is a small task workflow (~1-2h) but Phase B is a multi-session feel-tuning cycle. Bundling them into this session's pause-note path would exceed scope. Per `feedback_surface_or_means_or.md` single-knob discipline, the harness ship + Path A close are the closure for this session; the aerobatic tune is the natural next-but-one.
-- **Memory anchors:** `feedback_browser_walkthrough_load_bearing.md` (any physics-feel WP requires harness probe), `feedback_operator_as_external.md` (under full-autopilot, operator-as-playtester is unavailable for Phase B verify-human; document the deviation), CLAUDE.md "Not goals for v1: multiple aircraft" (the closure of this SURFACE should explicitly either negotiate that exclusion or commit to defer the *flyable* aerobatic model to Phase 3 / multi-aircraft work even though the *seed config* is in place).
-- **Status:** pending
+- **Memory anchors:** `feedback_browser_walkthrough_load_bearing.md` (any physics-feel WP requires harness probe), `feedback_operator_as_external.md` (under full-autopilot, operator-as-playtester is unavailable for Phase B verify-human; document the deviation), CLAUDE.md "Not goals for v1: multiple aircraft" (the closure of this SURFACE explicitly defers the *flyable* aerobatic model to Phase 3 / multi-aircraft work; the *seed config* + the *plumbing* are in place at Phase A close).
+- **Phase A close (2026-06-06, commit `bb1c242`):** Per-mission `config?` schema + parser + `main.ts` boot-path thread-through + 2 new e2e tests + 5 new Vitest cases shipped at WP14.20. Fixture mission `public/missions/aerobatic-test.json` (deep-link-only) declares `config: "aerobatic"` for the e2e gate. Vision-constraint negotiation: Phase A is plumbing only; Phase B + C remain deferred under the v1 multi-aircraft exclusion.
+- **Status:** partial — Phase A CLOSED; Phase B + C deferred
 
 ### SURFACE-2026-06-06-05 — Refactor `phugoid-probe.spec.ts` to use the new `?script=` harness as a dogfooding exercise
 - **Source:** feature:finalize (scripted-input-harness, 2026-06-06; operator question during finalize)
