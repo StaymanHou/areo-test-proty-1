@@ -35,7 +35,36 @@ async function bootstrap() {
   const debugEnabled = urlParams.get('debug') === 'true';
   const scriptedInput = parseScriptSpec(urlParams);
   for (const w of scriptedInput.warnings) console.warn(w);
-  const aircraftConfigPath = configNameToPath(scriptedInput.plan?.configName ?? null);
+
+  // Airframe config resolution — precedence: URL ?config= > mission config? > default.
+  // When the URL has no ?config= but does have ?mission=<id> and the mission
+  // declares its own `config?`, we pre-load that mission so its `config?` can
+  // shape the boot-time `loadAircraftConfig` call. The pre-loaded mission is
+  // handed to startMission below to avoid a second fetch.
+  // Phase A scope: only the deep-link path consults mission.config. Returning
+  // to the menu and picking a different-airframe mission keeps the original
+  // airframe (mid-session swap requires Aircraft+FlightModel reconstruction,
+  // deferred to Phase C). SURFACE-2026-06-06-06.
+  const urlConfigName = scriptedInput.plan?.configName ?? null;
+  const requestedMissionId = urlParams.get('mission');
+  let preloadedMission: Mission | null = null;
+  let resolvedConfigName: string | null = urlConfigName;
+  if (urlConfigName === null && requestedMissionId !== null) {
+    try {
+      preloadedMission = await loadMission(requestedMissionId);
+      if (preloadedMission.config !== undefined) {
+        resolvedConfigName = preloadedMission.config;
+      }
+    } catch (err) {
+      // Pre-load failed — fall back to default airframe; startMission below
+      // re-attempts the fetch and surfaces the error via errorForId path.
+      console.warn(
+        `mission pre-load failed for "${requestedMissionId}" (will retry at startMission):`,
+        err,
+      );
+    }
+  }
+  const aircraftConfigPath = configNameToPath(resolvedConfigName);
 
   const rapierReady = RAPIER.init();
   const configReady = loadAircraftConfig(aircraftConfigPath);
@@ -353,15 +382,30 @@ async function bootstrap() {
   loop.setPaused(true);
   loop.start();
 
-  async function startMission(id: string): Promise<void> {
+  async function startMission(id: string, preloaded: Mission | null = null): Promise<void> {
     let mission: Mission;
-    try {
-      mission = await loadMission(id);
-    } catch (err) {
-      console.error(`Failed to load mission "${id}":`, err);
-      // Re-show the select screen with the error state.
-      missionSelect.show(missionManifest, { errorForId: id });
-      return;
+    if (preloaded !== null && preloaded.id === id) {
+      mission = preloaded;
+    } else {
+      try {
+        mission = await loadMission(id);
+      } catch (err) {
+        console.error(`Failed to load mission "${id}":`, err);
+        // Re-show the select screen with the error state.
+        missionSelect.show(missionManifest, { errorForId: id });
+        return;
+      }
+    }
+    // If the mission declares its own `config?` but the boot path already
+    // loaded a different airframe (URL ?config= won precedence, OR the user
+    // returned to the menu and picked a mission that wants a different
+    // airframe), surface that as a console.warn so debug agents and Phase C
+    // implementers can spot the mismatch. The currently-loaded airframe wins
+    // — mid-session swap is deferred to Phase C (full page reload required).
+    if (mission.config !== undefined && mission.config !== resolvedConfigName) {
+      console.warn(
+        `mission "${id}" declares config="${mission.config}" but boot loaded "${resolvedConfigName ?? 'default'}" — mid-session airframe swap not supported (Phase A); reload page to apply mission's config.`,
+      );
     }
     activeMission = mission;
     aircraft.reset(mission.spawn.position, mission.spawn.linvel);
@@ -433,9 +477,11 @@ async function bootstrap() {
   // of the manifest) and falls back to the select-with-error path if the
   // fetch fails. The manifest only governs which missions appear in the
   // menu UI; deep-link load works for any mission whose JSON exists.
-  const requestedMissionId = urlParams.get('mission');
+  // `preloadedMission` is the result of the early mission fetch done above
+  // for per-mission airframe config resolution — re-using it avoids a second
+  // network request.
   if (requestedMissionId !== null) {
-    await startMission(requestedMissionId);
+    await startMission(requestedMissionId, preloadedMission);
   } else {
     missionSelect.show(missionManifest);
   }

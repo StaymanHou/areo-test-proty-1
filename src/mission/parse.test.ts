@@ -222,3 +222,40 @@ describe('parseMission — Objective validation', () => {
     expect(() => parseMission(bad)).toThrow(/targetId must be a non-empty string/);
   });
 });
+
+describe('parseMission — config field (SURFACE-2026-06-06-06 Phase A)', () => {
+  it('omits config when absent (default-Cessna path)', () => {
+    const m = parseMission(validBaseline());
+    expect(m.config).toBeUndefined();
+  });
+
+  it('accepts a valid config name (alphanumeric + - + _)', () => {
+    const raw = validBaseline();
+    raw.config = 'aerobatic';
+    expect(parseMission(raw).config).toBe('aerobatic');
+
+    raw.config = 'pitts_s2';
+    expect(parseMission(raw).config).toBe('pitts_s2');
+
+    raw.config = 'f-16';
+    expect(parseMission(raw).config).toBe('f-16');
+  });
+
+  it('rejects path-traversal attempts', () => {
+    const bad = validBaseline();
+    bad.config = '../etc/passwd';
+    expect(() => parseMission(bad)).toThrow(/config must match/);
+  });
+
+  it('rejects empty-string config', () => {
+    const bad = validBaseline();
+    bad.config = '';
+    expect(() => parseMission(bad)).toThrow(/config must match/);
+  });
+
+  it('rejects non-string config', () => {
+    const bad = validBaseline();
+    bad.config = 42;
+    expect(() => parseMission(bad)).toThrow(/config must match/);
+  });
+});

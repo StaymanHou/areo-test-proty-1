@@ -110,6 +110,36 @@ test('scripted-input: ?config=aerobatic produces different flight behavior vs de
   expect(terminalAerobatic - terminalDefault).toBeGreaterThan(10);
 });
 
+test('per-mission-airframe: mission with config="aerobatic" produces aerobatic flight envelope (SURFACE-2026-06-06-06)', async ({ page }) => {
+  // Mirrors the `?config=aerobatic` URL test above but drives airframe selection
+  // through mission JSON (`public/missions/aerobatic-test.json` declares
+  // `config: "aerobatic"`). Phase A acceptance — the plumbing test.
+  const queryBase = 'debug=true&script=hold:Throttle=1.0@0:5.0';
+
+  const logDefault = await runScript(page, `?mission=free-flight&${queryBase}`);
+  const logFromMission = await runScript(page, `?mission=aerobatic-test&${queryBase}`);
+
+  const terminalDefault = logDefault[logDefault.length - 1]!.AS_mps;
+  const terminalFromMission = logFromMission[logFromMission.length - 1]!.AS_mps;
+
+  // Same threshold as the URL-driven aerobatic test above (T/W=2.4 vs 0.61 →
+  // measurable terminal AS gap).
+  expect(terminalFromMission - terminalDefault).toBeGreaterThan(10);
+});
+
+test('per-mission-airframe: URL ?config= overrides mission config (URL > mission precedence)', async ({ page }) => {
+  // free-flight.json has no `config?`; ?config=aerobatic should still load aerobatic.
+  const queryBase = 'debug=true&script=hold:Throttle=1.0@0:5.0';
+
+  const logDefault = await runScript(page, `?mission=free-flight&${queryBase}`);
+  const logUrlOverride = await runScript(page, `?mission=free-flight&${queryBase}&config=aerobatic`);
+
+  const terminalDefault = logDefault[logDefault.length - 1]!.AS_mps;
+  const terminalUrlOverride = logUrlOverride[logUrlOverride.length - 1]!.AS_mps;
+
+  expect(terminalUrlOverride - terminalDefault).toBeGreaterThan(10);
+});
+
 test('scripted-input: malformed ?config= falls back to default with a warning', async ({ page }) => {
   const consoleWarnings: string[] = [];
   page.on('console', (msg) => {

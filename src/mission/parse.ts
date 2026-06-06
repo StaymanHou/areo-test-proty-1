@@ -2,6 +2,7 @@
 // number, descriptive errors, unknown-field rejection). Failures throw with
 // a `mission config: ...` prefix so the source is unambiguous in logs.
 
+import { CONFIG_NAME_REGEX } from '../engine/scripted-input';
 import type { Vec3Plain } from '../aircraft/physics-core/state';
 import {
   FAIL_CONDITIONS,
@@ -137,6 +138,7 @@ const MISSION_KEYS = [
   'failCondition',
   'timeoutSec',
   'scriptHook',
+  'config',
 ] as const;
 
 export function parseMission(raw: unknown): Mission {
@@ -215,6 +217,16 @@ export function parseMission(raw: unknown): Mission {
     scriptHook = r.scriptHook;
   }
 
+  let config: string | undefined;
+  if (r.config !== undefined) {
+    if (typeof r.config !== 'string' || !CONFIG_NAME_REGEX.test(r.config)) {
+      throw new Error(
+        'mission config: config must match /^[a-z0-9_-]+$/i (path-traversal defense)',
+      );
+    }
+    config = r.config;
+  }
+
   return {
     id: r.id,
     name: r.name,
@@ -225,5 +237,6 @@ export function parseMission(raw: unknown): Mission {
     failCondition,
     ...(timeoutSec !== undefined ? { timeoutSec } : {}),
     ...(scriptHook !== undefined ? { scriptHook } : {}),
+    ...(config !== undefined ? { config } : {}),
   };
 }

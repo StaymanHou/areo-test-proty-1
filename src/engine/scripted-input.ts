@@ -43,7 +43,8 @@ export interface ParseResult {
 const TICK_RATE_HZ = 60;
 const DEFAULT_SETTLE_TICKS = 60; // 1 second
 const DEFAULT_LOG_CAPACITY = 3600; // 60 seconds @ 60 Hz
-const CONFIG_NAME_REGEX = /^[a-z0-9_-]+$/i;
+/** Path-traversal defense for `?config=<name>` and mission JSON `config?` field. */
+export const CONFIG_NAME_REGEX = /^[a-z0-9_-]+$/i;
 
 /**
  * Parse the URL search params into a ScriptedInputPlan. Returns

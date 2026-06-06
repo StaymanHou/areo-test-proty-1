@@ -84,6 +84,16 @@ export interface Mission {
   timeoutSec?: number;
   /** Registered script-hook name; throws at runner.start if name is not registered. */
   scriptHook?: string;
+  /**
+   * Optional airframe config name. When present, the boot path loads
+   * `/config/aircraft-<config>.json` instead of the default `/config/aircraft.json`.
+   * Must match `/^[a-z0-9_-]+$/i` (single-sourced from `engine/scripted-input.ts`
+   * `CONFIG_NAME_REGEX`). Applied only when the URL has no `?config=` override —
+   * URL > mission > default. Mid-session airframe swap (return-to-menu → pick
+   * different-airframe mission) is NOT supported in Phase A; full page reload
+   * required to swap airframes. SURFACE-2026-06-06-06 Phase A.
+   */
+  config?: string;
 }
 
 /** Manifest entry for `public/missions/index.json` — drives the mission-select UI. */
