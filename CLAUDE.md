@@ -113,6 +113,43 @@ When a feature workflow's verify-self stage (or any agent-side automated probe) 
 - **Vitest at the physics-core layer** for unit-level determinism. Use the harness when full-pipeline verification is required (controls curves + ramp + mission + HUD + all of main.ts wiring); use Vitest when the per-surface math or `flightmodel.applyForces` alone is the gate.
 - **Existing `casual-flight.spec.ts` / mission smoke tests** that do not press keys (they only assert finite-state at a wall-clock window). Those are presence-checks, not time-sensitive measurements.
 
+#### Quickstart: scripted-input URL recipes
+
+Cheatsheet for common scenarios. Append to `localhost:5173/?debug=true&mission=<id>` (the harness only activates when both `?debug=true` and `?script=...` are present; without `?debug=true` the harness silently warns).
+
+```
+# Hold full-up elevator from 1s to 4s, settle 1s after:
+&script=hold:ArrowUp@1.0:4.0
+
+# Roll right (KeyD) for the whole window while holding full throttle:
+&script=hold:KeyD@0:5.0,hold:Throttle=1.0@0:5.0
+
+# Throttle 60% held to the end of the log buffer (60s default cap):
+&script=hold:Throttle=0.6@0:end
+
+# Test aerobatic airframe at full throttle for 3s:
+&script=hold:Throttle=1.0@0:3.0&config=aerobatic
+```
+
+| URL param | Format | Example | Notes |
+|---|---|---|---|
+| `?script=` | `hold:<KeyCode>@<startSec>:<endSec>` | `hold:ArrowUp@1.0:4.0` | KeyCode = `KeyboardEvent.code` value (KeyA, ArrowDown, ShiftLeft, etc.). Comma-separated for multiple concurrent events. |
+| `?script=` (throttle) | `hold:Throttle=<float>@<startSec>:<endSec>` | `hold:Throttle=0.6@0:5.0` | Float in [0, 1]. Writes `controls.throttle` directly each tick in the window. |
+| `?script=` (unbounded) | `...@<startSec>:end` | `hold:ArrowUp@0:end` | Holds until log buffer fills (60s @ 60Hz = 3600 ticks default). |
+| `?config=` | `<name>` matching `/^[a-z0-9_-]+$/i` | `config=aerobatic` | Loads `/config/aircraft-<name>.json`. Path-traversal-defended. Falls back to default with `console.warn` on invalid name. |
+
+**Reading the result from JS / Playwright:**
+```js
+// Poll until script completes (this is the determinism gate — log freezes here)
+await page.waitForFunction(() => window.__aircraft.isScriptComplete());
+
+// Read per-tick log (array of {tick, t_sec, position, linvel, rotation, angvel,
+//   pitch_deg, roll_deg, yaw_deg, AS_mps, alpha_deg, beta_deg, throttle})
+const log = await page.evaluate(() => window.__aircraft.getScriptedLog());
+```
+
+**Time unit is seconds, internally rounded to ticks at 60 Hz** (`@1.0:4.0` → physics ticks 60..239 inclusive, end-exclusive). The log buffer freezes the first tick `isScriptComplete()` returns true, so a second `getScriptedLog()` call at any later time returns the same array (byte-identical re-run is the load-bearing determinism gate).
+
 ### Testing
 - Unit tests for pure physics math (aerosurface lift/drag at known α, stall behavior). Test framework: Vitest (default with Vite, TBD at WP1). Run via `npm run test`.
 - End-to-end browser tests: `@playwright/test` (adopted WP9.6). Run via `npm run test:e2e`. Lives under `tests/e2e/`. Currently a single load-bearing smoke (`casual-flight.spec.ts`) — the WP9.5 collider-fix regression anchor; loads `?debug=true`, waits 5s, asserts via `window.__aircraft.getState()` that altitude/airspeed are finite, aircraft moved from spawn, no NaN/Infinity in console. Chromium-only at this phase (cross-browser is WP21). Keep this suite tiny per the "Playwright tests are flaky" trap noted in SURFACE-2026-05-09-01.

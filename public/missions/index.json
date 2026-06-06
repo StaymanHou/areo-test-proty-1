@@ -1,7 +1,4 @@
 [
   { "id": "free-flight", "name": "Free Flight" },
-  { "id": "waypoint-patrol", "name": "Waypoint Patrol" },
-  { "id": "phugoid-probe-low", "name": "Phugoid Probe (throttle=0.05)" },
-  { "id": "phugoid-probe-mid", "name": "Phugoid Probe (throttle=0.15)" },
-  { "id": "phugoid-probe-high", "name": "Phugoid Probe (throttle=0.4)" }
+  { "id": "waypoint-patrol", "name": "Waypoint Patrol" }
 ]

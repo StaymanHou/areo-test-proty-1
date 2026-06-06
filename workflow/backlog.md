@@ -4,6 +4,17 @@ Surface-notes from workflow runs. Consumed and resolved by higher-level workflow
 
 ## Open
 
+### SURFACE-2026-06-06-05 — Refactor `phugoid-probe.spec.ts` to use the new `?script=` harness as a dogfooding exercise
+- **Source:** feature:finalize (scripted-input-harness, 2026-06-06; operator question during finalize)
+- **Target level:** task workflow (small, ~30-60 min)
+- **Type:** dev-infrastructure / dogfooding / tech-debt
+- **Priority:** low
+- **Summary:** The existing `tests/e2e/phugoid-probe.spec.ts` (3 tests, ~34s each) uses `page.waitForTimeout(1000)` × 30 + repeated `getState()` polls — exactly the wall-clock pattern the new harness eliminates. Strictly speaking they don't violate the `### Browser-walkthrough discipline` mandate because they're presence-checks (assert AS finite, no NaN) not time-sensitive measurements, but they'd be cleaner using `?script=hold:Throttle=<value>@0:end` + `getScriptedLog()` reading per-tick state into the same finiteness assertions.
+- **Proposed shape:** Rewrite each test to navigate `/?mission=phugoid-probe-<id>&debug=true&script=hold:Throttle=<value>@0:end`, `await page.waitForFunction(() => window.__aircraft.isScriptComplete())`, then `const log = await page.evaluate(() => window.__aircraft.getScriptedLog())`. Assert no NaN across all log rows + altitude/AS within envelope. Should reduce per-test wall-clock from ~34s to ~32s (window fills the log) but more importantly removes 30 separate `waitForTimeout(1000)` synchronization points.
+- **Why deferred from this finalize:** single-knob discipline per `feedback_surface_or_means_or.md`; phugoid tests are green; refactor is dogfooding-grade not breakage-fixing. The finalize already bundles 3 orthogonal small changes (scripted-input feature + phugoid-probe menu prune + CLAUDE.md quickstart). Adding a 4th would muddy the commit.
+- **Suggested action:** Schedule as a task workflow when the next person touches phugoid-probe.spec.ts for any reason (re-tune cycle, new probe), OR when adopting the harness in another existing test would surface useful API rough edges.
+- **Status:** pending
+
 ### SURFACE-2026-06-06-04 — Need a deterministic scripted-input mode (URL query param) for headful in-browser feel-verification; Playwright dispatchEvent flow is unreliable for time-sensitive observations
 - **Source:** feature:verify-self (controls-feel-pass Phase 2, 2026-06-06; operator directive)
 - **Target level:** product:wbs (feature workflow — moderate scope: schema + game-loop hook + log buffer)
@@ -13,7 +24,7 @@ Surface-notes from workflow runs. Consumed and resolved by higher-level workflow
 - **Proposed shape:** URL query-param scripted-input mode. Format suggestion: `?script=hold:KeyD@60:240` ("at game-tick 60, hold KeyD; release at tick 240"). Multiple scripts comma-separated. The game loop reads the script, applies key presses at the corresponding ticks (deterministic, no real-time scheduling), and records aircraft state per tick into a buffer accessible via `window.__aircraft.getScriptedLog()`. Playwright navigates the URL, waits for log completion, returns the structured log — no clicking, no race conditions.
 - **Suggested action:** Schedule as a small task workflow when the next physics-feel-tuning need arises. Estimated 30-60 min: schema for the script string, a script-reader in `src/engine/` that hooks into the game loop and synthesizes key events at scheduled ticks, a log buffer exposed via `__aircraft` debug global, and one e2e test that uses it. Reusable infrastructure for all future controls/physics feel verification.
 - **Why deferred from controls-feel-pass:** Vitest `roll-rate.test.ts` already codifies the physics-level acceptance criterion deterministically and is the load-bearing gate. The live in-game verification at Phase 2 is redundant given the Vitest gate; operator's verify-human covers the felt experience. Building the scripted-input mode now would scope-creep this feature.
-- **Status:** pending
+- **Status:** **RESOLVED by feature `scripted-input-harness` ship commit `14975f4` (2026-06-06).** Harness shipped at `src/engine/scripted-input.ts` + `scripted-input-runner.ts` + `src/main.ts` integration + `tests/e2e/scripted-input.spec.ts` (4 tests including byte-identical-rerun determinism gate). Project-local CLAUDE.md `### Browser-walkthrough discipline` subsection mandates harness for all future agent-side automated probes > 2s observation window. URL surface: `?debug=true&script=hold:<KeyCode>@<startSec>:<endSec>[,...]` (also supports `hold:Throttle=<float>@<s>:<e>` and `?config=<name>` for airframe swap). Out-of-scope-but-shipped: aerobatic test fixture `public/config/aircraft-aerobatic.json` for the `?config=aerobatic` e2e test. Verify-self 5/5 PASS at browser-walkthrough.
 
 ### SURFACE-2026-06-06-03 — Airframe has no aerodynamic roll-rate damping mechanism (no clP analogous to D17 clQ); terminal roll rate at full aileron equilibrates at ~550°/s with only weak β5-coupling damping
 - **Source:** feature:build (controls-feel-pass Phase 2 verify-self, 2026-06-06)
