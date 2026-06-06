@@ -12,6 +12,7 @@
       "area": 6,
       "curve": "symmetric-flat-plate",
       "incidenceRad": 0.0349,
+      "maxDeflectionRad": 0.0873,
       "clQ": 1.83057709056884,
       "clAlphaDot": 4.667542421258985,
       "inducedDragK": 0.26127884298563003
@@ -24,6 +25,7 @@
       "area": 6,
       "curve": "symmetric-flat-plate",
       "incidenceRad": 0.0349,
+      "maxDeflectionRad": 0.0873,
       "clQ": 1.83057709056884,
       "clAlphaDot": 4.667542421258985,
       "inducedDragK": 0.26127884298563003

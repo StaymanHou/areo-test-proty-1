@@ -177,22 +177,22 @@ describe('Controls — stickCurve', () => {
     expect(c.stickCurve).toBe('cubic');
   });
 
-  it('cubic curve: half-deflection raw input outputs ~0.3125', () => {
+  it('cubic curve: half-deflection raw input outputs 0.125 (pure x³)', () => {
     const c = new Controls(input); // default cubic
     keyDown(target, DEFAULT_KEY_MAP.rollRight);
     // stickRate=5.0, dt=0.1 → raw aileron = 0.5
     c.update(0.1);
-    // f(0.5) = 0.5·0.5 + 0.5·0.125 = 0.25 + 0.0625 = 0.3125
-    expect(c.aileron).toBeCloseTo(0.3125, 5);
+    // f(0.5) = 0.5³ = 0.125
+    expect(c.aileron).toBeCloseTo(0.125, 5);
   });
 
-  it('cubic curve: small input is softened (raw 0.1 → 0.0505)', () => {
+  it('cubic curve: small input is heavily softened (raw 0.1 → 0.001)', () => {
     const c = new Controls(input, { stickRate: 1.0 }); // slow ramp
     keyDown(target, DEFAULT_KEY_MAP.rollRight);
     // dt=0.1, stickRate=1.0 → raw=0.1
     c.update(0.1);
-    // f(0.1) = 0.05 + 0.0005 = 0.0505
-    expect(c.aileron).toBeCloseTo(0.0505, 5);
+    // f(0.1) = 0.1³ = 0.001
+    expect(c.aileron).toBeCloseTo(0.001, 6);
   });
 
   it('cubic curve: full deflection preserved (raw ±1 → ±1)', () => {
@@ -211,7 +211,7 @@ describe('Controls — stickCurve', () => {
     const c = new Controls(input);
     keyDown(target, DEFAULT_KEY_MAP.rollLeft);
     c.update(0.1); // raw = -0.5
-    expect(c.aileron).toBeCloseTo(-0.3125, 5);
+    expect(c.aileron).toBeCloseTo(-0.125, 5);
   });
 
   it('cubic curve applies to all three stick axes (aileron, elevator, rudder)', () => {
@@ -220,9 +220,9 @@ describe('Controls — stickCurve', () => {
     keyDown(target, DEFAULT_KEY_MAP.pitchUp);
     keyDown(target, DEFAULT_KEY_MAP.yawRight);
     c.update(0.1);
-    expect(c.aileron).toBeCloseTo(0.3125, 5);
-    expect(c.elevator).toBeCloseTo(0.3125, 5);
-    expect(c.rudder).toBeCloseTo(0.3125, 5);
+    expect(c.aileron).toBeCloseTo(0.125, 5);
+    expect(c.elevator).toBeCloseTo(0.125, 5);
+    expect(c.rudder).toBeCloseTo(0.125, 5);
   });
 
   it('cubic curve does not affect throttle', () => {
@@ -244,8 +244,8 @@ describe('Controls — stickCurve', () => {
   it('curve is applied at read-time — switching stickCurve mid-flight retunes feel without losing position', () => {
     const c = new Controls(input);
     keyDown(target, DEFAULT_KEY_MAP.rollRight);
-    c.update(0.1); // raw = 0.5; cubic = 0.3125
-    expect(c.aileron).toBeCloseTo(0.3125, 5);
+    c.update(0.1); // raw = 0.5; cubic = 0.125
+    expect(c.aileron).toBeCloseTo(0.125, 5);
     c.stickCurve = 'linear';
     c.update(0); // re-pump update with dt=0 to re-evaluate the curve
     expect(c.aileron).toBeCloseTo(0.5, 5);

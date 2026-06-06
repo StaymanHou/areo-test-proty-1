@@ -4,6 +4,62 @@ Surface-notes from workflow runs. Consumed and resolved by higher-level workflow
 
 ## Open
 
+### SURFACE-2026-06-06-04 — Need a deterministic scripted-input mode (URL query param) for headful in-browser feel-verification; Playwright dispatchEvent flow is unreliable for time-sensitive observations
+- **Source:** feature:verify-self (controls-feel-pass Phase 2, 2026-06-06; operator directive)
+- **Target level:** product:wbs (feature workflow — moderate scope: schema + game-loop hook + log buffer)
+- **Type:** dev-infrastructure / verification-tooling
+- **Priority:** medium (deferred until next time we have a feel-tuning feature that needs the same infrastructure — at minimum SURFACE-2026-06-06-02 pitch envelope diagnostic will want it)
+- **Summary:** During controls-feel-pass Phase 2 verify-self, the agent's Playwright probe produced inconsistent roll-rate readings (107-150°/s mean / peak in one probe vs 179°/s in Vitest at the same physics state). Operator flagged Playwright's `dispatchEvent(new KeyboardEvent(...))` approach as unreliable for time-sensitive measurements. The Vitest test (`src/aircraft/roll-rate.test.ts`) is deterministic at the *physics-core* layer (bypasses controls.ts curve+ramp) but cannot exercise the full live in-game pipeline. The gap: there's no way to deterministically verify the *complete* in-game controls→flight pipeline (cubic curve + stickRate ramp + applyControls routing + physics step).
+- **Proposed shape:** URL query-param scripted-input mode. Format suggestion: `?script=hold:KeyD@60:240` ("at game-tick 60, hold KeyD; release at tick 240"). Multiple scripts comma-separated. The game loop reads the script, applies key presses at the corresponding ticks (deterministic, no real-time scheduling), and records aircraft state per tick into a buffer accessible via `window.__aircraft.getScriptedLog()`. Playwright navigates the URL, waits for log completion, returns the structured log — no clicking, no race conditions.
+- **Suggested action:** Schedule as a small task workflow when the next physics-feel-tuning need arises. Estimated 30-60 min: schema for the script string, a script-reader in `src/engine/` that hooks into the game loop and synthesizes key events at scheduled ticks, a log buffer exposed via `__aircraft` debug global, and one e2e test that uses it. Reusable infrastructure for all future controls/physics feel verification.
+- **Why deferred from controls-feel-pass:** Vitest `roll-rate.test.ts` already codifies the physics-level acceptance criterion deterministically and is the load-bearing gate. The live in-game verification at Phase 2 is redundant given the Vitest gate; operator's verify-human covers the felt experience. Building the scripted-input mode now would scope-creep this feature.
+- **Status:** pending
+
+### SURFACE-2026-06-06-03 — Airframe has no aerodynamic roll-rate damping mechanism (no clP analogous to D17 clQ); terminal roll rate at full aileron equilibrates at ~550°/s with only weak β5-coupling damping
+- **Source:** feature:build (controls-feel-pass Phase 2 verify-self, 2026-06-06)
+- **Target level:** product:arch (new physics-mechanism layer analogous to D17 β4) OR product:wbs (if maxDeflectionRad cap proves sufficient at WP-feel-tuning level)
+- **Type:** arch-mechanism-gap / flight-envelope / discovered by Vitest test `src/aircraft/roll-rate.test.ts`
+- **Priority:** medium (deferred while controls-feel-pass Phase 2 attempts a maxDeflectionRad-cap workaround). Will become high if the workaround fails AND the operator wants tunable-roll-feel for combat WP16.
+- **Summary:** D17 introduced β4 pitch-rate damping (`clQ`) and D16 introduced β5 AoA-rate damping (`clAlphaDot`), both as per-surface non-dimensional textbook forms. **Roll-rate damping (analogous β6, would conventionally be `clP`)** is absent from the codebase. Effect surfaced at controls-feel-pass Phase 2 verify-self: at full aileron deflection, terminal body-frame roll rate measured 550°/s in a deterministic Vitest harness (config from production aircraft.json). The agent's initial `inertia.z` 1500→6000 bump did not change this terminal — terminal is set by aileron-moment-vs-damping balance, not inertia. Inertia changes only the time to reach terminal. Operator's verify-human observation ("full rotation in <1s" = >360°/s) was correct; agent's Playwright probe misread sample-window as terminal when it was post-coupling.
+- **Verified-by-test:** `src/aircraft/roll-rate.test.ts` (added at Phase 2 verify-codify attempt). Sign-convention anchors pass (+aileron → −angvel.z, −aileron → +angvel.z). Firm-gate assertion `sustained ≤ 200°/s` currently FAILS at 550°/s — load-bearing red until a roll-damping or moment-cap mechanism lands.
+- **Hypotheses:**
+  1. **Primary (workaround attempted in controls-feel-pass Phase 2 re-plan):** Cap `maxDeflectionRad` on wings (default 25° → ~10°) to reduce the moment at full input. Caps terminal rate but does NOT restore damping; transient response stays the same as before the cap (just at a lower terminal). This is a feel-knob, not a mechanism fix.
+  2. **Proper fix (arch-level, deferred):** Add per-surface `clP?` field (β6 roll-rate damping) following the D17 pattern. Form: `cl += clP · ω_along_rollAxis · b / (2·max(V, V_REF))` where `b` is span (currently 4m moment arm × 2 = 8m wingspan). Schema-land WP + tune-deploy WP pair per CLAUDE.md Rule #6. Would be a real architect-level cycle.
+- **Suggested action sequence:**
+  1. controls-feel-pass Phase 2 attempts `maxDeflectionRad` cap as the operator-as-architect workaround per CLAUDE.md Rule #3 carve-out (gameplay feel override).
+  2. If Phase 2 closes with operator-accept on the feel: SURFACE remains open at medium priority, deferred to a future arch cycle for the proper clP mechanism.
+  3. If Phase 2 fails: SURFACE escalates to high; product:arch cycle on β6 roll-rate damping becomes the next action (likely after SURFACE-2026-06-06-02 pitch envelope which is also potentially β-coefficient-level).
+- **Memory anchor that fired this discovery:** `feedback_browser_walkthrough_load_bearing.md` — fifth observation, but in a new variant: operator's qualitative observation refuted agent's quantitative measurement. Lesson candidate: **agent-side numeric measurements need a separate codification gate (Vitest harness) that's deterministic and unambiguous; Playwright sample-window readings are not authoritative for steady-state flight quantities** because the aircraft attitude can change during the sample window in ways that decouple body-frame measurements from world-frame observations.
+- **Status:** pending
+
+### SURFACE-2026-06-06-02 — Aerobatic envelope unreachable: cannot nose-dive or backflip at V_trim (probable cause: D17 β4 pitch-rate damping tuned for phugoid stability is over-damping aggressive pitch maneuvers)
+- **Source:** feature:verify-human (controls-feel-pass Phase 1, 2026-06-06)
+- **Target level:** product:arch (suspected) OR product:wbs (if confirmed isolated to JSON knob) — depends on diagnostic outcome
+- **Type:** flight-envelope / arch-tension / physics-tuning
+- **Priority:** **high — designated IMMEDIATE-NEXT after `controls-feel-pass` closes** (operator directive 2026-06-06). Blocks combat WP16 aerobatic gameplay; less critical for WP15 takeoff/landing which needs nose-down flare authority specifically, not full loop capability. **Sequencing note:** the (a)/(b) `clQ=0` diagnostic probe runs first as a task-workflow spike to confirm β4 is the cause; if confirmed, escalates to product:arch cycle on D17 mechanism; if refuted, falls to stall/AS hypothesis as a WP-level fix.
+- **Summary:** Operator reported during controls-feel-pass verify-human Phase 1: "Why can't I nose-dive or backflip?" at `localhost:5173/?mission=free-flight&debug=true`. Pitch on full ↑/↓ hold reaches some limit short of a true nose-dive (sustained pitch ≤ −60°) or aerobatic loop.
+
+  **Quick force-balance derivation (per CLAUDE.md Rule #5 plan-time physics derivation):** At V_trim=78, q = 3727 Pa. Full elevator (±25°) on h-stab (S=1.5, arm=3m) gives pitch moment ≈ 8385 N·m. Ixx = 1500 → angular accel ≈ 320°/s². Time to reach 90°/s pitch rate ≈ 280ms. **The pitch *authority* is fine.** What can suppress the pitch *rate* despite ample moment: D17 β4 pitch-rate damping (`clQ`). Production `aircraft.json` ships `clQ_wing = 1.83`, `clQ_hstab = 1.95` — tuned during D14→D27 cascade specifically to damp phugoid divergence. The same damping that stabilizes phugoid OPPOSES aggressive pitch maneuvers proportionally to pitch rate. This is the most likely cause.
+
+  Secondary cause for loop specifically (not nose-dive): at V_trim=78 with T/W=0.61, the airframe may stall before completing inverted apex — stall is α-limited around 15-20° for symmetric-flat-plate; loops need either higher thrust or initiation at higher AS.
+
+- **Ranked hypotheses (revised from initial filing):**
+  1. **D17 β4 pitch-rate damping over-damped for aerobatic flight** — `clQ_wing=1.83, clQ_hstab=1.95` is tuned for phugoid stability. Real arch-tension: phugoid-stable AND aerobatic-capable may be at odds with current mechanism. **Validation:** Playwright probe `localhost:5173/?mission=free-flight&debug=true`, hold ↑ for 5s, sample pitch trace at: (a) production knobs (baseline), (b) `clQ=0` on both surfaces (control). If (b) achieves loop and (a) does not, β4 is the cause.
+  2. **Stall + AS budget at loop apex** — even with β4=0, loops may fail because the airframe stalls or loses AS at the inverted apex. Validation: probe with `clQ=0` AND `thrust.maxN += 50%`. If pitch rate ramps but AS collapses, stall/thrust is the constraint.
+  3. **H-stab `maxDeflectionRad` (default 25°)** — probably not the cause (force balance above suggests ample moment), but cheap to verify by bumping to 35° and re-probing.
+
+- **Suggested action:**
+  - **Step 1 (cheap):** Run the (a)/(b) diagnostic above before opening a WP. ~15 min Playwright probe. If β4 is confirmed as primary cause, the fix is NOT a one-JSON-knob change — it's an arch-level question of whether to add an α-rate-gated or pitch-rate-gated damping that suppresses *only the sustained low-frequency phugoid* and not the *high-frequency aerobatic input*. Possibly a frequency-domain filter on `clQ` or a Reynolds-/α-conditioned damping curve.
+  - **Step 2 (conditional):** If diagnostic confirms β4 is the cause → escalate to product:arch (`/product-arch` cycle) — likely a new SURFACE-driven mechanism iteration on D17. If diagnostic confirms stall/AS is the cause → WP-level fix (bump `thrust.maxN` or add a stall-region CD softening to allow higher α before lift collapses). If `maxDeflectionRad` is the cause → trivial JSON bump.
+
+- **Why NOT fixed in controls-feel-pass Phase 2 (the roll-rate phase that's about to start):**
+  - **Single-knob discipline** per `feedback_surface_or_means_or.md` — roll-rate fix and pitch-envelope fix are orthogonal physics axes; bundling violates.
+  - **Diagnostic uncertainty** — until the (a)/(b) probe runs, we don't know whether this is a JSON knob or an arch-mechanism question. If it's an arch question, it must NOT be smuggled into a feel-tuning task; it needs its own architect cycle per CLAUDE.md Rules #5/6.
+  - **Phase 3 playtest re-validation hook (`feedback_operator_as_external.md`)** — under full-autopilot, deferring this is the documented path. The Phase 3 hook for both this AND the roll-rate fix is the same playtest session, so they can be validated together later.
+
+- **Memory anchor that fired this verify:** `feedback_browser_walkthrough_load_bearing.md` (4th observation) — only live operator walkthrough surfaced this. No e2e probe checks aerobatic envelope.
+- **Status:** pending
+
 ### SURFACE-2026-06-06-01 — Default keymap binds pitch to ArrowUp/ArrowDown instead of W/S (operator expects WASD as unified flight stick)
 - **Source:** task:act (controls-feel-pass T1, 2026-06-06)
 - **Target level:** task (one-line edit to `DEFAULT_KEY_MAP` in `src/engine/input.ts`)

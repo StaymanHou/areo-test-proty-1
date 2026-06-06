@@ -11,9 +11,11 @@ export interface ControlsOptions {
   throttleRate?: number;
   /**
    * Input curve applied to ramped stick value before exposing on the public fields.
-   * `'linear'` (legacy): pass-through, output = input.
-   * `'cubic'` (default): `0.5·x + 0.5·x³` — softens small inputs, preserves full-deflection authority.
-   *   At x=0.1 → 0.0505 (~half sensitivity); at x=0.5 → 0.3125; at x=1 → 1 (unchanged).
+   * `'linear'`: pass-through, output = input.
+   * `'cubic'` (default): pure cubic `x³` — strong small-input softening, full-deflection authority preserved.
+   *   At x=0.1 → 0.001 (~99% softer); at x=0.5 → 0.125 (75% softer); at x=1 → 1 (unchanged).
+   *   Strength was iterated up from `0.5·x + 0.5·x³` at controls-feel-pass verify-human attempt 1
+   *   (operator reported the mild blend still felt too jerky on A/D taps).
    */
   stickCurve?: StickCurve;
 }
@@ -121,8 +123,9 @@ function rampAxis(current: number, target: number, rate: number, dt: number): nu
 
 function applyCurve(x: number, curve: StickCurve): number {
   if (curve === 'linear') return x;
-  // Cubic expo: 0.5·x + 0.5·x³. Odd function so sign is preserved; |output| ≤ |input|.
-  return 0.5 * x + 0.5 * x * x * x;
+  // Pure cubic: x³. Odd function so sign is preserved; |output| ≤ |input|.
+  // At x=0.5 → 0.125 (75% softer than linear); at x=±1 → ±1 (full authority preserved).
+  return x * x * x;
 }
 
 function clamp01(v: number): number {
