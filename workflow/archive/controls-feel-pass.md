@@ -1,9 +1,10 @@
 ---
 workflow: feature
-state: verify-codify (all phases complete) — ready for ship
+state: ship (complete) — commits 9ef802e + 3727c34
 drive_mode: full-autopilot
 escalated_from: task
 escalated_at: 2026-06-06
+shipped_at: 2026-06-06
 ---
 
 # Feature: controls-feel-pass
@@ -103,10 +104,10 @@ Operator reported "controls aren't there yet" after WP14.19 cascade-close browse
   - [x] verify-codify — `roll-rate.test.ts` IS the codified Phase 2 acceptance gate (3 tests; firm gate ≤200°/s; sign anchors). No new tests needed — all verified behaviors covered. Full suite 605/606 (1 pre-existing flake per SURFACE-2026-05-16-02, triage recorded above). tsc both configs clean; production build clean; Playwright e2e 15/15 ✓ in 2.0min. No regressions detected. Both Phase 1 + Phase 2 codify complete.  <!-- status: complete -->
 
 ## Current Node
-- **Path:** Feature > all phases complete
-- **Active scope:** ready for `/feature-ship`
+- **Path:** Feature > shipped (finalize in progress)
+- **Active scope:** finalize
 - **Blocked:** none
-- **Unvisited:** ship → finalize
+- **Unvisited:** none
 - **Open discoveries:** 4 SURFACEd (SURFACE-2026-06-06-01 WASD keymap deferred; SURFACE-2026-06-06-02 pitch envelope IMMEDIATE-NEXT after this feature; SURFACE-2026-06-06-03 missing clP roll-damping mechanism, arch-level, deferred-by-workaround; SURFACE-2026-06-06-04 scripted-input URL mode for reliable live feel verification)
 
 ## Test Triage — flightmodel.test.ts:368 "1000 calls to applyForces complete in under 50 ms"
@@ -129,3 +130,37 @@ Action: NO test or code modification. Per the §3b triage rule, flaky tests are 
 [SURFACED-2026-06-06] Phase 1 — WASD keymap follow-up — Default keymap binds pitch to ArrowUp/ArrowDown, but operator (and modern game players) expect W/S. Filed as SURFACE-2026-06-06-01 in `workflow/backlog.md`. One-line edit to `DEFAULT_KEY_MAP` in `src/engine/input.ts` if/when separately picked up.
 
 [SURFACED-2026-06-06] verify-human — Process correction: this feature was originally driven as a task workflow (no verify-human step). Operator interjected at task-close to require the operator-side verify pass. Escalated to feature workflow mid-session; Phase 1 reconstructed as already-complete. Lesson candidate for memory: "feel-targeted changes always escalate to feature workflow, regardless of code-size, because the verify gate is human-only." Awaiting second observation before persisting per `feedback_memory_active_recall.md` two-observation threshold.
+
+## Retrospect (feature-finalize, 2026-06-06)
+
+This feature started as a task (`task-plan controls-feel-pass`) and escalated to feature workflow mid-session at operator interjection. It then went through THREE F23 back-loops on Phase 2's knob choice plus an F12 within Phase 1. The shipped result is small (~10 lines of production code change across `controls.ts` + `aircraft.json`); the path here was disproportionately long, and that's where the most durable lessons live.
+
+- **What changed in our understanding:**
+
+  **1. The operator's vague feel-complaint decomposed into ORTHOGONAL signals, only after directed elicitation.** "Controls aren't there yet" actually meant: (a) snap-roll at full deflection (the root issue, addressed by Phase 2 maxDeflectionRad cap); (b) coarse stick tap response (partially addressed by Phase 1 cubic curve); (c) WASD vs Arrows mismatch (orthogonal, SURFACE-06-01); (d) "Q/E feels icy" which is real fixed-wing rudder behavior, not a bug; (e) "can't backflip" which is a pitch-envelope concern needing an arch-level cycle (SURFACE-06-02). One vague qualitative input → five distinct signals.
+
+  **2. Inertia governs ACCELERATION, not TERMINAL roll rate.** Biggest plan-time derivation error. At terminal angvel, ω̇ = 0 → inertia drops out of the moment equation; only damping vs commanding moment matters. Initial Phase 2 inertia.z bump (1500→6000) produced zero terminal-rate effect; caught it via a deterministic Vitest test surfacing what neither my agent-side Playwright probe (sample-window artifact) nor my mental-math force-balance (only computed *initial* angular accel) revealed. Mental-math force-balance is fine if it's at the *right operating point*; "initial accel" ≠ "steady state."
+
+  **3. Agent-side Playwright `dispatchEvent` is unreliable for time-sensitive physics observations.** Playwright reported 146°/s sustained after the (broken) inertia bump; operator's verify-human reported "<1s per rotation" (>360°/s); Vitest harness confirmed actual terminal 550°/s. Three different numbers from the same physics state. Root cause: dispatchEvent timing doesn't align with the game loop's fixed-timestep ticks; the aircraft's body-Z axis rotates during the sample window in ways that decouple body-frame measurements from world-frame observations. Filed SURFACE-2026-06-06-04 (scripted-input URL mode).
+
+  **4. The codebase lacks a roll-rate aerodynamic damping mechanism (no clP analogous to D17 clQ).** Terminal roll equilibrates only through weak β5 coupling, giving an unphysical 550°/s at default aileron. The Phase 2 `maxDeflectionRad` cap is a workaround — bounds commanding moment but doesn't introduce damping. The proper arch-level fix is SURFACE-2026-06-06-03; deferred.
+
+- **Assumptions that held:**
+  - `feedback_surface_or_means_or.md` single-knob discipline — Phase 1 picked cubic curve over keymap fix; Phase 2 picked maxDeflectionRad over inertia after inertia attempt failed. Filing orthogonal items as SURFACEs (06-01, 06-02, 06-03) kept each phase's scope clean.
+  - `feedback_browser_walkthrough_load_bearing.md` — operator's qualitative observation was load-bearing; Vitest+e2e green did NOT mean the feature worked. Fifth observation now; the pattern is firm.
+  - Operator-as-X carve-out under CLAUDE.md Rule #3 (b) applies cleanly for `aircraft.json` feel-tuning; this feature didn't need the harness optimizer because the search space was 1-D.
+
+- **Assumptions that were wrong:**
+  - **Original task plan boundary "no aircraft.json edits" was wrong.** Operator's complaint was a physics knob, not a controls.ts knob. Cost two F12 cycles before F23-to-plan added Phase 2.
+  - **Inertia bump as first physics fix was wrong** (covered above).
+  - **Linear extrapolation of terminal-rate vs aileron was wrong** — predicted 132°/s at 6° aileron; actual 215°/s. Sub-linear because β5 coupling damping also shrinks with smaller aileron. Required iteration to 5° to hit the firm gate.
+  - **`process.env` in the new Vitest test was wrong** — Node-only global, not in the project's browser-default tsconfig types. tsc caught it during verify-codify; trivial fix (removed env-gated debug log).
+
+- **Approach delta:** The plan was iterated three times (initial task → escalation to feature Phase 1 only → Phase 2 inertia → Phase 2 maxDeflectionRad). Each revision was driven by a real diagnostic insight, not by drift — so the F23 back-loops were correct uses of the workflow. The shipped result (10 lines of code + 14 new tests + 4 SURFACEs filed + 1 deterministic codified acceptance test) is much smaller than the path length suggests; that's the cost of iterative diagnosis vs upfront perfect planning. Drive mode was full-autopilot but the operator interjected at THREE key moments (task-close escalation, "research roll rates" routing, "scripted-input mode" infrastructure request) — without those interjections, this would have shipped premature task-close at commit `9ef802e` with an unaddressed feel issue.
+
+- **Lesson candidates for memory persistence** (per `feedback_memory_active_recall.md` two-observation threshold; defer until second observation, EXCEPT where this is a second-or-later observation):
+
+  1. **Terminal-vs-initial physics derivation** — "for steady-state physics quantities, derive at the steady-state condition (ω̇=0, a=0), not the initial-acceleration condition. Inertia is irrelevant at terminal." First observation here. Defer.
+  2. **Vitest > Playwright dispatchEvent for time-sensitive physics measurements** — first observation. Defer (SURFACE-2026-06-06-04 covers the actionable side).
+  3. **Mid-session task→feature escalation pattern: feel-targeted changes always need verify-human regardless of code-size; defaulting to task workflow is the trap.** First observation here. Defer.
+  4. **`feedback_browser_walkthrough_load_bearing.md` 5th observation** — pattern firmly established; possibly worth promoting from "feedback memory" to a CLAUDE.md rule that names the workflow boundary (any change that affects user-felt behavior MUST go through verify-human, regardless of task/feature classification). Worth proposing at next codify cycle.
