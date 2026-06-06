@@ -22,13 +22,23 @@ import { MissionSelectScreen } from './mission/select';
 import type { Mission, MissionManifestEntry } from './mission/types';
 import { DomHud } from './hud/dom-hud';
 import { formatActiveObjective, getActiveWaypointPosition } from './hud/format';
+import { parseScriptSpec, configNameToPath } from './engine/scripted-input';
+import { ScriptedInputRunner } from './engine/scripted-input-runner';
 
 async function bootstrap() {
   const mount = document.querySelector<HTMLDivElement>('#app');
   if (!mount) throw new Error('#app mount not found');
 
+  // Parse URL query params early — needed for ?config= (aircraft selection)
+  // and ?script= (deterministic input harness, gated on ?debug=true).
+  const urlParams = new URLSearchParams(window.location.search);
+  const debugEnabled = urlParams.get('debug') === 'true';
+  const scriptedInput = parseScriptSpec(urlParams);
+  for (const w of scriptedInput.warnings) console.warn(w);
+  const aircraftConfigPath = configNameToPath(scriptedInput.plan?.configName ?? null);
+
   const rapierReady = RAPIER.init();
-  const configReady = loadAircraftConfig('/config/aircraft.json');
+  const configReady = loadAircraftConfig(aircraftConfigPath);
 
   const { scene, camera, renderer } = createRenderContext(mount);
   const debug = initDebug();
@@ -85,9 +95,28 @@ async function bootstrap() {
   // on the hot path for end-user play).
   let trajectoryBuffer: TrajectoryBuffer | null = null;
 
+  // Scripted-input harness — debug-only, instantiated when ?script=... is
+  // present alongside ?debug=true. Drives input deterministically at the
+  // physics-tick boundary; bypasses the DOM keyboard event layer to avoid
+  // Playwright dispatchEvent jitter. See SURFACE-2026-06-06-04.
+  let scriptedRunner: ScriptedInputRunner | null = null;
+  if (debugEnabled && scriptedInput.plan !== null) {
+    scriptedRunner = new ScriptedInputRunner(scriptedInput.plan, input, controls);
+  } else if (!debugEnabled && scriptedInput.plan !== null) {
+    console.warn('scripted-input: ?script= ignored — also requires ?debug=true');
+  }
+
   const loop = new GameLoop(
     {
       onPhysics: (dt) => {
+        // Scripted input runs BEFORE controls.update so synthesized keys land
+        // in `input.state.keys` in time for this tick's controls integration.
+        // Throttle override is written directly to controls.throttle and is
+        // not affected by `controls.update` unless a real ShiftLeft/ControlLeft
+        // is also held (intentional: user input can fight scripts in debug).
+        if (scriptedRunner !== null) {
+          scriptedRunner.tick(aircraft.readBodyState());
+        }
         controls.update(dt);
         flightModel.applyControls(controls);
         flightModel.applyForces(controls.throttle, dt);
@@ -282,6 +311,13 @@ async function bootstrap() {
       // Each call returns a fresh array of copied rows in chronological order.
       // Returns `[]` if no ticks have been recorded yet.
       getTrajectory: () => (trajectoryBuffer === null ? [] : trajectoryBuffer.getRows()),
+      // Scripted-input harness (SURFACE-2026-06-06-04). Returns a structured
+      // per-tick log of the in-game state under a deterministic input script,
+      // or `[]` when no `?script=` was supplied. `isScriptComplete()` returns
+      // true once all scheduled events plus a settle window have elapsed,
+      // letting Playwright `page.waitForFunction(...)` return deterministically.
+      getScriptedLog: () => (scriptedRunner === null ? [] : scriptedRunner.getLog()),
+      isScriptComplete: () => (scriptedRunner === null ? false : scriptedRunner.isComplete()),
       // WP14.6 — deterministic-replay hook for the parity test. Pauses the
       // game loop, resets the body to the fixture state (zero control surface
       // deflections + β5 prev-AoA cache via FlightModel.resetSurfaceState),
@@ -394,8 +430,7 @@ async function bootstrap() {
 
   // `?mission=<id>` deep-link: if present, try auto-start. If the id is not in
   // the manifest, fall back to the select screen with an error.
-  const params = new URLSearchParams(window.location.search);
-  const requestedMissionId = params.get('mission');
+  const requestedMissionId = urlParams.get('mission');
   if (requestedMissionId !== null) {
     if (missionManifest.some((m) => m.id === requestedMissionId)) {
       await startMission(requestedMissionId);
