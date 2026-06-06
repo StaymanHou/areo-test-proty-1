@@ -41,6 +41,8 @@ const RAD2DEG = 180 / Math.PI;
 const _scratchEuler = new Euler(0, 0, 0, 'YXZ');
 const _scratchQuatInv = new Quaternion();
 const _scratchLocalFlow = new Vector3();
+const _scratchBodyForward = new Vector3();
+const _BODY_FORWARD_REF = Object.freeze(new Vector3(0, 0, -1));
 
 /**
  * Drives in-game input deterministically based on a parsed ScriptedInputPlan.
@@ -178,8 +180,16 @@ function buildLogRow(
   body: BodyState,
   throttle: number,
 ): ScriptedLogRow {
-  // Euler from quaternion (YXZ — matches main.ts telemetry convention)
+  // Euler from quaternion (YXZ — matches main.ts telemetry convention). Used
+  // for roll/yaw which don't suffer the pitch-axis gimbal-lock problem.
   _scratchEuler.setFromQuaternion(body.quaternion, 'YXZ');
+
+  // Pitch derived from body-forward via atan2 — gimbal-lock-free across the
+  // full ±180° rotation range. Euler YXZ .x caps at ±90° even when the body
+  // has rotated past that, which would hide a backflip. (Same fix shape as
+  // pitch-envelope.test.ts extractPitchDeg.)
+  _scratchBodyForward.copy(_BODY_FORWARD_REF).applyQuaternion(body.quaternion);
+  const pitchRad = Math.atan2(_scratchBodyForward.y, -_scratchBodyForward.z);
 
   // Body-local airflow for alpha/beta. World linvel rotated by inverse body quat.
   _scratchQuatInv.copy(body.quaternion).invert();
@@ -212,7 +222,7 @@ function buildLogRow(
       w: body.quaternion.w,
     },
     angvel: { x: body.angvel.x, y: body.angvel.y, z: body.angvel.z },
-    pitch_deg: _scratchEuler.x * RAD2DEG,
+    pitch_deg: pitchRad * RAD2DEG,
     roll_deg: _scratchEuler.z * RAD2DEG,
     yaw_deg: _scratchEuler.y * RAD2DEG,
     AS_mps: AS,
