@@ -33,9 +33,9 @@ export interface AeroSurfaceConfig {
    * 2026-05-17) this is a dimensionless O(1) coefficient (textbook range
    * 1–10 per Etkin & Reid Table 5.4). When non-zero, the lift coefficient
    * is augmented by `clQ · ω_along_dampAxis · c̄ / (2 · max(V, V_REF))`,
-   * where `dampAxis = (position × restNormal).normalized()` is the
-   * surface's rotation-damping axis (roll Z for wings, pitch X for h-stab,
-   * primarily yaw Y for v-stab). The factor `c̄ / (2V)` is the standard
+   * where `dampAxis = (restNormal × position).normalized()` is the
+   * surface's rotation-damping axis (anti-roll −Z/+Z for wings, pitch +X
+   * for h-stab, anti-yaw −Y for v-stab). The factor `c̄ / (2V)` is the standard
    * reduced-frequency normalization; the `max(V, V_REF)` floor avoids the
    * `1/V` singularity. The resulting damping force grows linearly with V
    * (matching ½ρV² dynamic pressure × ΔCL ∝ 1/V). Replaces the pre-D17
@@ -138,13 +138,13 @@ export class AeroSurface {
    * (0,0,−2)/2 = −Z` (anti-roll). Wing-left → `+Z`. V-stab
    * `normal=(1,0,0), position=(0,0.5,3)` → primarily −Y (anti-yaw).
    *
-   * **Cross-product order note:** arch.md D17 (Revision 2026-05-17) prose
-   * specifies `(position × normal)` literally, but that gives the wrong
-   * sign — verified analytically by tracing the moment-direction chain
-   * (positive pitch rate at +Z aft surface needs +Y damping force = +ΔCL,
-   * which requires `dot(ω, dampAxis) > 0` for ω = (1,0,0), which requires
-   * dampAxis = +X). The corrected order is `(normal × position)`. Surfaced
-   * to product:arch as SURFACE-2026-05-17-02 for an arch.md errata.
+   * **Cross-product order derivation:** `(normal × position)` is the order
+   * the moment-balance chain demands — positive pitch rate at +Z aft surface
+   * needs +Y damping force = +ΔCL, which requires `dot(ω, dampAxis) > 0`
+   * for ω = (1,0,0), which requires dampAxis = +X. (Historical note: arch.md
+   * D17 (Revision 2026-05-17) literal prose initially specified
+   * `(position × normal)` — sign-inverted; corrected at 2026-06-06 per
+   * SURFACE-2026-05-17-02. The code has always used `(normal × position)`.)
    *
    * Refreshed by `setGeometry({position?, normal?})`. If the geometric
    * cross product degenerates (position parallel to normal, e.g. a
@@ -205,9 +205,8 @@ export class AeroSurface {
 
     // D17 β4 damping axis = (normal × position).normalized(), pre-incidence.
     // `this.normal` at this point is the pre-incidence rest normal (incidence
-    // is applied below). Cross-product order is `(normal × position)`, NOT the
-    // `(position × normal)` literal in arch.md D17 prose — see dampAxis
-    // field-doc above for sign-correction analysis. Position-coincident-with-CG
+    // is applied below). See dampAxis field-doc above for the moment-balance
+    // derivation that fixes the cross-product order. Position-coincident-with-CG
     // surfaces (lengthSq < tolerance) get a zero dampAxis; β4 augmentation then
     // contributes zero by virtue of the dot product. Physically irrelevant —
     // a real lift surface always has a non-zero CG offset.
@@ -573,12 +572,12 @@ export function computeAeroForce(
   // normalization; the `max(V, V_REF)` floor avoids the 1/V singularity.
   // Gated on clQ ≠ 0 so the default surface preserves pre-β4 behavior
   // bit-for-bit (the gate is the same shape as pre-D17; only the body of
-  // the branch changed). Sign: dampAxis = (position × restNormal); for an
+  // the branch changed). Sign: dampAxis = (restNormal × position); for an
   // aft surface (position = (0,0,+r)) with restNormal = (0,1,0),
-  // dampAxis = (−1,0,0) — anti-pitch direction. Positive body pitch rate
-  // (nose-up, +ω_y... actually +ω_x in body-Y-up) produces negative
-  // dot(angvel, dampAxis), so ΔCL < 0 on the aft surface, which produces
-  // downward lift, which produces nose-down moment, which damps the pitch.
+  // dampAxis = (+1,0,0) — pitch direction. Positive body pitch rate
+  // (nose-up, +ω_x in this Y-up convention) produces positive
+  // dot(angvel, dampAxis), so ΔCL > 0 on the aft surface, which produces
+  // upward lift at +Z, which produces nose-down moment, which damps the pitch.
   // See arch.md D17 (Revision 2026-05-17), CONVENTIONS.md, SURFACE-2026-05-17-01.
   if (surface.clQ !== 0) {
     _scratchDampAxisWorld.copy(surface.dampAxis).applyQuaternion(bodyState.quaternion);
