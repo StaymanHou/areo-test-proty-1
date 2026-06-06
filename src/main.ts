@@ -261,6 +261,7 @@ async function bootstrap() {
     (window as unknown as { __aircraft: unknown }).__aircraft = {
       body: aircraft.body,
       flightModel,
+      controls,
       getState: () => {
         const s = aircraft.readBodyState();
         telemetryEuler.setFromQuaternion(s.quaternion, 'YXZ');
@@ -330,10 +331,9 @@ async function bootstrap() {
     aircraft.reset(mission.spawn.position, mission.spawn.linvel);
     flightModel.resetSurfaceState();
     // Reset live control state (avoids the prior mission's stick deflections
-    // carrying over into a fresh start).
-    controls.aileron = 0;
-    controls.elevator = 0;
-    controls.rudder = 0;
+    // carrying over into a fresh start). `resetSticks()` clears both the raw
+    // pre-curve buffer and the public fields; throttle is set explicitly.
+    controls.resetSticks();
     controls.throttle = mission.spawn.throttle;
     missionRunner.start(mission);
     missionSelect.hide();

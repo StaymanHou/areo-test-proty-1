@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-06-06
+
+- **Task closed:** controls-feel-pass — added cubic-expo input curve (`stickCurve: 'cubic'` default; `f(x) = 0.5·x + 0.5·x³`) to `src/aircraft/controls.ts` softening small-stick sensitivity by ~38% while preserving full-deflection authority + rate-independence; introduced `resetSticks()` helper to clear raw pre-curve buffer on mission start; exposed `controls` on debug-only `window.__aircraft`; resolves operator's "A/D too jerky" feel complaint while leaving V_trim flight across free-flight / waypoint-patrol / phugoid-probe-mid unregressed (Vitest 603/603, e2e 15/15, browser-walkthrough confirmed).
+
 ## 2026-05-25
 
 - **Task closed:** D24 architect cycle — arch.md Revision 2026-05-25 written + WBS updated + 13-SURFACE cascade chain walked back at `workflow/backlog.md` (each marked `resolved-by-cascade-walk-back-pending-WP14.19-Branch-A` with citation to commit `46f9b42` / SURFACE-2026-05-24-09) + WP14.18 archived as ESCALATED-superseded-by-integrator-fix + CLAUDE.md adds Rule #9 (initial-condition-equilibrium-consistency for level-flight score-function fixtures); D24 chose branch (b) "adjust spawn AS in `tests/parity-fixtures.ts`" per CLAUDE.md Rule #5 independent derivation (post-fix L=W equilibrium AS is low/mid/high ≈ 45/78/128 m/s; current spawn AS=30 m/s is well below mid-equilibrium 78; criterion 0 was measuring "acceleration to equilibrium from below" not "stability around equilibrium"); branches (a) widen damping bounds + (c) tweak aircraft.json REMOVED from menu (the former confounded by upstream spawn-AS mismatch, the latter wrong direction); WP14.19 added (NEXT) as single-WP D24 implementation; production `aircraft.json` UNTOUCHED.

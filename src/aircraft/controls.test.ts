@@ -22,7 +22,10 @@ describe('Controls', () => {
   beforeEach(() => {
     target = makeTarget();
     input = new InputManager(target);
-    controls = new Controls(input);
+    // Existing ramp/throttle/keymap tests assert raw post-ramp values; pin to
+    // 'linear' so the cubic curve doesn't perturb the math. Curve behavior is
+    // covered in the separate `stickCurve` describe block below.
+    controls = new Controls(input, { stickCurve: 'linear' });
   });
 
   it('default values are all zero', () => {
@@ -138,6 +141,7 @@ describe('Controls', () => {
   it('honors a custom keyMap override', () => {
     const customControls = new Controls(input, {
       keyMap: { ...DEFAULT_KEY_MAP, rollRight: 'KeyJ' },
+      stickCurve: 'linear',
     });
     keyDown(target, 'KeyJ');
     customControls.update(0.1);
@@ -145,16 +149,145 @@ describe('Controls', () => {
   });
 
   it('honors custom stickRate', () => {
-    const slow = new Controls(input, { stickRate: 1.0 });
+    const slow = new Controls(input, { stickRate: 1.0, stickCurve: 'linear' });
     keyDown(target, DEFAULT_KEY_MAP.rollRight);
     slow.update(0.5);
     expect(slow.aileron).toBeCloseTo(0.5, 5);
   });
 
   it('honors custom throttleRate', () => {
-    const fast = new Controls(input, { throttleRate: 1.0 });
+    const fast = new Controls(input, { throttleRate: 1.0, stickCurve: 'linear' });
     keyDown(target, DEFAULT_KEY_MAP.throttleUp);
     fast.update(0.5);
     expect(fast.throttle).toBeCloseTo(0.5, 5);
+  });
+});
+
+describe('Controls — stickCurve', () => {
+  let target: EventTarget;
+  let input: InputManager;
+
+  beforeEach(() => {
+    target = makeTarget();
+    input = new InputManager(target);
+  });
+
+  it('default curve is cubic expo (softens small inputs, preserves authority)', () => {
+    const c = new Controls(input);
+    expect(c.stickCurve).toBe('cubic');
+  });
+
+  it('cubic curve: half-deflection raw input outputs ~0.3125', () => {
+    const c = new Controls(input); // default cubic
+    keyDown(target, DEFAULT_KEY_MAP.rollRight);
+    // stickRate=5.0, dt=0.1 → raw aileron = 0.5
+    c.update(0.1);
+    // f(0.5) = 0.5·0.5 + 0.5·0.125 = 0.25 + 0.0625 = 0.3125
+    expect(c.aileron).toBeCloseTo(0.3125, 5);
+  });
+
+  it('cubic curve: small input is softened (raw 0.1 → 0.0505)', () => {
+    const c = new Controls(input, { stickRate: 1.0 }); // slow ramp
+    keyDown(target, DEFAULT_KEY_MAP.rollRight);
+    // dt=0.1, stickRate=1.0 → raw=0.1
+    c.update(0.1);
+    // f(0.1) = 0.05 + 0.0005 = 0.0505
+    expect(c.aileron).toBeCloseTo(0.0505, 5);
+  });
+
+  it('cubic curve: full deflection preserved (raw ±1 → ±1)', () => {
+    const c = new Controls(input);
+    keyDown(target, DEFAULT_KEY_MAP.rollRight);
+    c.update(1.0); // raw clamps at +1
+    expect(c.aileron).toBeCloseTo(1.0, 5);
+
+    keyUp(target, DEFAULT_KEY_MAP.rollRight);
+    keyDown(target, DEFAULT_KEY_MAP.rollLeft);
+    c.update(1.0); // raw drives to -1
+    expect(c.aileron).toBeCloseTo(-1.0, 5);
+  });
+
+  it('cubic curve: sign is preserved (odd function)', () => {
+    const c = new Controls(input);
+    keyDown(target, DEFAULT_KEY_MAP.rollLeft);
+    c.update(0.1); // raw = -0.5
+    expect(c.aileron).toBeCloseTo(-0.3125, 5);
+  });
+
+  it('cubic curve applies to all three stick axes (aileron, elevator, rudder)', () => {
+    const c = new Controls(input);
+    keyDown(target, DEFAULT_KEY_MAP.rollRight);
+    keyDown(target, DEFAULT_KEY_MAP.pitchUp);
+    keyDown(target, DEFAULT_KEY_MAP.yawRight);
+    c.update(0.1);
+    expect(c.aileron).toBeCloseTo(0.3125, 5);
+    expect(c.elevator).toBeCloseTo(0.3125, 5);
+    expect(c.rudder).toBeCloseTo(0.3125, 5);
+  });
+
+  it('cubic curve does not affect throttle', () => {
+    const c = new Controls(input);
+    keyDown(target, DEFAULT_KEY_MAP.throttleUp);
+    c.update(1.0); // throttleRate=0.5, dt=1.0 → throttle = 0.5
+    expect(c.throttle).toBeCloseTo(0.5, 5);
+  });
+
+  it('linear curve is pure pass-through (raw value equals output)', () => {
+    const c = new Controls(input, { stickCurve: 'linear' });
+    keyDown(target, DEFAULT_KEY_MAP.rollRight);
+    c.update(0.1);
+    expect(c.aileron).toBeCloseTo(0.5, 5);
+    c.update(0.1);
+    expect(c.aileron).toBeCloseTo(1.0, 5);
+  });
+
+  it('curve is applied at read-time — switching stickCurve mid-flight retunes feel without losing position', () => {
+    const c = new Controls(input);
+    keyDown(target, DEFAULT_KEY_MAP.rollRight);
+    c.update(0.1); // raw = 0.5; cubic = 0.3125
+    expect(c.aileron).toBeCloseTo(0.3125, 5);
+    c.stickCurve = 'linear';
+    c.update(0); // re-pump update with dt=0 to re-evaluate the curve
+    expect(c.aileron).toBeCloseTo(0.5, 5);
+  });
+});
+
+describe('Controls.resetSticks', () => {
+  let target: EventTarget;
+  let input: InputManager;
+
+  beforeEach(() => {
+    target = makeTarget();
+    input = new InputManager(target);
+  });
+
+  it('zeros all three stick axes without touching throttle', () => {
+    const c = new Controls(input, { stickCurve: 'linear' });
+    keyDown(target, DEFAULT_KEY_MAP.rollRight);
+    keyDown(target, DEFAULT_KEY_MAP.pitchUp);
+    keyDown(target, DEFAULT_KEY_MAP.yawRight);
+    keyDown(target, DEFAULT_KEY_MAP.throttleUp);
+    c.update(0.5);
+    expect(c.aileron).toBeCloseTo(1.0, 5);
+    expect(c.elevator).toBeCloseTo(1.0, 5);
+    expect(c.rudder).toBeCloseTo(1.0, 5);
+    const throttleBefore = c.throttle;
+
+    c.resetSticks();
+
+    expect(c.aileron).toBe(0);
+    expect(c.elevator).toBe(0);
+    expect(c.rudder).toBe(0);
+    expect(c.throttle).toBe(throttleBefore);
+  });
+
+  it('clears raw pre-curve buffer (subsequent zero-dt update keeps sticks at 0)', () => {
+    const c = new Controls(input); // cubic default
+    keyDown(target, DEFAULT_KEY_MAP.rollRight);
+    c.update(0.5); // raw ramps to +1
+    c.resetSticks();
+    keyUp(target, DEFAULT_KEY_MAP.rollRight);
+    c.update(0); // no input held; if raw weren't reset it'd still read non-zero
+    expect(c.aileron).toBe(0);
   });
 });

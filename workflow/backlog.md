@@ -4,6 +4,16 @@ Surface-notes from workflow runs. Consumed and resolved by higher-level workflow
 
 ## Open
 
+### SURFACE-2026-06-06-01 — Default keymap binds pitch to ArrowUp/ArrowDown instead of W/S (operator expects WASD as unified flight stick)
+- **Source:** task:act (controls-feel-pass T1, 2026-06-06)
+- **Target level:** task (one-line edit to `DEFAULT_KEY_MAP` in `src/engine/input.ts`)
+- **Type:** UX-papercut / default-keymap
+- **Priority:** medium (operator reported "W and S doesn't work" during T1 feel-check — they expected WASD as the unified stick like most modern flight games)
+- **Summary:** `src/engine/input.ts:15-27`'s `DEFAULT_KEY_MAP` binds `pitchUp: 'ArrowUp', pitchDown: 'ArrowDown'`, with roll on A/D. Most modern flight-sim and game players expect W/S = pitch, A/D = roll (WASD as the unified flight stick) with arrows as alternates. Operator hit this at the controls-feel-pass T1 feel-check and reported "W and S doesn't work" — the controls aren't broken, the default binding is unconventional.
+- **Suggested action:** Rebind `pitchUp: 'KeyW', pitchDown: 'KeyS'` in `DEFAULT_KEY_MAP`. Update `src/aircraft/controls.test.ts` references if any test asserts on the old default. Could optionally retain ArrowUp/ArrowDown as alternates by extending `KeyMap` to support arrays, but that's a bigger schema change — defer unless requested.
+- **Why deferred from controls-feel-pass:** Per `feedback_surface_or_means_or.md`, the parent task picked ONE knob (cubic input curve for stick sensitivity). The keymap fix is orthogonal and ships as a separate one-commit task.
+- **Status:** pending
+
 ### SURFACE-2026-05-24-05 — Search-vs-deploy parity-diff under `--link`: optimizer-internal evaluation produces score 1.50× more negative than `score-deployed.mjs` re-score at bit-identical params
 - **Source:** feature:build (WP14.14 Phase 1, 2026-05-24)
 - **Target level:** product:wbs (tooling fix or methodology investigation; not arch-layer because the underlying harness is deterministic per-call — md5-stable CSVs at re-runs — and the divergence is between two presumably-equivalent evaluation paths)
