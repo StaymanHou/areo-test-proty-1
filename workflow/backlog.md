@@ -2,7 +2,19 @@
 
 Surface-notes from workflow runs. Consumed and resolved by higher-level workflows (arch revisions, new WPs, etc.).
 
+## Session Pause — 2026-06-06 13:30
+Paused. See `workflow/.session.md` to resume. Operator-queued next: SURFACE-05 (dogfooding refactor, IMMEDIATE) → SURFACE-06 (aerobatic airframe tune, NEXT-BUT-ONE).
+
 ## Open
+
+### SURFACE-2026-06-06-07 — `?mission=<id>` deep-link silently fell through to mission-select when `<id>` wasn't in `public/missions/index.json`
+- **Source:** task:act (phugoid-probe-harness-refactor, 2026-06-06)
+- **Target level:** task workflow (resolved inline in this task)
+- **Type:** bug / regression
+- **Priority:** resolved
+- **Summary:** Commit `f77aa36` pruned the three phugoid-probe missions from `public/missions/index.json` (the menu manifest), but the deep-link path in `src/main.ts` gated mission start on manifest membership (`missionManifest.some(m => m.id === requestedMissionId)`). The session pause note for that finalize claimed "deep-link via `?mission=` still works for e2e" — that was wrong; the prune broke the contract. Discovered when phugoid-probe.spec.ts harness refactor hung at `isScriptComplete()` because the game loop was paused on the mission-select screen, runner never ticked.
+- **Fix shipped:** Removed manifest pre-check at `src/main.ts:431-439`; the deep-link path now always calls `startMission(id)`, which loads the JSON directly and gracefully falls back to mission-select-with-error if fetch fails. Manifest now governs ONLY menu visibility, not deep-link reachability.
+- **Status:** resolved in `phugoid-probe-harness-refactor` task
 
 ### SURFACE-2026-06-06-06 — Tune the aerobatic-class airframe (`aircraft-aerobatic.json`) into a real player-flyable model, then wire mission-select to airframe selection
 - **Source:** session pause (2026-06-06, operator directive after Path A close on SURFACE-2026-06-06-02)
@@ -30,12 +42,9 @@ Surface-notes from workflow runs. Consumed and resolved by higher-level workflow
 - **Source:** feature:finalize (scripted-input-harness, 2026-06-06; operator question during finalize)
 - **Target level:** task workflow (small, ~30-60 min)
 - **Type:** dev-infrastructure / dogfooding / tech-debt
-- **Priority:** **medium — promoted from low at session pause 2026-06-06 (operator-designated IMMEDIATE-NEXT before SURFACE-06).**
-- **Summary:** The existing `tests/e2e/phugoid-probe.spec.ts` (3 tests, ~34s each) uses `page.waitForTimeout(1000)` × 30 + repeated `getState()` polls — exactly the wall-clock pattern the new harness eliminates. Strictly speaking they don't violate the `### Browser-walkthrough discipline` mandate because they're presence-checks (assert AS finite, no NaN) not time-sensitive measurements, but they'd be cleaner using `?script=hold:Throttle=<value>@0:end` + `getScriptedLog()` reading per-tick state into the same finiteness assertions.
-- **Proposed shape:** Rewrite each test to navigate `/?mission=phugoid-probe-<id>&debug=true&script=hold:Throttle=<value>@0:end`, `await page.waitForFunction(() => window.__aircraft.isScriptComplete())`, then `const log = await page.evaluate(() => window.__aircraft.getScriptedLog())`. Assert no NaN across all log rows + altitude/AS within envelope. Should reduce per-test wall-clock from ~34s to ~32s (window fills the log) but more importantly removes 30 separate `waitForTimeout(1000)` synchronization points.
-- **Why deferred from this finalize:** single-knob discipline per `feedback_surface_or_means_or.md`; phugoid tests are green; refactor is dogfooding-grade not breakage-fixing. The finalize already bundles 3 orthogonal small changes (scripted-input feature + phugoid-probe menu prune + CLAUDE.md quickstart). Adding a 4th would muddy the commit.
-- **Suggested action:** Schedule as a task workflow when the next person touches phugoid-probe.spec.ts for any reason (re-tune cycle, new probe), OR when adopting the harness in another existing test would surface useful API rough edges.
-- **Status:** pending
+- **Priority:** resolved (was medium)
+- **Summary:** The existing `tests/e2e/phugoid-probe.spec.ts` (3 tests, ~34s each) uses `page.waitForTimeout(1000)` × 30 + repeated `getState()` polls — exactly the wall-clock pattern the new harness eliminates.
+- **Status:** **RESOLVED by task `phugoid-probe-harness-refactor` (2026-06-06).** Spec rewritten to use `runScript()` pattern: `?script=hold:Throttle=<v>@0:end` + `waitForFunction(isScriptComplete)` + `getScriptedLog()` iteration. All 3600 ticks asserted per test (was 30 samples). Dogfooding surfaced a deep-link regression (SURFACE-07, filed + fixed inline). 19/19 e2e green + tsc + build clean.
 
 ### SURFACE-2026-06-06-04 — Need a deterministic scripted-input mode (URL query param) for headful in-browser feel-verification; Playwright dispatchEvent flow is unreliable for time-sensitive observations
 - **Source:** feature:verify-self (controls-feel-pass Phase 2, 2026-06-06; operator directive)

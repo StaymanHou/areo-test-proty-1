@@ -428,15 +428,14 @@ async function bootstrap() {
     missionManifest = [];
   }
 
-  // `?mission=<id>` deep-link: if present, try auto-start. If the id is not in
-  // the manifest, fall back to the select screen with an error.
+  // `?mission=<id>` deep-link: if present, try auto-start. We hand off to
+  // startMission() unconditionally — it loads the JSON directly (independent
+  // of the manifest) and falls back to the select-with-error path if the
+  // fetch fails. The manifest only governs which missions appear in the
+  // menu UI; deep-link load works for any mission whose JSON exists.
   const requestedMissionId = urlParams.get('mission');
   if (requestedMissionId !== null) {
-    if (missionManifest.some((m) => m.id === requestedMissionId)) {
-      await startMission(requestedMissionId);
-    } else {
-      missionSelect.show(missionManifest, { errorForId: requestedMissionId });
-    }
+    await startMission(requestedMissionId);
   } else {
     missionSelect.show(missionManifest);
   }
