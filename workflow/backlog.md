@@ -5,6 +5,9 @@ Surface-notes from workflow runs. Consumed and resolved by higher-level workflow
 ## Session Pause — 2026-06-06 13:30
 Paused. See `workflow/.session.md` to resume. Operator-queued next: SURFACE-05 (dogfooding refactor, IMMEDIATE) → SURFACE-06 (aerobatic airframe tune, NEXT-BUT-ONE).
 
+## Session Pause — 2026-06-06 14:30
+Paused. See `workflow/.session.md` to resume. Operator-queued IMMEDIATE-NEXT for next session: **build a jet airframe config (MiG-15-class recommended) + jet-test mission so operator can fly it manually in next session**. Vision-constraint negotiation required at spec stage (`docs/product/roadmap.md:62` "multiple aircraft" exclusion); default Option α = deep-link-only fixture, NOT in home menu, parallel to existing aerobatic-test pattern. Operator playtest IS the verify-human gate per directive "let me try it" — cannot be skipped under any drive mode for this feature.
+
 ## Open
 
 ### SURFACE-2026-06-06-08 — `docs/product/arch.md` exceeds 300-line size guard (2645 lines); same for `wbs.md` (1023 lines)

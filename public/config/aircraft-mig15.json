@@ -1,0 +1,55 @@
+{
+  "mass": 3000,
+  "inertia": { "x": 6750, "y": 13500, "z": 6750 },
+  "thrust": { "maxN": 30000 },
+  "fuselageDrag": { "cd0": 0.14233708018437027, "area": 0.6932083370629698 },
+  "surfaces": [
+    {
+      "name": "wing-left",
+      "position":     { "x": -3, "y": 0, "z": 0 },
+      "normal":       { "x":  0, "y": 1, "z": 0 },
+      "chord":        { "x":  0, "y": 0, "z": -1 },
+      "area": 9,
+      "curve": "symmetric-flat-plate",
+      "incidenceRad": 0,
+      "maxDeflectionRad": 0.175,
+      "clQ": 1.83057709056884,
+      "clAlphaDot": 4.667542421258985,
+      "inducedDragK": 0.26127884298563003
+    },
+    {
+      "name": "wing-right",
+      "position":     { "x": 3, "y": 0, "z": 0 },
+      "normal":       { "x": 0, "y": 1, "z": 0 },
+      "chord":        { "x": 0, "y": 0, "z": -1 },
+      "area": 9,
+      "curve": "symmetric-flat-plate",
+      "incidenceRad": 0,
+      "maxDeflectionRad": 0.175,
+      "clQ": 1.83057709056884,
+      "clAlphaDot": 4.667542421258985,
+      "inducedDragK": 0.26127884298563003
+    },
+    {
+      "name": "h-stab",
+      "position":     { "x": 0, "y": 0,   "z": 4 },
+      "normal":       { "x": 0, "y": 1,   "z": 0 },
+      "chord":        { "x": 0, "y": 0,   "z": -1 },
+      "area": 2.5,
+      "curve": "symmetric-flat-plate",
+      "incidenceRad": -0.0087,
+      "maxDeflectionRad": 0.175,
+      "clQ": 1.9523852841462939,
+      "clAlphaDot": 1.9327758187428117,
+      "inducedDragK": 0.1448034886876121
+    },
+    {
+      "name": "v-stab",
+      "position":     { "x": 0, "y": 0.7, "z": 4 },
+      "normal":       { "x": 1, "y": 0,   "z": 0 },
+      "chord":        { "x": 0, "y": 0,   "z": -1 },
+      "area": 1.5,
+      "curve": "symmetric-flat-plate"
+    }
+  ]
+}

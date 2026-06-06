@@ -1,0 +1,12 @@
+{
+  "id": "jet-test",
+  "name": "Jet Test (operator playtest fixture)",
+  "type": "free-flight",
+  "spawn": {
+    "position": { "x": 0, "y": 1000, "z": 0 },
+    "linvel": { "x": 0, "y": 0, "z": -180 },
+    "throttle": 0.5
+  },
+  "objectives": [],
+  "config": "mig15"
+}

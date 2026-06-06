@@ -5,6 +5,7 @@ import { parseAircraftConfig } from './config';
 
 // Vite-resolved JSON import — no Node types needed. ?import-style works in tests.
 import canonicalAircraftConfig from '../../../public/config/aircraft.json' with { type: 'json' };
+import mig15AircraftConfig from '../../../public/config/aircraft-mig15.json' with { type: 'json' };
 
 const validBaseline = () => ({
   mass: 1000,
@@ -403,6 +404,24 @@ describe('parseAircraftConfig', () => {
     for (const s of cfg.surfaces) {
       expect(s.curveType).toBe('symmetric-flat-plate');
       expect(s.curveParams).toEqual(DEFAULT_FLAT_PLATE_PARAMS);
+    }
+  });
+
+  it('loads MiG-15 jet config via aircraft-mig15.json and parses all jet-class fields', () => {
+    // MiG-15-class fixture: deep-link-only via mission JSON `config: "mig15"`.
+    // Jet-distinctive fields: mass 3× Cessna, T/W ≈ 1.0 (vs 0.6), wing-incidence 0
+    // (vs +0.0349), wing area 9 m² per wing (vs 6). Inherits cascade-tuned
+    // damping coefficients from production aircraft.json (Rule #3 carve-out (b)).
+    const cfg = parseAircraftConfig(mig15AircraftConfig);
+    expect(cfg.mass).toBe(3000);
+    expect(cfg.thrust.maxN).toBe(30000);
+    expect(cfg.surfaces).toHaveLength(4);
+    const wingLeft = cfg.surfaces.find((s) => s.name === 'wing-left')!;
+    expect(wingLeft.area).toBe(9);
+    expect(wingLeft.incidenceRad).toBe(0);
+    expect(wingLeft.maxDeflectionRad).toBeCloseTo(0.175, 5);
+    for (const s of cfg.surfaces) {
+      expect(s.curveType).toBe('symmetric-flat-plate');
     }
   });
 });
