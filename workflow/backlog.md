@@ -4,11 +4,33 @@ Surface-notes from workflow runs. Consumed and resolved by higher-level workflow
 
 ## Open
 
+### SURFACE-2026-06-06-06 — Tune the aerobatic-class airframe (`aircraft-aerobatic.json`) into a real player-flyable model, then wire mission-select to airframe selection
+- **Source:** session pause (2026-06-06, operator directive after Path A close on SURFACE-2026-06-06-02)
+- **Target level:** product:wbs (feature workflow — multi-session)
+- **Type:** new-feature / Phase 2 mission content + Phase 3 polish bridge
+- **Priority:** **high — second-next after SURFACE-06-06-05 dogfooding refactor.** Blocks combat WP16 player-flyable aerobatic gameplay.
+- **Summary:** At Path A close 2026-06-06 a seed aerobatic config `public/config/aircraft-aerobatic.json` was committed (mass=500, T_max=12000, T/W=2.4, wings.area=4 per wing — Pitts-class). Verified to geometrically backflip from cruise (+180° at t=5.23s via the scripted-input harness `?config=aerobatic`). However the seed is NOT a finished player-flyable model — it is a scaled-down Cessna with mass/thrust/area changes only. Aero curves, `clQ`, `clAlphaDot`, `inducedDragK`, `fuselageDrag`, `incidenceRad`, `maxDeflectionRad`, `incidence` are all unchanged from production Cessna config. No mission JSON references it; the mission schema does not yet support per-mission airframe selection; mission-select UI does not surface airframe choice.
+- **Scope (~ 3 phases, similar shape to controls-feel-pass):**
+  - **Phase A (schema):** add optional `config?: string` field to mission JSON (`public/missions/*.json` + `src/mission/types.ts` + `src/mission/loader.ts` + `src/main.ts` to pass mission config name through to `loadAircraftConfig`). Defaults to current behavior. Path-traversal-defended via the parser's regex.
+  - **Phase B (parameter tuning pass):** dedicated feel-tuning cycle for the aerobatic airframe per CLAUDE.md Rule #3 carve-out (b) — pick parameter values that make the aerobatic plane feel right per operator playtest. Use the scripted-input harness as the verify-self gate (the dogfooding mandate from `### Browser-walkthrough discipline`). Likely 2-3 sub-phases iterating on `clQ` / `clAlphaDot` / `maxDeflectionRad` / curves. NOT a harness-tune-CLI cycle (Rule #3 carve-out (b) — feel override, not optimization).
+  - **Phase C (mission integration):** add 1+ aerobatic-themed mission JSON file(s) that load `?config=aerobatic`. WP16 combat could be the natural consumer; an "aerobatic free-flight" mission for Phase 3 polish is also natural.
+- **Open design questions to resolve at phase A spec:**
+  1. What airframe class should this BE? Current seed is closest to Pitts Special (sport prop aerobatic, T/W=2.4). Alternatives: Extra 300 (faster sport aerobatic), warbird P-51/Spitfire (heavier, more inertia, prop), MiG-15 / F-16 jet (much higher T/W, much different envelope). v1 vision says single aircraft type ("Not goals for v1: multiple aircraft") — but **two aircraft might be acceptable if cleanly scoped** (a basic trainer + an aerobatic plane is the minimum to demonstrate the model is airframe-class-faithful). Operator decision required.
+  2. Does the player choose airframe at mission-select, or does each mission hard-code its airframe? Hard-coded is simpler and matches the v1 vision more closely; selectable is more flexible but expands UI scope. Default: hard-coded per mission.
+  3. Naming: keep `aircraft-aerobatic.json`, or rename to be more specific (`aircraft-pitts.json` / `aircraft-extra300.json`)? Names should reflect the design target.
+- **Verification gates (per CLAUDE.md `### Browser-walkthrough discipline`):**
+  - Vitest unit tests on schema extension (Phase A).
+  - Scripted-input harness e2e at `?config=aerobatic` confirming the aerobatic flight envelope across at least 3 maneuvers (loop from cruise, level cruise hold, knife-edge or Cuban-8 if Phase B reaches that level).
+  - Operator playtest verify-human at Phase B close (this is a feel-tuning cycle; only the operator can validate "feels right").
+- **Why deferred from this session:** Phase A is a small task workflow (~1-2h) but Phase B is a multi-session feel-tuning cycle. Bundling them into this session's pause-note path would exceed scope. Per `feedback_surface_or_means_or.md` single-knob discipline, the harness ship + Path A close are the closure for this session; the aerobatic tune is the natural next-but-one.
+- **Memory anchors:** `feedback_browser_walkthrough_load_bearing.md` (any physics-feel WP requires harness probe), `feedback_operator_as_external.md` (under full-autopilot, operator-as-playtester is unavailable for Phase B verify-human; document the deviation), CLAUDE.md "Not goals for v1: multiple aircraft" (the closure of this SURFACE should explicitly either negotiate that exclusion or commit to defer the *flyable* aerobatic model to Phase 3 / multi-aircraft work even though the *seed config* is in place).
+- **Status:** pending
+
 ### SURFACE-2026-06-06-05 — Refactor `phugoid-probe.spec.ts` to use the new `?script=` harness as a dogfooding exercise
 - **Source:** feature:finalize (scripted-input-harness, 2026-06-06; operator question during finalize)
 - **Target level:** task workflow (small, ~30-60 min)
 - **Type:** dev-infrastructure / dogfooding / tech-debt
-- **Priority:** low
+- **Priority:** **medium — promoted from low at session pause 2026-06-06 (operator-designated IMMEDIATE-NEXT before SURFACE-06).**
 - **Summary:** The existing `tests/e2e/phugoid-probe.spec.ts` (3 tests, ~34s each) uses `page.waitForTimeout(1000)` × 30 + repeated `getState()` polls — exactly the wall-clock pattern the new harness eliminates. Strictly speaking they don't violate the `### Browser-walkthrough discipline` mandate because they're presence-checks (assert AS finite, no NaN) not time-sensitive measurements, but they'd be cleaner using `?script=hold:Throttle=<value>@0:end` + `getScriptedLog()` reading per-tick state into the same finiteness assertions.
 - **Proposed shape:** Rewrite each test to navigate `/?mission=phugoid-probe-<id>&debug=true&script=hold:Throttle=<value>@0:end`, `await page.waitForFunction(() => window.__aircraft.isScriptComplete())`, then `const log = await page.evaluate(() => window.__aircraft.getScriptedLog())`. Assert no NaN across all log rows + altitude/AS within envelope. Should reduce per-test wall-clock from ~34s to ~32s (window fills the log) but more importantly removes 30 separate `waitForTimeout(1000)` synchronization points.
 - **Why deferred from this finalize:** single-knob discipline per `feedback_surface_or_means_or.md`; phugoid tests are green; refactor is dogfooding-grade not breakage-fixing. The finalize already bundles 3 orthogonal small changes (scripted-input feature + phugoid-probe menu prune + CLAUDE.md quickstart). Adding a 4th would muddy the commit.
