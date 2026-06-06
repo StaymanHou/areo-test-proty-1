@@ -81,6 +81,22 @@ Action: No fix applied (no triage-required modification); flake noted in WIP for
 - [SURFACED-2026-06-06] feature-spec — arch.md exceeds size guard (2645 lines), read first 100 + headings only.
 - [SURFACED-2026-06-06] feature-spec — wbs.md exceeds size guard (1055 lines), read first 100 + headings + WP15 / WP11 / WP12 sections only.
 
+## Retrospect
+
+- **What changed in our understanding:** The Cessna airframe at the post-D27 production tuning (mass=1000kg, T_max=6000N, T/W≈0.6) is **structurally incapable** of taking off from rest on a 600m runway. Plan-time arithmetic predicted ~6 m/s² acceleration (T/m); live probe at full throttle from rest delivered only ~1.1 m/s² — drag is a much more aggressive function of speed than the back-of-envelope `T/m` estimate accounted for. To reach V_trim=78 m/s from rest would need ~70s + ~2700m. Even with a rolling-start spawn at linvel=−40, the box-cuboid collider sits flat on terrain (no wheels-on-runway pitch-rotation mechanism), so the aircraft cannot rotate until natural liftoff at AS≈78 — by which point it's at z≈-1100m, well past the runway end at z=-300.
+
+- **Assumptions that held:** Existing `TouchdownObjective` machinery (parse + runner + HUD format) was fully ready — no schema change, no runner modification, no HUD edit required. The four-objective ordered sequence runs through the existing waypoint-ordering machinery without changes. SURFACE-07's deep-link fix (manifest no longer gates deep-link reachability) meant the mission was usable before manifest entry was added. AC4 crash-vs-touchdown threshold ordering analysis at spec time was correct: gentle landings inside the AABB succeed before crash fires.
+
+- **Assumptions that were wrong:** Spec AC2 "spawn parked on runway from rest" was structurally infeasible at the Cessna airframe's T/W. CLAUDE.md Rule #9 carve-out for ground-rest spawn proved unnecessary — the mission adopted V_trim spawn convention instead, removing the need for the carve-out. Plan-time math underestimated drag by ~5×. The HUD format `(N/M)` counts ALL objectives (not just reach-waypoints), so the user sees `(1/4) → (2/4) → (3/4) → Touchdown on the runway` — my spec narrative said `(1/3)`; harmless mis-read corrected at verify-self.
+
+- **Approach delta:** Phase 1 P1.1's feasibility probe caught the structural T/W issue BEFORE committing waypoint geometry — exactly the failsafe the plan was designed for. The probe iterated 3 times (from-rest → rolling-start linvel=−40 → V_trim spawn) before landing on the workable design. The mission JSON was edited 3 times during the iteration but committed to disk only once at end of Phase 1; no waypoint coordinates ever needed re-derivation despite the spawn-design change because the V_trim spawn trajectory naturally hits all 4 objectives at the planned coordinates. End-to-end: spec → plan → ship in ~1 session under full-autopilot, zero back-loops to spec/plan, zero verify-self fails, one filed SURFACE (Cessna T/W infeasibility — properly deferred), one in-WP refinement (V_trim spawn substitution). Operator playtest deferred per documented carve-out.
+
+## Communicate
+
+> **Feature complete:** WP15 Takeoff & Landing mission has shipped. The fourth and final Phase 2 mission lets the player spawn over the runway at V_trim, climb out, fly a wide pattern, and touch down — completing the take-off-to-landing arc. To play it: `npm run dev` → click "Takeoff & Landing" on the menu, or deep-link to `/?mission=takeoff-landing`. Land within `maxVSpeed: 4 m/s` to win. Phase 2 exit criteria advance to 4-of-4 of the v1 mission types implemented; only WP16 combat remains.
+
+Requester = operator — closure notice for self-record.
+
 ## Spec carry-forward (from spec stage; binding for all phases below)
 
 ### User stories
