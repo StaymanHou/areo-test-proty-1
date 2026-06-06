@@ -2,6 +2,9 @@
 
 Surface-notes from workflow runs. Consumed and resolved by higher-level workflows (arch revisions, new WPs, etc.).
 
+## Session Pause — 2026-06-06 19:51
+Paused. See `workflow/.session.md` to resume. 4 SURFACEs closed this session (-17-02, -24-02, -16-03, -06-01) via 2 task workflows on `main` (`0e4502b` + `f750dc6`). **Operator-queued next session entry point: SURFACE-2026-05-16-02 perf-flake fix** via task workflow — actionable threshold crossed (4 consecutive observations this session, including under a new parallel-verify-auto-load trigger); recommend addressing before the next feature workflow. Pick (b1) Vitest tag-based exclusion OR (b2) separate `*.perf.test.ts` file at plan time. Drive mode: full-autopilot.
+
 ## Open
 
 ### SURFACE-2026-06-06-09 — Cessna baseline airframe cannot take off from rest on the 600m runway; "true takeoff roll" gameplay structurally infeasible at current T/W
@@ -190,7 +193,7 @@ Surface-notes from workflow runs. Consumed and resolved by higher-level workflow
 - **Verification approach:** N/A — text edit.
 - **Status:** **RESOLVED 2026-06-06 by task `arch-md-errata-bundle`.** arch.md line 409 sign flipped (`-` → `+`).
 
-### SURFACE-2026-05-16-02 — Wall-clock perf assertion in `flightmodel.test.ts:368` is load-flaky
+### SURFACE-2026-05-16-02 — Wall-clock perf assertion in `flightmodel.test.ts:368` is load-flaky [RESOLVED 2026-06-06]
 - **Source:** feature:verify-codify (WP14.7 Phases 1/2/3, 2026-05-16)
 - **Target level:** task (small test-refactor)
 - **Type:** test-design / flake
@@ -203,7 +206,7 @@ Surface-notes from workflow runs. Consumed and resolved by higher-level workflow
   - **(a) Relative baseline:** measure a known-cheap reference op (e.g. 1000 empty `for` iterations) at the start of the test, scale the threshold proportionally. Removes the absolute wall-clock dependency.
   - **(b) Move to a perf-only test invocation:** tag the test with a Vitest tag like `@perf` and exclude from `npm run test`; run only via `npm run test:perf`. Keeps the regression signal for explicit perf-monitoring runs without flaking CI.
 - **Rationale for low priority:** the flake is observed about 1 in 3 full-suite runs and is always resolved by a single re-run. It does not block any feature. The perf-proxy intent (catch a regression that would 10× the per-tick cost) is still useful but a 50ms threshold at 1000 calls = 50 μs/call is too tight a margin for wall-clock measurement on a loaded CPU.
-- **Status:** pending
+- **Status:** **RESOLVED 2026-06-06 by task `perf-flake-isolate`.** Picked suggested-action (b): perf test extracted to `src/aircraft/physics-core/flightmodel.perf.test.ts`; default `npm run test` excludes `**/*.perf.test.ts` (640/640 GREEN, was 641); new `npm run test:perf` runs perf suite via dedicated `vitest.perf.config.ts` (1/1 GREEN in 33ms isolation). Empirical pivot during act: positional file-path filters still respect `exclude`, so a dedicated `--config` file is the cleanest way to flip include/exclude for the perf invocation. Regression signal preserved; codify-cycle tax eliminated.
 
 ### SURFACE-2026-05-12-02 — Test-only probe missions are listed on player-facing mission-select
 - **Source:** task:act (WP14.5 T1, 2026-05-12)

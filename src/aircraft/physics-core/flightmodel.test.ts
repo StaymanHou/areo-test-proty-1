@@ -354,19 +354,7 @@ describe('FlightModel', () => {
     expect(avBx).toBeGreaterThan(0);                // not over-damped to reverse
   });
 
-  it('1000 calls to applyForces complete in under 50 ms (allocation-free perf proxy)', () => {
-    const world = new RAPIER.World({ x: 0, y: -9.81, z: 0 });
-    const aircraft = new Aircraft(world, config, {
-      linvel: new Vector3(0, 0, -30),
-    });
-    const fm = new FlightModel(aircraft);
-    const start = performance.now();
-    for (let i = 0; i < 1000; i++) {
-      fm.applyForces(0.5);
-    }
-    const elapsed = performance.now() - start;
-    expect(elapsed).toBeLessThan(50);
-  });
+  // Perf assertion moved to flightmodel.perf.test.ts (SURFACE-2026-05-16-02).
 
   // --- WP11: resetSurfaceState for mission restart ---
 

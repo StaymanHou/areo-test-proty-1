@@ -9,6 +9,7 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:perf": "vitest run --config vitest.perf.config.ts",
     "test:e2e": "playwright test",
     "harness": "tsx tools/tune/harness.ts",
     "harness:parity": "tsx tools/tune/harness.ts --all-fixtures --out-dir test-results",
