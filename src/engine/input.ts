@@ -13,8 +13,8 @@ export type ActionName =
 export type KeyMap = Record<ActionName, string>;
 
 export const DEFAULT_KEY_MAP: KeyMap = {
-  pitchUp:      'ArrowUp',
-  pitchDown:    'ArrowDown',
+  pitchUp:      'KeyW',
+  pitchDown:    'KeyS',
   rollLeft:     'KeyA',
   rollRight:    'KeyD',
   yawLeft:      'KeyQ',

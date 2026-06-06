@@ -2,15 +2,6 @@
 
 Surface-notes from workflow runs. Consumed and resolved by higher-level workflows (arch revisions, new WPs, etc.).
 
-## Session Pause — 2026-06-06 13:30
-Paused. See `workflow/.session.md` to resume. Operator-queued next: SURFACE-05 (dogfooding refactor, IMMEDIATE) → SURFACE-06 (aerobatic airframe tune, NEXT-BUT-ONE).
-
-## Session Pause — 2026-06-06 14:30
-Paused. See `workflow/.session.md` to resume. Operator-queued IMMEDIATE-NEXT for next session: **build a jet airframe config (MiG-15-class recommended) + jet-test mission so operator can fly it manually in next session**. Vision-constraint negotiation required at spec stage (`docs/product/roadmap.md:62` "multiple aircraft" exclusion); default Option α = deep-link-only fixture, NOT in home menu, parallel to existing aerobatic-test pattern. Operator playtest IS the verify-human gate per directive "let me try it" — cannot be skipped under any drive mode for this feature.
-
-## Session Pause — 2026-06-06 15:28
-Paused. See `workflow/.session.md` to resume. Jet airframe DELIVERED — WP14.21 shipped at `01674bf` + finalized at `df09820`; operator playtest PASS. **NEXT entry point recommendation: WP15 (takeoff/landing mission)** via `/feature-spec` — Phase 2 critical path advance. Alternatives: WP16 combat, SURFACE-06-06 Phase B/C aerobatic tune (requires v1 vision re-negotiation), SURFACE-06-01 WASD keymap (small task), SURFACE-06-03 clP roll-damping arch cycle.
-
 ## Open
 
 ### SURFACE-2026-06-06-09 — Cessna baseline airframe cannot take off from rest on the 600m runway; "true takeoff roll" gameplay structurally infeasible at current T/W
@@ -139,13 +130,7 @@ Paused. See `workflow/.session.md` to resume. Jet airframe DELIVERED — WP14.21
 
 ### SURFACE-2026-06-06-01 — Default keymap binds pitch to ArrowUp/ArrowDown instead of W/S (operator expects WASD as unified flight stick)
 - **Source:** task:act (controls-feel-pass T1, 2026-06-06)
-- **Target level:** task (one-line edit to `DEFAULT_KEY_MAP` in `src/engine/input.ts`)
-- **Type:** UX-papercut / default-keymap
-- **Priority:** medium (operator reported "W and S doesn't work" during T1 feel-check — they expected WASD as the unified stick like most modern flight games)
-- **Summary:** `src/engine/input.ts:15-27`'s `DEFAULT_KEY_MAP` binds `pitchUp: 'ArrowUp', pitchDown: 'ArrowDown'`, with roll on A/D. Most modern flight-sim and game players expect W/S = pitch, A/D = roll (WASD as the unified flight stick) with arrows as alternates. Operator hit this at the controls-feel-pass T1 feel-check and reported "W and S doesn't work" — the controls aren't broken, the default binding is unconventional.
-- **Suggested action:** Rebind `pitchUp: 'KeyW', pitchDown: 'KeyS'` in `DEFAULT_KEY_MAP`. Update `src/aircraft/controls.test.ts` references if any test asserts on the old default. Could optionally retain ArrowUp/ArrowDown as alternates by extending `KeyMap` to support arrays, but that's a bigger schema change — defer unless requested.
-- **Why deferred from controls-feel-pass:** Per `feedback_surface_or_means_or.md`, the parent task picked ONE knob (cubic input curve for stick sensitivity). The keymap fix is orthogonal and ships as a separate one-commit task.
-- **Status:** pending
+- **Status:** **RESOLVED 2026-06-06 by task `wasd-keymap-rebind`.** `DEFAULT_KEY_MAP.pitchUp` → `KeyW`, `pitchDown` → `KeyS`. WASD now the unified flight stick (pitch + roll). 3 e2e specs updated from `hold:ArrowUp` → `hold:KeyW`. `controls.test.ts` was indirection-safe via `DEFAULT_KEY_MAP.pitchUp` references. Arrows-as-alternates deferred (would require `KeyMap` schema extension to array form). Vitest 641/641 + e2e 25/25 + tsc both configs + build clean.
 
 ### SURFACE-2026-05-24-05 — Search-vs-deploy parity-diff under `--link`: optimizer-internal evaluation produces score 1.50× more negative than `score-deployed.mjs` re-score at bit-identical params
 - **Source:** feature:build (WP14.14 Phase 1, 2026-05-24)
@@ -250,30 +235,4 @@ Paused. See `workflow/.session.md` to resume. Jet airframe DELIVERED — WP14.21
 - **Suggested action:** Leave as-is for Phase 1/2. At Phase 3 WP18/WP21, measure real load time and consider: (a) code-splitting Rapier via dynamic import, (b) loading WASM from `@dimforge/rapier3d-compat`'s external `.wasm` file instead of inlining.
 - **Priority:** low (tracked, not urgent)
 - **Status:** pending
-
-## Resolved
-
-### 2026-05-25 cascade close — 16 SURFACEs resolved at WP14.19 ship (commits `46f9b42` integrator fix + `b69d267` D27 arch + `5ad9e7f` D27 impl + `eafc91e` ship)
-
-All 16 SURFACEs below closed-by-WP14.19 ship Branch B-accept (deployed -7,287; 3 mission types coherent at V_trim spawn; cascade behavioral + structural close). The full content of each entry remains accessible via `git log -- workflow/backlog.md` if archeology is needed; one-line closures here:
-
-- **SURFACE-2026-05-25-03 (D27 driver, recency-bias):** Closed by mission JSON spawn AS update to V_trim=78 in all 5 mission files (`public/missions/phugoid-probe-{low,mid,high}.json` + `free-flight.json` + `waypoint-patrol.json`); 3 browser walkthroughs confirm coherent V_trim flight; CLAUDE.md Rule #9 scope extended.
-- **SURFACE-2026-05-25-02 (D26 driver, bound-pressure-as-clean-widen):** Closed by D26-β per-regime `altEnvelope: {low:100, mid:50, high:200}` in `tools/tune/score.ts`; the 88% `inducedDragK_wing` bound-pressure was a side effect of high-regime climb-suppression — D26-β eliminated the structural cause; optimizer no longer pushes the bound.
-- **SURFACE-2026-05-25-01 (D25 driver, score-function envelope mis-calibration):** Closed by D25-ζ uniform spawn AS=78 + score-function reversion to all-level-cruise (target=78 uniform; AS_ENVELOPE 25→30); CLAUDE.md Rule #9 amended to remove D24's erroneous "at the fixture's throttle" qualifier.
-- **SURFACE-2026-05-24-09 (CRITICAL, integrator-fix root cause):** Behavioral close at WP14.19 ship `eafc91e`. Architectural close was at task `fix-resetforces-bug` commit `46f9b42` (Rapier per-tick force accumulator: `body.resetForces(true) + resetTorques(true)` added before `applyForces`). CLAUDE.md Rule #7 (per-tick energy-budget sanity check) codified post-fix.
-- **SURFACE-2026-05-24-08 (D23 refutation):** Superseded-by-SURFACE-09; the c0-floor cluster the WP14.18 tune saw was integrator-pathology-driven; collapsed to 0/4 under fixed integration at WP14.18b re-tune.
-- **SURFACE-2026-05-24-07 (D23-α/β refutation, D23 cycle driver):** Closed-by-cascade-walk-back; D23-γ-evolved mode dispatch was correct for the broken-integrator era but D25 reverted to all-level-cruise once integrator + spawn AS were correct.
-- **SURFACE-2026-05-24-06 (D22 cycle driver, drag bounds):** Closed-by-cascade-walk-back; D22's drag bounds revision was integrator-pathology-driven; under fixed integration the gaming corner vanished.
-- **SURFACE-2026-05-24-04 (D20 refutation, attempt-3 escalation):** Closed-by-cascade-walk-back; D20 bound-widening was integrator-pathology-driven; the empirical optimum sits near WP14.13 bounds under fixed integration.
-- **SURFACE-2026-05-24-03 (D19 widened-bounds refutation, tooling-fix driver):** Closed-by-cascade-walk-back; the search-vs-deploy 0.67× ratio was integrator-pathology-driven; `--link` tooling fix at task `tune-cli-link-flag` is retained.
-- **SURFACE-2026-05-24-01 (D18 insufficient, inertia revision candidate):** Closed-by-cascade-walk-back; D18 drag polar IS shipped at WP14.19 D26-β globalBest; the "insufficient" verdict was integrator-pathology-driven.
-- **SURFACE-2026-05-23-01 (third-mechanism-layer needed, D18 driver):** Closed-by-cascade-walk-back; D18 drag polar IS the third mechanism layer and IS shipped in production aircraft.json at WP14.19 ship; the "no flyable point" verdict was integrator-pathology-driven.
-- **SURFACE-2026-05-17-03 (D17 empirical stable clQ region narrower than textbook):** Closed-by-cascade-walk-back; clQ values at WP14.19 globalBest are within the empirical stable region; arch.md Rule #2 clarification at WP14.9b post-mortem stands.
-- **SURFACE-2026-05-17-01 (D15 Form A insufficient):** Closed-by-cascade-walk-back; D17 superseded D15; β4 non-dimensional form is the surviving mechanism, shipped at WP14.9b commit `0df9a07`.
-- **SURFACE-2026-05-16-04 (β5+β4 NaN-poisoned joint space):** Closed-by-cascade-walk-back; the NaN-poisoning was integrator-pathology-driven; under fixed integration β4+β5+D18 joint space is finite (Vitest 592/592 + e2e 15/15 confirm).
-- **SURFACE-2026-05-16-01 (β4 explicit-Euler instability):** Closed-by-cascade-walk-back; D17 non-dimensional form is V-scaled and stable above V_REF; shipped at WP14.9b.
-- **SURFACE-2026-05-12-03 (β5 mechanism diverges at any tuning value):** Closed-by-cascade-walk-back; D16 non-dimensional form (parallel to D17) ships at WP14.10 commit `27324aa`; under fixed integration converges.
-- **SURFACE-2026-05-12-01 (Phase 2 waypoint missions need non-zero clAlphaDot):** Closed-by-cascade-walk-back; aircraft.json now ships D26-β globalBest with non-zero clAlphaDot wing+hstab; waypoint-patrol mission verified coherent at V_trim=78.
-- **SURFACE-2026-05-11-04 (Phugoid undamped at Phase 1 airframe):** Closed-by-cascade-walk-back; β4 + β5 + drag polar (D17+D16+D18) at D26-β globalBest in production aircraft.json damp the phugoid mode coherently; observable at `localhost:5173/?mission=phugoid-probe-mid&debug=true` (alt 50→108→0 over 30s).
-- **Status:** resolved 2026-05-25
 

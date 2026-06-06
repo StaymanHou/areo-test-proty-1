@@ -45,10 +45,10 @@ async function runScript(
   return await page.evaluate(() => window.__aircraft!.getScriptedLog());
 }
 
-test('scripted-input: hold:ArrowUp causes measurable pitch-up over the window', async ({ page }) => {
+test('scripted-input: hold:KeyW causes measurable pitch-up over the window', async ({ page }) => {
   const log = await runScript(
     page,
-    '?mission=free-flight&debug=true&script=hold:ArrowUp@1.0:4.0',
+    '?mission=free-flight&debug=true&script=hold:KeyW@1.0:4.0',
   );
 
   expect(log.length).toBeGreaterThan(240); // at least ~4s of recording
@@ -65,11 +65,11 @@ test('scripted-input: hold:ArrowUp causes measurable pitch-up over the window', 
 test('scripted-input: deterministic — two identical URL runs produce byte-identical logs', async ({ page }) => {
   const logA = await runScript(
     page,
-    '?mission=free-flight&debug=true&script=hold:ArrowUp@1.0:3.0',
+    '?mission=free-flight&debug=true&script=hold:KeyW@1.0:3.0',
   );
   const logB = await runScript(
     page,
-    '?mission=free-flight&debug=true&script=hold:ArrowUp@1.0:3.0',
+    '?mission=free-flight&debug=true&script=hold:KeyW@1.0:3.0',
   );
 
   // Byte-identical via JSON.stringify — the load-bearing determinism gate.
@@ -148,7 +148,7 @@ test('scripted-input: malformed ?config= falls back to default with a warning', 
 
   // ../etc/passwd should be rejected by the path-traversal regex
   await page.goto(
-    '/?mission=free-flight&debug=true&script=hold:ArrowUp@0.5:1.5&config=' +
+    '/?mission=free-flight&debug=true&script=hold:KeyW@0.5:1.5&config=' +
       encodeURIComponent('../etc/passwd'),
   );
   await page.waitForFunction(

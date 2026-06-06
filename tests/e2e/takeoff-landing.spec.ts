@@ -94,10 +94,10 @@ test('WP15: ?mission=takeoff-landing deep-link loads, HUD shows objective, spawn
 
 test('WP15: scripted rotate-and-climb arc reaches AS > 60 and altitude > 10 within 15s', async ({ page }) => {
   // Codified version of P1.1's investigative probe. Full-throttle for 15s,
-  // ArrowUp pulse from 0.5-3.0s to force rotation. Aircraft spawns at V_trim
+  // KeyW pulse from 0.5-3.0s to force rotation. Aircraft spawns at V_trim
   // (78 m/s) so rotation can complete almost immediately, then climbs.
   await page.goto(
-    '/?mission=takeoff-landing&debug=true&script=hold:Throttle=1.0@0:15.0,hold:ArrowUp@0.5:3.0',
+    '/?mission=takeoff-landing&debug=true&script=hold:Throttle=1.0@0:15.0,hold:KeyW@0.5:3.0',
   );
 
   await page.waitForFunction(

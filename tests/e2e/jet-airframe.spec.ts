@@ -80,7 +80,7 @@ test('jet-airframe: backflip — full-up elevator at full throttle crosses ±90�
   // Acceptance: max(|pitch_deg|) ≥ 90 — proves backflip capability across airframe classes.
   const log = await runScript(
     page,
-    '?mission=jet-test&debug=true&script=hold:ArrowUp@1.0:5.0,hold:Throttle=1.0@0:end',
+    '?mission=jet-test&debug=true&script=hold:KeyW@1.0:5.0,hold:Throttle=1.0@0:end',
   );
 
   expect(log.length).toBeGreaterThan(240);
