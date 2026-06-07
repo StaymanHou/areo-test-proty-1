@@ -2,10 +2,23 @@
 
 Surface-notes from workflow runs. Consumed and resolved by higher-level workflows (arch revisions, new WPs, etc.).
 
+## Session Pause — 2026-06-06 21:05
+Paused. See `workflow/.session.md` to resume. 4 commits shipped this session (`76963c0` perf-flake-isolate, `258b9fe` docs vitest convention, `8320ef7` arch-wbs-size-guard-archive, `c7ce6a8` roll-damping-investigation) closing 3 SURFACEs (-16-02, -06-08, -06-03 refuted at investigation). arch.md/wbs.md size-guard cleared. **Operator-queued next session entry point: WP16 combat mission** via `/session-start`. Drive mode: full-autopilot. Critical path: `... → WP15(DONE) → WP16(NEXT) → WP17 → ship`. See `.session.md` for the spec-time decisions enumerated for the architect-as-operator pick at resume.
+
 ## Session Pause — 2026-06-06 19:51
 Paused. See `workflow/.session.md` to resume. 4 SURFACEs closed this session (-17-02, -24-02, -16-03, -06-01) via 2 task workflows on `main` (`0e4502b` + `f750dc6`). **Operator-queued next session entry point: SURFACE-2026-05-16-02 perf-flake fix** via task workflow — actionable threshold crossed (4 consecutive observations this session, including under a new parallel-verify-auto-load trigger); recommend addressing before the next feature workflow. Pick (b1) Vitest tag-based exclusion OR (b2) separate `*.perf.test.ts` file at plan time. Drive mode: full-autopilot.
 
 ## Open
+
+### SURFACE-2026-06-07-01 — Combat-target "ground target" spec interpretation: y=0 + halfExtents.y=8 vs. y=2 + halfExtents.y=2
+- **Source:** feature:build (WP16 Phase 5 P5.2, 2026-06-07)
+- **Target level:** product:wbs (Phase 3 polish — gameplay re-validation)
+- **Type:** spec-deviation / tuning
+- **Priority:** low (production WP16 ships playable via the chosen tuning; the deviation is operator-as-external documented per CLAUDE.md `feedback_operator_as_external.md`)
+- **Summary:** Phase 3 outcomes + Acceptance Criteria 3 spec the combat target as a "stationary ground target" with original AABB `(4,2,4)` centered at y=2 — a 4m-tall object on the ground. Phase 5 P5.2 retuned the target to y=0 with halfExtents `(10,8,10)` — a 16m-tall hazard-orange box that extends BELOW ground (y range [-8, +8]). Visually the player sees the upper half of the box. The "ground target" intent is structurally preserved (target IS at ground level) but the visual shape differs from the WP16-spec interpretation.
+- **Context:** Tuned this way because the mig15 airframe (combat.json `config:"mig15"`) settles into a ground-cruise corridor at y≈0; intersecting it requires the AABB to span y∈[-8, +8]. With Cessna at V_trim cruise (y=50+) the player never reaches y=2; with mig15 ground-cruise the player y=0 only intersects a y=2 box edge-on. Casual playtest via scripted-input confirmed both win + loss paths reachable with the y=0 + halfExtents.y=8 tuning.
+- **Suggested action:** At Phase 3 visual polish (WP20) and/or Phase 3 playtest (WP23), re-validate the visual interpretation with an external tester. Two viable evolutions: (a) split AABB-for-hit-detection vs visual-mesh-size — keep AABB tall but render the mesh as a low ground building; (b) raise mig15 cruise altitude band (airframe tune) so target can return to y=2 ground level; (c) accept current state.
+- **Status:** pending
 
 ### SURFACE-2026-06-06-09 — Cessna baseline airframe cannot take off from rest on the 600m runway; "true takeoff roll" gameplay structurally infeasible at current T/W
 - **Source:** feature:build (takeoff-landing-mission Phase 1 P1.1, 2026-06-06)

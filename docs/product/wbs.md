@@ -1,8 +1,8 @@
 ---
 stage: wbs
 state: in-progress
-updated: 2026-06-06 — archived Phase 1 (WP1-WP9.6) + Phase 2 completed WPs (WP10-WP15) into `archive/phase-1-flight-poc/wbs-cycle-WP1-WP9.6.md` and `archive/phase-2-physics-cascade/wbs-cycle-WP10-WP15.md` per SURFACE-2026-06-06-08 (size-guard sweep). Live `wbs.md` retains the active critical-path WPs (WP16 + WP17) inline plus Phase 3 WPs inline. No work-content changes — pure structural curation. **Phase 2 critical path:** `... → WP15(DONE) → WP16(NEXT, combat) → WP17 → Phase 2 exit → Phase 3 ship work`.
-previous_updated: 2026-06-06 (late evening) — WP15 takeoff/landing mission DONE (ship commit `3a2902c`); fourth Phase 2 mission completes the four-mission set. See archive for the full pre-archive frontmatter chain including the D14→D27 cascade narrative.
+updated: 2026-06-07 — WP16 combat mission DONE (ship commit `5825f09`). Closes Phase 2's last gameplay WP. Combat-ai hook ships per D11 (single hook, no FSM); MissionRunner extended with hook-driven fail flag for player-HP=0 loss path; DomHud extended with `setCombatHP(player, target)` for combat HP rows; mig15 airframe via per-mission `config:` plumbing (SURFACE-2026-06-06-06). **Phase 2 critical path:** `... → WP16(DONE) → WP17(NEXT, Phase 2 verification + level-cruise probe) → Phase 2 exit → Phase 3 ship work`.
+previous_updated: 2026-06-06 — archived Phase 1 (WP1-WP9.6) + Phase 2 completed WPs (WP10-WP15) into `archive/phase-1-flight-poc/wbs-cycle-WP1-WP9.6.md` and `archive/phase-2-physics-cascade/wbs-cycle-WP10-WP15.md` per SURFACE-2026-06-06-08 (size-guard sweep). Live `wbs.md` retained the active critical-path WPs (WP16 + WP17) inline plus Phase 3 WPs inline. No work-content changes — pure structural curation.
 ---
 
 # Work Breakdown Structure
@@ -46,19 +46,19 @@ WP10 through WP15 (including the WP14.* D14→D27 physics cascade and the WP14.2
 
 The archive also contains the Phase 2-era Dependency map, Architectural-gaps section, and all Session Pause / WP-shipped narrative notes from 2026-05-09 through 2026-05-25.
 
-### WP16: Combat mission
+### WP16: Combat mission — DONE (ship commit `5825f09`, 2026-06-07)
 **Description:** Biggest Phase 2 risk (R6). Keep minimal per research: one simple AI enemy (air or ground), one weapon, hit detection, damage model. No AI pathfinding beyond "fly toward / turn toward player." Per **D11**, this is the only Phase 2 mission expected to register a `scriptHook` — the AI enemy logic lives in `src/mission/hooks/combat-ai.ts`. The internal AI architecture (behavior tree vs FSM) is a WP16-internal decision; arch.md does not pre-commit.
 **Phase:** 2
 **Dependencies:** WP11, WP12
 **Size:** L
 **Tasks:**
-- [ ] Weapon: forward-firing projectile (gun or simple missile — pick one)
-- [ ] Projectile lifecycle: spawn, raycast or collider, hit, despawn
-- [ ] AI enemy: one target entity (stationary ground target OR minimally-AI aircraft). If aircraft, reuse flight model with a dumb "turn to face player" controller.
-- [ ] Damage model: hitpoints on player + enemy; destruction state
-- [ ] `src/mission/hooks/combat-ai.ts` registered with the hook registry per D11.
-- [ ] Mission JSON: `scriptHook: 'combat-ai'` + a `destroy-target` objective.
-- [ ] Win: enemy destroyed. Fail: player destroyed.
+- [x] Weapon: forward-firing projectile (gun, 600 m/s muzzle, 5 ROF, 1500m range, 32-slot pool)
+- [x] Projectile lifecycle: spawn, AABB hit detection (TS in combat-ai.ts — Rapier overhead not needed), despawn at lifetime
+- [x] AI enemy: stationary ground-style target (chose stationary over AI-flown per "AI-flown aircraft" Out-of-Scope in WP16 spec). Returns fire at 400 m/s 2 ROF with 0.3s lead aim.
+- [x] Damage model: PLAYER_HP=6, TARGET_HP=3; destroyed state (visual color + Z-tilt change)
+- [x] `src/mission/hooks/combat-ai.ts` registered with the hook registry per D11
+- [x] Mission JSON: `scriptHook: 'combat-ai'` + a `destroy-target` objective + `config: "mig15"` for casual playability
+- [x] Win: target destroyed (objective.completed flips in same tick per D11). Fail: playerHp=0 → `MissionRunner.setHookFailFlag('shot down')` new API extension
 
 ### WP17: Phase 2 verification
 **Description:** All four mission types playable end-to-end via mission-select. Exit-criteria check. Adds a ≥30s level-cruise probe per arch.md Rev 2026-05-12 D13 to validate β5 (`clAlphaDot`) damping under non-zero throttle, since phugoid behavior hides in single-period observation.
@@ -136,6 +136,6 @@ The archive also contains the Phase 2-era Dependency map, Architectural-gaps sec
 
 ## Critical path
 
-`... → WP15(DONE) → WP16(NEXT, combat) → WP17 → Phase 2 exit → WP18 + WP19 + WP20 → WP21 → WP22 → WP23 → ship`.
+`... → WP16(DONE) → WP17(NEXT, Phase 2 verification) → Phase 2 exit → WP18 + WP19 + WP20 → WP21 → WP22 → WP23 → ship`.
 
 Phase 1 and the D14→D27 physics cascade dependency map are preserved in the archived WBS.
