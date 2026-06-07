@@ -41,15 +41,25 @@ declare global {
   }
 }
 
-// Generous envelope. The point is no NaN + no runaway, not a tight feel-target.
+// Generous OUTER envelope — never-exceed guard. The point is no NaN + no runaway.
 const MAX_ABS_ALTITUDE_M = 5_000;
 const MAX_AIRSPEED_M_PER_S = 200;
 const MAX_ABS_PITCH_DEG = 180;
 
+// WP17 Phase 2 — per-probe spawn-relative phugoid envelopes. Tighter inner gates
+// than the outer never-exceed values above, sized to ≥1.5× the WP17 baseline run
+// captured 2026-06-07. Spawn alt = 50m (mission JSON), initial pitch ≈ 0°.
+//
+// Baseline (2026-06-07): low → maxAbsAltDelta=59m maxPitch=18°
+//                        mid → maxAbsAltDelta=59m maxPitch=18°
+//                        high→ maxAbsAltDelta=142m maxPitch=14.4°
+//
+// Codifies arch.md D13 phugoid-damping coverage. If these envelopes regress, the
+// β5 (`clAlphaDot`) damping tune has shifted and needs to be re-examined.
 for (const probe of [
-  { id: 'phugoid-probe-low', throttle: 0.05 },
-  { id: 'phugoid-probe-mid', throttle: 0.15 },
-  { id: 'phugoid-probe-high', throttle: 0.4 },
+  { id: 'phugoid-probe-low', throttle: 0.05, maxAltDeltaM: 100, maxPitchDeltaDeg: 27 },
+  { id: 'phugoid-probe-mid', throttle: 0.15, maxAltDeltaM: 100, maxPitchDeltaDeg: 27 },
+  { id: 'phugoid-probe-high', throttle: 0.4, maxAltDeltaM: 250, maxPitchDeltaDeg: 30 },
 ]) {
   test(`phugoid probe @ throttle=${probe.throttle}: 60s bounded, no NaN`, async ({ page }) => {
     // `@0:end` fills the 3600-tick log buffer (60s @ 60Hz of physics wall-clock);
@@ -78,10 +88,16 @@ for (const probe of [
 
     expect(log.length).toBeGreaterThan(60); // sanity — at least ~1s recorded
 
+    // WP17 Phase 2 — spawn-relative baselines for the tighter envelope gates.
+    const spawnAlt = log[0]!.position.y;
+    const initialPitch = log[0]!.pitch_deg;
+
     // Scan ALL rows (not 30 samples), so transient runaways can't slip between samples.
     let maxAbsAlt = 0;
     let maxAS = 0;
     let maxAbsPitch = 0;
+    let maxAbsAltDelta = 0;
+    let maxAbsPitchDelta = 0;
     for (const r of log) {
       if (
         !Number.isFinite(r.position.y) ||
@@ -94,9 +110,13 @@ for (const probe of [
       }
       const absAlt = Math.abs(r.position.y);
       const absPitch = Math.abs(r.pitch_deg);
+      const absAltDelta = Math.abs(r.position.y - spawnAlt);
+      const absPitchDelta = Math.abs(r.pitch_deg - initialPitch);
       if (absAlt > maxAbsAlt) maxAbsAlt = absAlt;
       if (r.AS_mps > maxAS) maxAS = r.AS_mps;
       if (absPitch > maxAbsPitch) maxAbsPitch = absPitch;
+      if (absAltDelta > maxAbsAltDelta) maxAbsAltDelta = absAltDelta;
+      if (absPitchDelta > maxAbsPitchDelta) maxAbsPitchDelta = absPitchDelta;
     }
 
     // Coarse-grained sampling for the diagnostic log only — every ~1s, mirrors
@@ -111,7 +131,7 @@ for (const probe of [
 
     // eslint-disable-next-line no-console
     console.log(
-      `[probe throttle=${probe.throttle}] ticks=${log.length} maxAbsAlt=${maxAbsAlt.toFixed(1)}m maxAS=${maxAS.toFixed(1)}m/s maxAbsPitch=${maxAbsPitch.toFixed(1)}°`,
+      `[probe throttle=${probe.throttle}] ticks=${log.length} maxAbsAlt=${maxAbsAlt.toFixed(1)}m maxAS=${maxAS.toFixed(1)}m/s maxAbsPitch=${maxAbsPitch.toFixed(1)}° | spawnAlt=${spawnAlt.toFixed(1)}m initialPitch=${initialPitch.toFixed(1)}° maxAbsAltDelta=${maxAbsAltDelta.toFixed(1)}m maxAbsPitchDelta=${maxAbsPitchDelta.toFixed(1)}°`,
     );
     // eslint-disable-next-line no-console
     console.log(`  alt samples: ${altSamples.map((v) => v.toFixed(0)).join(',')}`);
@@ -128,5 +148,15 @@ for (const probe of [
       maxAbsPitch,
       `|pitch| exceeded ${MAX_ABS_PITCH_DEG}° at some tick (gimbal flip?)`,
     ).toBeLessThanOrEqual(MAX_ABS_PITCH_DEG);
+
+    // WP17 Phase 2 — tighter spawn-relative phugoid envelope gates.
+    expect(
+      maxAbsAltDelta,
+      `|alt − spawn| exceeded ${probe.maxAltDeltaM}m envelope (spawn=${spawnAlt.toFixed(1)}m)`,
+    ).toBeLessThan(probe.maxAltDeltaM);
+    expect(
+      maxAbsPitchDelta,
+      `|pitch − initial| exceeded ${probe.maxPitchDeltaDeg}° envelope (initial=${initialPitch.toFixed(1)}°)`,
+    ).toBeLessThan(probe.maxPitchDeltaDeg);
   });
 }
