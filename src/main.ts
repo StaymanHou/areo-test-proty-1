@@ -37,9 +37,22 @@ import {
   RETURN_FIRE_POOL_SIZE,
 } from './mission/hooks/combat-ai';
 import { DomHud } from './hud/dom-hud';
+import { KeyHintsOverlay } from './hud/key-hints';
 import { formatActiveObjective, getActiveWaypointPosition } from './hud/format';
 import { parseScriptSpec, configNameToPath } from './engine/scripted-input';
 import { ScriptedInputRunner } from './engine/scripted-input-runner';
+
+// WP18 — splash overlay helpers. The splash element is inlined in index.html
+// so it paints on first frame, BEFORE the JS bundle parses. These helpers let
+// main.ts update its stage label and detach it once mission-select renders.
+function setSplashStage(text: string): void {
+  const el = document.getElementById('splash-stage');
+  if (el !== null) el.textContent = text;
+}
+function removeSplash(): void {
+  const el = document.getElementById('splash');
+  if (el !== null) el.remove();
+}
 
 async function bootstrap() {
   const mount = document.querySelector<HTMLDivElement>('#app');
@@ -82,6 +95,7 @@ async function bootstrap() {
   }
   const aircraftConfigPath = configNameToPath(resolvedConfigName);
 
+  setSplashStage('Loading physics…');
   const rapierReady = RAPIER.init();
   const configReady = loadAircraftConfig(aircraftConfigPath);
 
@@ -96,6 +110,7 @@ async function bootstrap() {
 
   await rapierReady;
   const config = await configReady;
+  setSplashStage('Loading scene…');
 
   const world = new RAPIER.World({ x: 0, y: -9.81, z: 0 });
 
@@ -189,6 +204,10 @@ async function bootstrap() {
   // WP12 HUD wiring (D12 DOM-overlay).
   const hud = new DomHud(camera, renderer.domElement);
 
+  // WP18 Phase 2 — Key-hints overlay. Shown for ~20s after each mission start
+  // then auto-fades; re-shown on every fresh mission entry.
+  const keyHints = new KeyHintsOverlay();
+
   // WP14.6 trajectory buffer — allocated only under ?debug=true. Records one
   // row per fixed physics tick from `onPhysics` for the parity-test hook
   // `window.__aircraft.getTrajectory()`. Null in production (no allocation
@@ -231,6 +250,12 @@ async function bootstrap() {
         if (missionRunner.getStatus() === 'running') {
           toAircraftState(aircraft.readBodyState(), aircraftStateBuf);
           missionRunner.tick(aircraftStateBuf, dt);
+          // WP18 Phase 2 — key-hints fade timer. Ticked at the fixed-timestep
+          // physics rate so the 20s fade is wall-clock-stable AND deterministic
+          // under the `?script=` harness (which can advance physics faster than
+          // wall-clock for e2e probes). Only ticks while mission is running —
+          // a paused mission does NOT burn the hint window.
+          keyHints.update(dt);
         }
       },
       onRender: () => {
@@ -608,6 +633,13 @@ async function bootstrap() {
     hud.setObjective(
       formatActiveObjective(mission.objectives, missionRunner.getObjectiveStates()),
     );
+    // WP18 Phase 2 — show the key-hints overlay for the first ~20s of every
+    // mission run. Fresh `show()` resets the timer + opacity so a replay of
+    // the same mission shows hints again.
+    keyHints.show(mission.type);
+    // WP18 — drop the splash on the auto-start (?mission=) path. No-op if
+    // mission-select already removed it (the menu path).
+    removeSplash();
     loop.setPaused(false);
   }
 
@@ -632,6 +664,7 @@ async function bootstrap() {
       // Silent return — no banner, no delay.
       activeMission = null;
       hud.hide();
+      keyHints.hide();
       targetMesh.visible = false;
       missionSelect.show(missionManifest);
       return;
@@ -642,6 +675,7 @@ async function bootstrap() {
     void missionSelect.showOutcome(status, missionName).then(() => {
       activeMission = null;
       hud.hide();
+      keyHints.hide();
       targetMesh.visible = false;
       missionSelect.show(missionManifest);
     });
@@ -669,7 +703,10 @@ async function bootstrap() {
   if (requestedMissionId !== null) {
     await startMission(requestedMissionId, preloadedMission);
   } else {
+    setSplashStage('Ready');
     missionSelect.show(missionManifest);
+    // WP18 — mission-select is now the visible "start" surface; drop the splash.
+    removeSplash();
   }
 }
 

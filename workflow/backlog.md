@@ -10,6 +10,15 @@ Paused. See `workflow/.session.md` to resume. 4 SURFACEs closed this session (-1
 
 ## Open
 
+### SURFACE-2026-06-07-02 — key-hints overlay occluded by lil-gui debug panel in ?debug=true mode
+- **Source:** feature:verify-self (WP18 Phase 2, 2026-06-07)
+- **Target level:** task workflow (low; cosmetic)
+- **Type:** ui-collision / dev-only
+- **Priority:** low
+- **Summary:** The WP18 key-hints overlay anchors top-right (`top: 5rem; right: 1rem`); the lil-gui debug panel anchors right-edge full-height when `?debug=true` is set. End users in the production build do not see lil-gui and the hints display correctly, but agents/devs verifying under `?debug=true` see the hints text fully occluded. DOM-state and Vitest+e2e gates all confirm the overlay is correctly mounted with full opacity, correct content, and `pointer-events: none`. The collision is a screen-real-estate question, not a hint-overlay bug.
+- **Suggested action:** Two options at WP20 visual polish: (a) move hints to a different anchor (e.g. bottom-left or center-bottom) — would also benefit production users by keeping them out of the airspeed/altitude HUD reading zone; (b) move lil-gui to a collapsible / left-anchored container. Option (a) is cheaper and visually nicer for all users.
+- **Status:** pending
+
 ### SURFACE-2026-06-07-01 — Combat-target "ground target" spec interpretation: y=0 + halfExtents.y=8 vs. y=2 + halfExtents.y=2
 - **Source:** feature:build (WP16 Phase 5 P5.2, 2026-06-07)
 - **Target level:** product:wbs (Phase 3 polish — gameplay re-validation)
