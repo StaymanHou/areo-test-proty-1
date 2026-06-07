@@ -1,8 +1,8 @@
 ---
 stage: wbs
 state: in-progress
-updated: 2026-06-07 — **WP18 DONE (ship commit `63e07fa`).** Phase 3 onboarding milestone CHECKED. Three-phase impl: (1) inline splash overlay (index.html + main.ts setSplashStage/removeSplash helpers); (2) `KeyHintsOverlay` per-mission overlay with 20s fade tied to fixed-physics-tick timer (combat adds Fire/Space); (3) `tests/e2e/time-to-airborne.spec.ts` gate ≤30s budget (measured 1.1s, 27× safety margin). Final gates: Vitest 708/708 + Playwright e2e 42/42 + tsc + build clean. 1 cosmetic SURFACE filed (-07-02 lil-gui occlusion in `?debug=true` only; WP20 candidate). **Phase 3 critical path:** `... → WP17(DONE) → WP18(DONE) → WP19 + WP20 → WP21 → WP22 → WP23 → ship`. WP19 (audio, S) + WP20 (visual polish, L) remain for Phase 3 exit; both unblocked.
-previous_updated: 2026-06-07 — **WP17 DONE (ship commit `88054eb`).** Phase 2 exit gate closed. Test-only WP: `tests/e2e/phase2-integration.spec.ts` (8 new tests — 4 mission-select→play→terminal→return for each of the four missions + 4 FPS sanity probes at ≥30 FPS) + tightened `phugoid-probe.spec.ts` envelopes. Final gates: Vitest 700/700 + Playwright e2e 35/35 + tsc + build clean. All Phase 2 WPs `[x]`; Phase 3 unblocks.
+updated: 2026-06-07 — **WP19 DONE (ship commit `7467f10`).** Phase 3 audio milestone CHECKED. Two-phase impl: (1) AudioEngine + engine-loop (sawtooth, throttle→90-340 Hz, 50ms ramp) + wind (filtered procedural pink-noise, airspeed→cutoff+gain, silent below AS=10); (2) one-shot SFX synthesizers (fire/impact/crash) + Safari autoplay resume on first user gesture + 16-slot ring buffer for verify-self introspection. New `MissionRunner.getFailReason()` accessor for the crash-trigger condition. Final gates: Vitest 741/741 + Playwright e2e 47/47 + tsc + build clean. 1 coverage-gap SURFACEd (-07-03, Phase 3 bundle): live crash-trigger verify-self deferred to WP21/WP23 — aerodynamic damping at V_trim spawn keeps |vY| below 2 m/s threshold on scripted dives; wiring is statically obvious and unit-tested at all three layers. **Phase 3 critical path:** `... → WP18(DONE) → WP19(DONE) → WP20 → WP21 → WP22 → WP23 → ship`. WP20 (visual polish, L) is the last Phase 3 content WP; WP21 cross-browser depends on it.
+previous_updated: 2026-06-07 — **WP18 DONE (ship commit `63e07fa`).** Phase 3 onboarding milestone CHECKED. Three-phase impl: (1) inline splash overlay (index.html + main.ts setSplashStage/removeSplash helpers); (2) `KeyHintsOverlay` per-mission overlay with 20s fade tied to fixed-physics-tick timer (combat adds Fire/Space); (3) `tests/e2e/time-to-airborne.spec.ts` gate ≤30s budget (measured 1.1s, 27× safety margin). Final gates: Vitest 708/708 + Playwright e2e 42/42 + tsc + build clean. 1 cosmetic SURFACE filed (-07-02 lil-gui occlusion in `?debug=true` only; WP20 candidate). Test-only WP: `tests/e2e/phase2-integration.spec.ts` (8 new tests — 4 mission-select→play→terminal→return for each of the four missions + 4 FPS sanity probes at ≥30 FPS) + tightened `phugoid-probe.spec.ts` envelopes. Final gates: Vitest 700/700 + Playwright e2e 35/35 + tsc + build clean. All Phase 2 WPs `[x]`; Phase 3 unblocks.
 ---
 
 # Work Breakdown Structure
@@ -85,17 +85,17 @@ The archive also contains the Phase 2-era Dependency map, Architectural-gaps sec
 - [x] Preload Rapier WASM in parallel with splash — splash inlined in `index.html` paints on first frame (before JS bundle parses); main.ts updates stage labels at each await ("Loading physics…" → "Loading scene…" → "Ready"). Existing `Promise.all` parallelism between `RAPIER.init()` and `loadAircraftConfig()` preserved.
 - [x] Timed test: stopwatch from URL-open to airborne — `tests/e2e/time-to-airborne.spec.ts` codifies the vision-stated "30s to flying" claim. Measured 1.1s on dev cold-load (27× under budget).
 
-### WP19: Audio
+### WP19: Audio — DONE (ship commit `7467f10`, 2026-06-07)
 **Description:** Engine, wind, weapon, crash sounds. Web Audio API. Guard for Safari latency (R4).
 **Phase:** 3
 **Dependencies:** WP17
 **Size:** S
 **Tasks:**
-- [ ] Engine loop scaled by throttle
-- [ ] Wind tied to airspeed
-- [ ] Weapon fire + impact SFX (if combat)
-- [ ] Crash SFX
-- [ ] Safari audio check
+- [x] Engine loop scaled by throttle — sawtooth oscillator, 90→340 Hz mapped from throttle 0→1, 50ms linear-ramp smoothing (`src/audio/engine-loop.ts`)
+- [x] Wind tied to airspeed — looped procedural pink-noise BufferSource → BiquadFilter lowpass (200→2000 Hz) + GainNode (0→0.15); fully silent below AS=10 m/s (`src/audio/wind.ts`)
+- [x] Weapon fire + impact SFX — synthesized saw-burst (fire, 200ms) + filtered-noise burst (impact, 150ms); wired via new `onFire`/`onImpact` callbacks on `registerCombatAi` (`src/audio/sfx.ts`)
+- [x] Crash SFX — low-saw + filtered-noise envelope (800ms); fired from main.ts statusChange handler when `getFailReason() === 'crash'`. Added `MissionRunner.getFailReason()` accessor.
+- [x] Safari audio check — AudioContext lazily created in `start()` and resumed on first user gesture (mission-select click + deep-link entry path); try/catch with console.warn for rare reject case
 
 ### WP20: Visual polish pass
 **Description:** Replace placeholders. Nicer skybox, textured terrain (optional terrain upgrade to heightmap — swap via `terrain.ts` interface), better aircraft GLTF, basic particle effects (contrails, explosions, gunfire).
@@ -136,9 +136,6 @@ The archive also contains the Phase 2-era Dependency map, Architectural-gaps sec
 
 ## Critical path
 
-`... → WP17(DONE) → WP18(DONE) → WP19 + WP20 → WP21 → WP22 → WP23 → ship`.
-
-## Session Pause — 2026-06-07 14:00
-Paused. See `workflow/.session.md` to resume. WP18 shipped (`63e07fa`) + finalized (`863a104`); Phase 3 milestone "30s to flying" CHECKED. Operator-queued next entry: pick WP19 (audio, S — recommended) or WP20 (visual polish, L) at resume. Drive mode: full-autopilot.
+`... → WP17(DONE) → WP18(DONE) → WP19(DONE) → WP20 → WP21 → WP22 → WP23 → ship`.
 
 Phase 1 and the D14→D27 physics cascade dependency map are preserved in the archived WBS.

@@ -1,7 +1,9 @@
 ---
 workflow: feature
-state: plan (complete)
+state: ship (complete)
 created: 2026-06-07
+shipped: 2026-06-07
+ship_commit: 7467f10
 wbs_ref: WP19
 size: S
 drive_mode: full-autopilot
@@ -62,8 +64,8 @@ v1 ships in silence. The vision is "casual gamer, 30 seconds to flying" — and 
   - [x] verify-codify  <!-- 2026-06-07: Added impact-trigger e2e to tests/e2e/audio.spec.ts (combat + 4s Space-fire, polls ring buffer for impact entry; tolerant of mission-ends-early on target destruction). Full Vitest 741/741 GREEN; full Playwright e2e 47/47 GREEN. One test-triage entry recorded above (script-complete vs mission-won wait-strategy fix). Crash trigger codification deferred per SURFACE-2026-06-07-03 to Phase 3. -->
 
 ## Current Node
-- **Path:** Feature > [all phases complete, ready to ship]
-- **Active scope:** Phase 1 + Phase 2 CLOSED. All 9 impl + 8 verify leaves done. Ready for `/feature-ship`.
+- **Path:** Feature > shipped > finalize
+- **Active scope:** Shipped at commit `7467f10`. Running finalize.
 - **Blocked:** none
 - **Unvisited (sequence-of-execution):** (none)
 
@@ -122,6 +124,19 @@ v1 ships in silence. The vision is "casual gamer, 30 seconds to flying" — and 
 - **Confidence:** high
 - **Evidence:** Test waits on `isScriptComplete() === true` (timeout 30s). The scripted Space@1.0:5.0 fires ~20 shots over 4s; target has only TARGET_HP=3 hits to destroy. Once destroyed, `mission.status` transitions to `'won'`, the loop pauses, the scripted-input runner stops advancing, and `isScriptComplete()` never flips true. CLAUDE.md harness docs: "log buffer freezes the first tick `isScriptComplete()` returns true" — but that requires the script to actually reach its end, which it can't when the mission ends inside the window.
 - **Action:** Replace the wait-strategy with a poll on the ring-buffer's impact count (the actual outcome under test). Same test intent (impact trigger fires after projectile hits) but tolerant of the loop pausing on win. Single-knob change to the same test; impl untouched.
+
+## Retrospect
+
+- **What changed in our understanding:** The crash-trigger live-verification problem (SURFACE-2026-06-07-03) was a small but instructive surprise — the airframe's D14→D27 aerodynamic damping is "good enough" to prevent the runner's 2 m/s |vY| crash threshold from being satisfied via in-game player input alone. Past WBS history (SURFACE-2026-06-06-09 takeoff-from-rest impossible due to ground-glue) hinted at this; WP19 confirms the corollary on the descent path. CLAUDE.md Rule #9 + the tuned damping make crash-on-impact a rare event at V_trim spawn.
+- **Assumptions that held:** Synthesized audio (no external assets) was the right v1 choice — kept bundle size flat (the pre-existing 500 kB SURFACE-2026-04-19-01 dominates anyway), avoided asset-licensing, and let unit tests run deterministically via a small FakeAudioContext mock. The two-phase split (continuous loops in Phase 1; one-shot triggers in Phase 2) matched the actual implementation work: Phase 1 was straightforward; Phase 2 surfaced the wait-strategy bug + crash-physics-reachability gap that benefitted from being a distinct verify cycle.
+- **Assumptions that were wrong:** P2.5 said "add `getFailReason()` IF the runner doesn't already expose one — skip if it does." It didn't, so the addition was net-new (not a no-op). Plan would have been clearer to declare unconditional. (Minor — caught at impl time, no back-loop.) Also assumed scripted `Space@1.0:1.05` (50ms) would land exactly one fire — actually fires 1+ shots since FIRE_COOLDOWN=0.2s means the first shot is instant-on-input. Plan-test was a too-tight window; the codify e2e test extended to `@1.0:1.2` and validates ≥1 fire.
+- **Approach delta:** Two test-triage fixes during codify (warning-filter widening for headless WebGL noise; e2e wait-strategy shift from `isScriptComplete` to ring-buffer-polling for mission-ends-early scenarios) — both single-knob test corrections, neither implicated implementation. Crash-trigger codify was DEFERRED (not implemented) per SURFACE-2026-06-07-03; this matched the operator-as-external pattern (`feedback_operator_as_external.md`) — the wiring is provably correct via static read + 3-layer unit tests + an analogous impact-trigger live test, and Phase 3 playtest will surface a real crash for casual re-validation.
+
+## Communicate
+
+**Feature complete:** WP19 — Audio has shipped at commit `7467f10`. The simulator now plays a throttle-responsive engine loop, airspeed-driven wind, and one-shot SFX for weapon fire / impact / crash — synthesized via Web Audio (no external assets). Resumes on first user gesture for Safari/iOS autoplay. To verify, open `localhost:5173`, click any mission card, throttle up + listen for the engine rising in pitch; combat mission rewards Space with fire bursts and impacts on the target.
+
+**Requester = operator — closure notice for self-record.**
 
 ## Design notes
 
