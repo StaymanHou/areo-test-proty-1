@@ -1,8 +1,8 @@
 ---
 stage: wbs
 state: in-progress
-updated: 2026-06-07 — **WP17 DONE (ship commit `88054eb`).** Phase 2 exit gate closed. Test-only WP: `tests/e2e/phase2-integration.spec.ts` (8 new tests — 4 mission-select→play→terminal→return for each of the four missions + 4 FPS sanity probes at ≥30 FPS) + tightened `phugoid-probe.spec.ts` envelopes (per-probe spawn-relative `maxAbsAltDelta` / `maxAbsPitchDelta` gates at ≥1.5× baseline maxima). Final gates: Vitest 700/700 + Playwright e2e 35/35 + tsc + build clean. **Phase 2 critical path complete:** `... → WP16(DONE) → WP17(DONE) → Phase 2 exit ✓ → WP18 + WP19 + WP20 → WP21 → WP22 → WP23 → ship`. All Phase 2 WPs `[x]`; Phase 3 unblocks.
-previous_updated: 2026-06-07 — WP16 combat mission DONE (ship commit `5825f09`). Closes Phase 2's last gameplay WP. Combat-ai hook ships per D11 (single hook, no FSM); MissionRunner extended with hook-driven fail flag for player-HP=0 loss path; DomHud extended with `setCombatHP(player, target)` for combat HP rows; mig15 airframe via per-mission `config:` plumbing (SURFACE-2026-06-06-06). **Phase 2 critical path:** `... → WP16(DONE) → WP17(NEXT, Phase 2 verification + level-cruise probe) → Phase 2 exit → Phase 3 ship work`.
+updated: 2026-06-07 — **WP18 DONE (ship commit `63e07fa`).** Phase 3 onboarding milestone CHECKED. Three-phase impl: (1) inline splash overlay (index.html + main.ts setSplashStage/removeSplash helpers); (2) `KeyHintsOverlay` per-mission overlay with 20s fade tied to fixed-physics-tick timer (combat adds Fire/Space); (3) `tests/e2e/time-to-airborne.spec.ts` gate ≤30s budget (measured 1.1s, 27× safety margin). Final gates: Vitest 708/708 + Playwright e2e 42/42 + tsc + build clean. 1 cosmetic SURFACE filed (-07-02 lil-gui occlusion in `?debug=true` only; WP20 candidate). **Phase 3 critical path:** `... → WP17(DONE) → WP18(DONE) → WP19 + WP20 → WP21 → WP22 → WP23 → ship`. WP19 (audio, S) + WP20 (visual polish, L) remain for Phase 3 exit; both unblocked.
+previous_updated: 2026-06-07 — **WP17 DONE (ship commit `88054eb`).** Phase 2 exit gate closed. Test-only WP: `tests/e2e/phase2-integration.spec.ts` (8 new tests — 4 mission-select→play→terminal→return for each of the four missions + 4 FPS sanity probes at ≥30 FPS) + tightened `phugoid-probe.spec.ts` envelopes. Final gates: Vitest 700/700 + Playwright e2e 35/35 + tsc + build clean. All Phase 2 WPs `[x]`; Phase 3 unblocks.
 ---
 
 # Work Breakdown Structure
@@ -74,16 +74,16 @@ The archive also contains the Phase 2-era Dependency map, Architectural-gaps sec
 
 ## Phase 3 — v1 Ship
 
-### WP18: Onboarding pass
+### WP18: Onboarding pass — DONE (ship commit `63e07fa`, 2026-06-07)
 **Description:** New player is flying within 30s. No tutorial — in-world prompts only. First-load UX.
 **Phase:** 3
 **Dependencies:** WP17
 **Size:** M
 **Tasks:**
-- [ ] Boot directly into a "just fly" state or a 1-screen mission select (test both)
-- [ ] On-screen key hints fade in during first minute
-- [ ] Preload Rapier WASM in parallel with splash (mitigates R1)
-- [ ] Timed test: stopwatch from URL-open to airborne
+- [x] Boot directly into a 1-screen mission select — picked this over "just-fly" because it surfaces the four mission types from the vision (mission-variety-over-depth principle). Mission-select unchanged from WP11; finalized as the boot-target.
+- [x] On-screen key hints fade in during first minute — `src/hud/key-hints.ts` `KeyHintsOverlay` shows for 20s per mission start (opaque 10s, linear fade 10→20s, detach at 21s). Combat adds Fire/Space. Re-shown on every fresh mission entry.
+- [x] Preload Rapier WASM in parallel with splash — splash inlined in `index.html` paints on first frame (before JS bundle parses); main.ts updates stage labels at each await ("Loading physics…" → "Loading scene…" → "Ready"). Existing `Promise.all` parallelism between `RAPIER.init()` and `loadAircraftConfig()` preserved.
+- [x] Timed test: stopwatch from URL-open to airborne — `tests/e2e/time-to-airborne.spec.ts` codifies the vision-stated "30s to flying" claim. Measured 1.1s on dev cold-load (27× under budget).
 
 ### WP19: Audio
 **Description:** Engine, wind, weapon, crash sounds. Web Audio API. Guard for Safari latency (R4).
@@ -136,6 +136,6 @@ The archive also contains the Phase 2-era Dependency map, Architectural-gaps sec
 
 ## Critical path
 
-`... → WP16(DONE) → WP17(DONE) → Phase 2 exit ✓ → WP18 + WP19 + WP20 → WP21 → WP22 → WP23 → ship`.
+`... → WP17(DONE) → WP18(DONE) → WP19 + WP20 → WP21 → WP22 → WP23 → ship`.
 
 Phase 1 and the D14→D27 physics cascade dependency map are preserved in the archived WBS.
