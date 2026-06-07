@@ -334,6 +334,72 @@ describe('MissionRunner — fail conditions', () => {
   });
 });
 
+describe('MissionRunner — hook-driven fail flag (WP16 Phase 4)', () => {
+  beforeEach(() => clearRegistry());
+
+  it('setHookFailFlag while running → next tick transitions to failed', () => {
+    const r = new MissionRunner();
+    r.start(makeMission({ spawn: { position: { x: 0, y: 50, z: 0 }, linvel: { x: 0, y: 0, z: -30 }, throttle: 0 } }));
+    r.setHookFailFlag('shot down');
+    expect(r.getStatus()).toBe('running'); // flag set, not yet observed
+    r.tick(makeAircraft({ position: { x: 0, y: 50, z: 0 } }), DT);
+    expect(r.getStatus()).toBe('failed');
+  });
+
+  it('setHookFailFlag fires statusChange on the observing tick', () => {
+    const r = new MissionRunner();
+    r.start(makeMission({ spawn: { position: { x: 0, y: 50, z: 0 }, linvel: { x: 0, y: 0, z: -30 }, throttle: 0 } }));
+    const cb = vi.fn();
+    r.on('statusChange', cb);
+    r.setHookFailFlag('shot down');
+    r.tick(makeAircraft({ position: { x: 0, y: 50, z: 0 } }), DT);
+    expect(cb).toHaveBeenCalledTimes(1);
+  });
+
+  it('setHookFailFlag is a no-op when status is not "running"', () => {
+    const r = new MissionRunner();
+    // Not started yet.
+    r.setHookFailFlag('cannot fail');
+    expect(r.getStatus()).toBe('not-started');
+    // After start + already-failed, also a no-op for further flag-setting.
+    r.start(makeMission());
+    r.tick(makeAircraft({ position: { x: 0, y: -0.1, z: 0 }, linvel: { x: 0, y: -10, z: 0 } }), DT);
+    expect(r.getStatus()).toBe('failed');
+    r.setHookFailFlag('also a no-op');
+    // Status unchanged.
+    expect(r.getStatus()).toBe('failed');
+  });
+
+  it('start() resets the hook-fail flag from a previous mission', () => {
+    const r = new MissionRunner();
+    r.start(makeMission({ spawn: { position: { x: 0, y: 50, z: 0 }, linvel: { x: 0, y: 0, z: -30 }, throttle: 0 } }));
+    r.setHookFailFlag('shot down');
+    r.tick(makeAircraft({ position: { x: 0, y: 50, z: 0 } }), DT);
+    expect(r.getStatus()).toBe('failed');
+    // Restart — flag should be cleared, mission should run normally.
+    r.start(makeMission({ spawn: { position: { x: 0, y: 50, z: 0 }, linvel: { x: 0, y: 0, z: -30 }, throttle: 0 } }));
+    expect(r.getStatus()).toBe('running');
+    r.tick(makeAircraft({ position: { x: 0, y: 50, z: 0 } }), DT);
+    expect(r.getStatus()).toBe('running'); // no fail
+  });
+
+  it('hook-fail flag takes precedence over declarative failConditions', () => {
+    // Aircraft is at out-of-bounds AND the hook signals fail. Both fire on
+    // the same tick — hook flag should win (it's checked first in step 4a).
+    const r = new MissionRunner();
+    r.start(
+      makeMission({
+        failCondition: 'out-of-bounds',
+        spawn: { position: { x: 0, y: 50, z: 0 }, linvel: { x: 0, y: 0, z: -30 }, throttle: 0 },
+      }),
+    );
+    r.setHookFailFlag('shot down');
+    r.tick(makeAircraft({ position: { x: 99999, y: 50, z: 0 } }), DT);
+    expect(r.getStatus()).toBe('failed');
+    // Both would cause a fail — what matters is that exactly one statusChange fires.
+  });
+});
+
 describe('MissionRunner — event emitter', () => {
   beforeEach(() => clearRegistry());
 

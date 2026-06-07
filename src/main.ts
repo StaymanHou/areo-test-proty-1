@@ -1,5 +1,14 @@
 import RAPIER from '@dimforge/rapier3d-compat';
-import { DirectionalLight, Euler, Vector3 } from 'three';
+import {
+  BoxGeometry,
+  DirectionalLight,
+  Euler,
+  Mesh,
+  MeshBasicMaterial,
+  MeshLambertMaterial,
+  SphereGeometry,
+  Vector3,
+} from 'three';
 import { createRenderContext } from './world/scene';
 import { initDebug } from './engine/debug';
 import { GameLoop } from './engine/loop';
@@ -20,6 +29,13 @@ import { loadMission, loadMissionList } from './mission/loader';
 import { MissionRunner } from './mission/runner';
 import { MissionSelectScreen } from './mission/select';
 import type { Mission, MissionManifestEntry } from './mission/types';
+import {
+  registerCombatAi,
+  resetCombatState,
+  getCombatState,
+  POOL_SIZE as PROJECTILE_POOL_SIZE,
+  RETURN_FIRE_POOL_SIZE,
+} from './mission/hooks/combat-ai';
 import { DomHud } from './hud/dom-hud';
 import { formatActiveObjective, getActiveWaypointPosition } from './hud/format';
 import { parseScriptSpec, configNameToPath } from './engine/scripted-input';
@@ -111,6 +127,61 @@ async function bootstrap() {
   // WP11 mission framework wiring.
   const missionSelect = new MissionSelectScreen();
   const missionRunner = new MissionRunner();
+
+  // WP16 — register the combat-ai script hook so `combat.json` (which sets
+  // `scriptHook: 'combat-ai'`) resolves successfully at MissionRunner.start.
+  // Must run before any combat mission is started; boot-once is correct.
+  // The input provider closes over `input` so the hook can sample Space each
+  // physics tick without coupling combat-ai.ts to InputManager directly.
+  // Phase 4: failSignal binds to MissionRunner so the hook can terminate the
+  // mission as a loss when player HP reaches 0 (closes over missionRunner —
+  // it's hoisted via const above, no TDZ issue at registration time).
+  registerCombatAi(
+    () => input.isDown('Space'),
+    (reason) => missionRunner.setHookFailFlag(reason),
+  );
+
+  // WP16 Phase 2 — projectile mesh pool. Pre-allocated once at boot; per-frame
+  // `onRender` syncs visibility + position from the plain-data combatState pool.
+  // Yellow 0.5m sphere matches a tracer-class visual at v1 polish level
+  // (WP20 replaces with proper muzzle-flash + tracer particles).
+  const projectileGeo = new SphereGeometry(0.5, 8, 8);
+  const projectileMat = new MeshBasicMaterial({ color: 0xffff00 });
+  const projectileMeshes: Mesh[] = [];
+  for (let i = 0; i < PROJECTILE_POOL_SIZE; i++) {
+    const m = new Mesh(projectileGeo, projectileMat);
+    m.visible = false;
+    scene.add(m);
+    projectileMeshes.push(m);
+  }
+
+  // WP16 Phase 3 — ground target mesh. Pre-allocated once at boot; added to /
+  // removed from the scene on combat-mission start / end. Geometry matches the
+  // 8×4×8 m AABB used by checkProjectileHits. Hazard-orange while alive;
+  // switches to dark-grey + 90° Z tilt on destruction (visual feedback for the
+  // win path). WP20 polish target.
+  const TARGET_ALIVE_COLOR = 0xff6a00;
+  const TARGET_DEAD_COLOR = 0x222222;
+  // Box size matches TARGET_DEFAULT_HALF_EXTENTS × 2 (full extents).
+  const targetGeo = new BoxGeometry(20, 16, 20);
+  const targetMat = new MeshLambertMaterial({ color: TARGET_ALIVE_COLOR });
+  const targetMesh = new Mesh(targetGeo, targetMat);
+  targetMesh.visible = false;
+  scene.add(targetMesh);
+
+  // WP16 Phase 4 — return-fire projectile mesh pool (dark-red spheres,
+  // visually distinguishable from the player's yellow projectiles). Same
+  // sync pattern as projectileMeshes: pre-allocated once, per-frame visibility
+  // + position sync from the plain-data return-fire pool.
+  const returnFireGeo = new SphereGeometry(0.5, 8, 8);
+  const returnFireMat = new MeshBasicMaterial({ color: 0x882020 });
+  const returnFireMeshes: Mesh[] = [];
+  for (let i = 0; i < RETURN_FIRE_POOL_SIZE; i++) {
+    const m = new Mesh(returnFireGeo, returnFireMat);
+    m.visible = false;
+    scene.add(m);
+    returnFireMeshes.push(m);
+  }
   const aircraftStateBuf = createAircraftState();
   let activeMission: Mission | null = null;
   let missionManifest: MissionManifestEntry[] = [];
@@ -175,6 +246,51 @@ async function bootstrap() {
 
         cameraController.update(aircraft.mesh.position, aircraft.mesh.quaternion, 1 / 60);
 
+        // WP16 Phase 2 — projectile mesh sync. The pool is shared (allocated
+        // once at boot); `visible` flips off when the slot is inactive so
+        // non-combat missions cost zero render work. Hot path — read-only of
+        // the plain-data projectile array, no allocations.
+        {
+          const cs = getCombatState();
+          for (let i = 0; i < cs.projectiles.length; i++) {
+            const p = cs.projectiles[i]!;
+            const m = projectileMeshes[i]!;
+            m.visible = p.active;
+            if (p.active) {
+              m.position.set(p.position.x, p.position.y, p.position.z);
+            }
+          }
+          // WP16 Phase 3 — target mesh sync. Visibility/lifecycle is driven by
+          // activeMission.type below in startMission/status-change handlers;
+          // here we only sync the destruction visual (color + tilt) and the
+          // world position. The target's position is static per mission, but
+          // re-syncing it each frame avoids a separate startMission write.
+          if (targetMesh.visible) {
+            const t = cs.target;
+            targetMesh.position.set(t.position.x, t.position.y, t.position.z);
+            if (t.destroyed) {
+              (targetMesh.material as MeshLambertMaterial).color.setHex(
+                TARGET_DEAD_COLOR,
+              );
+              targetMesh.rotation.z = Math.PI / 2;
+            } else {
+              (targetMesh.material as MeshLambertMaterial).color.setHex(
+                TARGET_ALIVE_COLOR,
+              );
+              targetMesh.rotation.z = 0;
+            }
+          }
+          // WP16 Phase 4 — return-fire mesh sync. Same pattern as projectiles.
+          for (let i = 0; i < cs.returnFire.pool.length; i++) {
+            const p = cs.returnFire.pool[i]!;
+            const m = returnFireMeshes[i]!;
+            m.visible = p.active;
+            if (p.active) {
+              m.position.set(p.position.x, p.position.y, p.position.z);
+            }
+          }
+        }
+
         // WP12 HUD per-frame update. Hot path — `hud` no-ops when not shown.
         if (missionRunner.getStatus() === 'running') {
           toAircraftState(aircraft.readBodyState(), aircraftStateBuf);
@@ -192,6 +308,14 @@ async function bootstrap() {
                   missionRunner.getObjectiveStates(),
                 ),
           );
+          // WP16 Phase 4 — feed combat HP rows. Combat missions show both;
+          // non-combat missions pass (null,null) which hides the rows.
+          if (activeMission !== null && activeMission.type === 'combat') {
+            const cs = getCombatState();
+            hud.setCombatHP(cs.playerHp, cs.target.destroyed ? 0 : cs.target.hp);
+          } else {
+            hud.setCombatHP(null, null);
+          }
 
           // WP13 — player-initiated return to mission-select via Escape.
           if (input.wasActionPressed('returnToMenu', DEFAULT_KEY_MAP)) {
@@ -374,6 +498,49 @@ async function bootstrap() {
         return trajectoryBuffer.getRows();
       },
     };
+
+    // WP16 Phase 2 — debug accessor for the combat projectile pool. Returns a
+    // deep-copied snapshot so test assertions can hold the array across ticks
+    // without seeing in-flight mutations. Active-only filtering is left to the
+    // caller (cheap — POOL_SIZE=32).
+    (window as unknown as { __combat: unknown }).__combat = {
+      getProjectileSnapshot: () => {
+        const cs = getCombatState();
+        return cs.projectiles.map((p) => ({
+          active: p.active,
+          position: { x: p.position.x, y: p.position.y, z: p.position.z },
+          velocity: { x: p.velocity.x, y: p.velocity.y, z: p.velocity.z },
+          ageSec: p.ageSec,
+        }));
+      },
+      getFireCooldown: () => getCombatState().fireCooldown,
+      // WP16 Phase 3 — target snapshot. Returns a shallow-copied view so test
+      // assertions can hold the object across ticks without seeing in-flight
+      // hp mutations from the same-tick AABB sweep.
+      getTargetSnapshot: () => {
+        const t = getCombatState().target;
+        return {
+          position: { x: t.position.x, y: t.position.y, z: t.position.z },
+          halfExtents: { x: t.halfExtents.x, y: t.halfExtents.y, z: t.halfExtents.z },
+          hp: t.hp,
+          destroyed: t.destroyed,
+        };
+      },
+      // WP16 Phase 4 — return-fire pool snapshot + player HP accessors.
+      // Deep-copy the return-fire pool (same allocation-free convention as
+      // getProjectileSnapshot — caller can hold the snapshot across ticks).
+      getReturnFireSnapshot: () => {
+        const cs = getCombatState();
+        return cs.returnFire.pool.map((p) => ({
+          active: p.active,
+          position: { x: p.position.x, y: p.position.y, z: p.position.z },
+          velocity: { x: p.velocity.x, y: p.velocity.y, z: p.velocity.z },
+          ageSec: p.ageSec,
+        }));
+      },
+      getReturnFireCooldown: () => getCombatState().returnFire.cooldown,
+      getPlayerHp: () => getCombatState().playerHp,
+    };
   }
 
   // WP11 boot flow: load the manifest, then either auto-start a mission named
@@ -410,6 +577,23 @@ async function bootstrap() {
     activeMission = mission;
     aircraft.reset(mission.spawn.position, mission.spawn.linvel);
     flightModel.resetSurfaceState();
+    // WP16 — reset projectile pool + cooldown so the new mission starts clean.
+    // (Combat-only state; resetting it for non-combat missions is a cheap no-op
+    // that also clears any tracers left over from a prior combat mission when
+    // returning to the menu.)
+    resetCombatState();
+    // WP16 Phase 3 — show the target only for combat missions. Reset the
+    // visual state explicitly so a previously-destroyed target re-appearing in
+    // a re-played combat mission shows the alive (orange + upright) visual.
+    if (mission.type === 'combat') {
+      const t = getCombatState().target;
+      targetMesh.position.set(t.position.x, t.position.y, t.position.z);
+      (targetMesh.material as MeshLambertMaterial).color.setHex(TARGET_ALIVE_COLOR);
+      targetMesh.rotation.z = 0;
+      targetMesh.visible = true;
+    } else {
+      targetMesh.visible = false;
+    }
     // Reset live control state (avoids the prior mission's stick deflections
     // carrying over into a fresh start). `resetSticks()` clears both the raw
     // pre-curve buffer and the public fields; throttle is set explicitly.
@@ -448,6 +632,7 @@ async function bootstrap() {
       // Silent return — no banner, no delay.
       activeMission = null;
       hud.hide();
+      targetMesh.visible = false;
       missionSelect.show(missionManifest);
       return;
     }
@@ -457,6 +642,7 @@ async function bootstrap() {
     void missionSelect.showOutcome(status, missionName).then(() => {
       activeMission = null;
       hud.hide();
+      targetMesh.visible = false;
       missionSelect.show(missionManifest);
     });
   });

@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { loadMission, loadMissionList } from './loader';
+import canonicalManifest from '../../public/missions/index.json';
 
 const validMissionRaw = () => ({
   id: 'free-flight',
@@ -123,5 +124,21 @@ describe('loadMissionList', () => {
       { url: /\/missions\/index\.json$/, body: [{ id: 'x', name: '' }] },
     ]);
     await expect(loadMissionList()).rejects.toThrow(/entry\[0\]\.name/);
+  });
+});
+
+// WP16 Phase 1 regression anchor — locks the canonical 4-mission manifest
+// shipped in `public/missions/index.json`. If somebody re-orders, renames, or
+// drops one of the four core missions, this test fails fast. Updates to this
+// list should be deliberate (e.g. WP17 adding probes or a Phase 3 polish WP
+// renaming "Combat").
+describe('public/missions/index.json — canonical manifest', () => {
+  it('lists the four core Phase 2 missions in display order', () => {
+    expect(canonicalManifest).toEqual([
+      { id: 'free-flight', name: 'Free Flight' },
+      { id: 'waypoint-patrol', name: 'Waypoint Patrol' },
+      { id: 'takeoff-landing', name: 'Takeoff & Landing' },
+      { id: 'combat', name: 'Combat' },
+    ]);
   });
 });

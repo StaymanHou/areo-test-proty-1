@@ -54,6 +54,12 @@ export class MissionRunner {
   private _hookState: HookState = {};
   private _elapsed = 0;
   private _aborted = false;
+  /**
+   * WP16 Phase 4 — hook-driven fail flag. Set by a script hook via
+   * `setHookFailFlag(reason)`; observed in the next `tick()`'s fail-evaluation
+   * pass (after the hook returns). Reset to null in `start()`.
+   */
+  private _hookFailFlag: string | null = null;
   private readonly _listeners = new Map<MissionEvent, MissionEventListener[]>();
 
   /**
@@ -70,6 +76,7 @@ export class MissionRunner {
     this._status = 'running';
     this._elapsed = 0;
     this._aborted = false;
+    this._hookFailFlag = null;
     this._hookState = {};
     if (mission.scriptHook !== undefined) {
       const fn = getHook(mission.scriptHook);
@@ -161,6 +168,15 @@ export class MissionRunner {
     }
 
     // 4. Fail evaluation.
+    // 4a. Hook-driven fail flag — checked first so a hook signaling "player
+    // shot down" (WP16 combat) terminates the mission regardless of the
+    // declarative failCondition. Mutually exclusive with crash/timeout/oob.
+    if (this._hookFailFlag !== null) {
+      this._hookFailFlag = null;
+      this._status = 'failed';
+      this._emit('statusChange');
+      return;
+    }
     const failCondition = mission.failCondition ?? 'crash';
     if (failCondition === 'crash') {
       if (
@@ -192,6 +208,19 @@ export class MissionRunner {
 
   getStatus(): MissionStatus {
     return this._status;
+  }
+
+  /**
+   * Hook-driven fail signal — sets a flag observed in the next `tick()`'s
+   * fail-evaluation pass. Used by script hooks (e.g. WP16 combat-ai when
+   * player HP reaches 0). No-op if the runner is not currently running.
+   * The `reason` argument is currently informational only — the runner
+   * does not surface it on the status-change event (Phase 4 keeps the
+   * fail surface minimal).
+   */
+  setHookFailFlag(reason?: string): void {
+    if (this._status !== 'running') return;
+    this._hookFailFlag = reason ?? '';
   }
 
   /**

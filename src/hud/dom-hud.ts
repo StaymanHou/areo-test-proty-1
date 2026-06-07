@@ -65,6 +65,13 @@ const CSS = `
     transform: translate(-50%, -50%);
     pointer-events: none;
   }
+  .${ROOT_CLASS} .hud-hp {
+    margin-top: 0.25rem;
+    font-size: 1rem;
+    font-weight: bold;
+  }
+  .${ROOT_CLASS} .hud-hp.player { color: #6cf; }
+  .${ROOT_CLASS} .hud-hp.target { color: #f96; }
 `;
 
 let _cssInjected = false;
@@ -98,6 +105,8 @@ export class DomHud implements HUD {
   private _objectiveEl: HTMLDivElement;
   private _bannerEl: HTMLDivElement;
   private _arrowEl: HTMLDivElement;
+  private _playerHpEl: HTMLDivElement;
+  private _targetHpEl: HTMLDivElement;
 
   private _shown = false;
 
@@ -148,6 +157,27 @@ export class DomHud implements HUD {
     objective.style.display = 'none';
     root.appendChild(objective);
 
+    // WP16 Phase 4 — Combat HP rows. Rendered under the centered objective
+    // so combat missions get the "Destroy the target / HP 10 / Target HP 5"
+    // stack at top-center. Hidden by default (non-combat missions show no
+    // HP rows via setCombatHP(null, null)).
+    const playerHp = document.createElement('div');
+    playerHp.className = 'hud-tc hud-hp player';
+    playerHp.setAttribute('data-testid', 'hud-player-hp');
+    playerHp.style.display = 'none';
+    // Stack below objective (rough vertical offset; WP20 polishes layout).
+    playerHp.style.top = '3rem';
+    playerHp.textContent = '';
+    root.appendChild(playerHp);
+
+    const targetHp = document.createElement('div');
+    targetHp.className = 'hud-tc hud-hp target';
+    targetHp.setAttribute('data-testid', 'hud-target-hp');
+    targetHp.style.display = 'none';
+    targetHp.style.top = '5rem';
+    targetHp.textContent = '';
+    root.appendChild(targetHp);
+
     const banner = document.createElement('div');
     banner.className = 'hud-banner';
     banner.setAttribute('data-testid', 'hud-status-banner');
@@ -168,6 +198,8 @@ export class DomHud implements HUD {
     this._objectiveEl = objective;
     this._bannerEl = banner;
     this._arrowEl = arrow;
+    this._playerHpEl = playerHp;
+    this._targetHpEl = targetHp;
   }
 
   show(): void {
@@ -215,6 +247,24 @@ export class DomHud implements HUD {
       this._bannerEl.style.display = '';
       this._bannerEl.textContent = text ?? (status === 'won' ? 'MISSION COMPLETE' : 'MISSION FAILED');
       this._bannerEl.className = `hud-banner ${status}`;
+    }
+  }
+
+  setCombatHP(playerHp: number | null, targetHp: number | null): void {
+    if (!this._shown) return;
+    if (playerHp === null) {
+      this._playerHpEl.style.display = 'none';
+      this._playerHpEl.textContent = '';
+    } else {
+      this._playerHpEl.style.display = '';
+      this._playerHpEl.textContent = `HP: ${playerHp}`;
+    }
+    if (targetHp === null) {
+      this._targetHpEl.style.display = 'none';
+      this._targetHpEl.textContent = '';
+    } else {
+      this._targetHpEl.style.display = '';
+      this._targetHpEl.textContent = `Target HP: ${targetHp}`;
     }
   }
 

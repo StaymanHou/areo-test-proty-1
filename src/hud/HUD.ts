@@ -29,6 +29,13 @@ export interface HUD {
    * `'failed'` show it with the optional `text`.
    */
   setStatus(status: HudStatus, text?: string): void;
+  /**
+   * Combat HUD (WP16 Phase 4) — show or hide player + target HP rows. Pass
+   * `null` for either value to hide that row; passing `null, null` hides both
+   * (the non-combat default). Numbers should be integers — caller is expected
+   * to round or clamp before invoking.
+   */
+  setCombatHP(playerHp: number | null, targetHp: number | null): void;
   /** Attach HUD DOM to the page. Idempotent. */
   show(): void;
   /** Detach HUD DOM from the page. Idempotent. */

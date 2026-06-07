@@ -85,6 +85,32 @@ describe('parseMission — happy path', () => {
     expect(m.winCondition).toBe('all-objectives');
   });
 
+  it('parses the WP16 combat mission JSON shape (destroy-target + combat-ai hook)', () => {
+    // Mirrors public/missions/combat.json exactly — regression anchor for the
+    // WP16 Phase 1 schema landing.
+    const raw = {
+      id: 'combat',
+      name: 'Combat',
+      type: 'combat',
+      spawn: {
+        position: { x: 0, y: 50, z: 0 },
+        linvel: { x: 0, y: 0, z: -78 },
+        throttle: 0.5,
+      },
+      objectives: [
+        { kind: 'destroy-target', targetId: 'ground-target-1' },
+      ],
+      scriptHook: 'combat-ai',
+    };
+    const m = parseMission(raw);
+    expect(m.type).toBe('combat');
+    expect(m.scriptHook).toBe('combat-ai');
+    expect(m.objectives).toHaveLength(1);
+    expect(m.objectives[0]!.kind).toBe('destroy-target');
+    expect(m.failCondition).toBe('crash');
+    expect(m.winCondition).toBe('all-objectives');
+  });
+
   it('accepts explicit winCondition + failCondition + timeoutSec + scriptHook', () => {
     const raw = validBaseline();
     raw.type = 'combat';

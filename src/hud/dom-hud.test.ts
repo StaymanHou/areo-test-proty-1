@@ -231,4 +231,56 @@ describe('DomHud', () => {
       expect(arrow.style.display).toBe('none');
     });
   });
+
+  describe('setCombatHP (WP16 Phase 4)', () => {
+    it('renders both HP rows when given (playerHp, targetHp) numbers', () => {
+      hud.show();
+      hud.setCombatHP(10, 5);
+      const playerHp = document.querySelector<HTMLElement>('[data-testid="hud-player-hp"]')!;
+      const targetHp = document.querySelector<HTMLElement>('[data-testid="hud-target-hp"]')!;
+      expect(playerHp.style.display).not.toBe('none');
+      expect(targetHp.style.display).not.toBe('none');
+      expect(playerHp.textContent).toBe('HP: 10');
+      expect(targetHp.textContent).toBe('Target HP: 5');
+    });
+
+    it('hides both rows when called with (null, null)', () => {
+      hud.show();
+      hud.setCombatHP(10, 5);
+      hud.setCombatHP(null, null);
+      const playerHp = document.querySelector<HTMLElement>('[data-testid="hud-player-hp"]')!;
+      const targetHp = document.querySelector<HTMLElement>('[data-testid="hud-target-hp"]')!;
+      expect(playerHp.style.display).toBe('none');
+      expect(targetHp.style.display).toBe('none');
+    });
+
+    it('hides player row only when called with (null, n)', () => {
+      hud.show();
+      hud.setCombatHP(null, 3);
+      const playerHp = document.querySelector<HTMLElement>('[data-testid="hud-player-hp"]')!;
+      const targetHp = document.querySelector<HTMLElement>('[data-testid="hud-target-hp"]')!;
+      expect(playerHp.style.display).toBe('none');
+      expect(targetHp.style.display).not.toBe('none');
+      expect(targetHp.textContent).toBe('Target HP: 3');
+    });
+
+    it('updates values on subsequent calls (numbers change)', () => {
+      hud.show();
+      hud.setCombatHP(10, 5);
+      hud.setCombatHP(8, 3);
+      const playerHp = document.querySelector<HTMLElement>('[data-testid="hud-player-hp"]')!;
+      const targetHp = document.querySelector<HTMLElement>('[data-testid="hud-target-hp"]')!;
+      expect(playerHp.textContent).toBe('HP: 8');
+      expect(targetHp.textContent).toBe('Target HP: 3');
+    });
+
+    it('setCombatHP is a no-op before show()', () => {
+      hud.setCombatHP(10, 5);
+      hud.show();
+      const playerHp = document.querySelector<HTMLElement>('[data-testid="hud-player-hp"]')!;
+      // Default state on first show — hidden, no text.
+      expect(playerHp.style.display).toBe('none');
+      expect(playerHp.textContent).toBe('');
+    });
+  });
 });
