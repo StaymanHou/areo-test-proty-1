@@ -1,7 +1,6 @@
 import RAPIER from '@dimforge/rapier3d-compat';
 import {
   BoxGeometry,
-  DirectionalLight,
   Euler,
   Mesh,
   MeshBasicMaterial,
@@ -10,6 +9,7 @@ import {
   Vector3,
 } from 'three';
 import { createRenderContext } from './world/scene';
+import * as particles from './world/particles';
 import { initDebug } from './engine/debug';
 import { GameLoop } from './engine/loop';
 import { InputManager, DEFAULT_KEY_MAP } from './engine/input';
@@ -105,10 +105,6 @@ async function bootstrap() {
   const input = new InputManager();
   const cameraController = new CameraController(camera);
 
-  const sun = new DirectionalLight(0xffffff, 0.8);
-  sun.position.set(5, 10, 7);
-  scene.add(sun);
-
   await rapierReady;
   const config = await configReady;
   setSplashStage('Loading scene…');
@@ -120,6 +116,12 @@ async function bootstrap() {
   world.createCollider(terrain.getColliderDesc());
 
   scene.background = createProceduralSkybox().cubeTexture;
+
+  // WP20 Phase 3 — particle system. Mount the shared Points mesh on the scene
+  // once at boot. emit() calls below fire kind-tagged bursts; update() runs
+  // per-render-frame to advance them. Pool is allocation-free; debug accessor
+  // exposed at `window.__particles` under ?debug=true.
+  particles.mount(scene);
 
   const runway = createRunway();
   scene.add(runway.mesh);
@@ -157,8 +159,15 @@ async function bootstrap() {
     (reason) => missionRunner.setHookFailFlag(reason),
     // WP19 — audio triggers. Fire-and-forget; AudioEngine no-ops if the
     // context isn't running yet (e.g., before the first user gesture).
-    () => audioEngine.triggerFire(),
-    () => audioEngine.triggerImpact(),
+    // WP19 audio + WP20 particle triggers. Both fire on player gun discharge.
+    (pos) => {
+      audioEngine.triggerFire();
+      particles.emit('muzzle-flash', pos.x, pos.y, pos.z);
+    },
+    (pos) => {
+      audioEngine.triggerImpact();
+      particles.emit('impact', pos.x, pos.y, pos.z);
+    },
   );
 
   // WP16 Phase 2 — projectile mesh pool. Pre-allocated once at boot; per-frame
@@ -175,17 +184,22 @@ async function bootstrap() {
     projectileMeshes.push(m);
   }
 
-  // WP16 Phase 3 — ground target mesh. Pre-allocated once at boot; added to /
-  // removed from the scene on combat-mission start / end. Geometry matches the
-  // 8×4×8 m AABB used by checkProjectileHits. Hazard-orange while alive;
-  // switches to dark-grey + 90° Z tilt on destruction (visual feedback for the
-  // win path). WP20 polish target.
+  // WP16 Phase 3 — ground target mesh. WP20 Phase 4 (SURFACE-2026-06-07-01):
+  // visual is decoupled from the hit-detection AABB. The collider stays at
+  // halfExtents=(10,8,10), y=0 (gameplay-tuned at WP16 Phase 5 P5.2 for the
+  // mig15 ground-cruise corridor and remains unchanged). The visual is rendered
+  // as a short, broad ground building (4 m tall, 20 m square base) sitting on
+  // the terrain at y=0..4 — matches the spec's "ground target" silhouette
+  // without changing the gameplay AABB. Hazard-orange while alive; switches to
+  // dark-grey + 90° Z tilt on destruction (visual feedback for the win path).
   const TARGET_ALIVE_COLOR = 0xff6a00;
   const TARGET_DEAD_COLOR = 0x222222;
-  // Box size matches TARGET_DEFAULT_HALF_EXTENTS × 2 (full extents).
-  const targetGeo = new BoxGeometry(20, 16, 20);
+  const TARGET_VISUAL_HEIGHT = 4; // m, mesh y-extent
+  const TARGET_VISUAL_Y_OFFSET = TARGET_VISUAL_HEIGHT / 2; // sit on ground
+  const targetGeo = new BoxGeometry(20, TARGET_VISUAL_HEIGHT, 20);
   const targetMat = new MeshLambertMaterial({ color: TARGET_ALIVE_COLOR });
   const targetMesh = new Mesh(targetGeo, targetMat);
+  targetMesh.castShadow = true;
   targetMesh.visible = false;
   scene.add(targetMesh);
 
@@ -236,6 +250,10 @@ async function bootstrap() {
     console.warn('scripted-input: ?script= ignored — also requires ?debug=true');
   }
 
+  // WP20 Phase 3 — wall-clock tracker for particle update dt. Initialized to 0
+  // so the first frame uses a 1/60 fallback (avoids a Number.MAX dt on cold-load).
+  let lastRenderMs = 0;
+
   const loop = new GameLoop(
     {
       onPhysics: (dt) => {
@@ -277,6 +295,14 @@ async function bootstrap() {
         }
       },
       onRender: () => {
+        // WP20 Phase 3 — particle system update on each render frame. dt is
+        // wall-clock-derived so visual effects advance independently of the
+        // fixed-physics-tick (matches "variable-step is fine for visuals").
+        const nowMs = performance.now();
+        const dtSec = lastRenderMs === 0 ? 1 / 60 : Math.min(0.1, (nowMs - lastRenderMs) / 1000);
+        lastRenderMs = nowMs;
+        particles.update(dtSec);
+
         aircraft.syncMesh();
 
         if (input.wasActionPressed('swapCamera', DEFAULT_KEY_MAP)) {
@@ -310,7 +336,12 @@ async function bootstrap() {
           // re-syncing it each frame avoids a separate startMission write.
           if (targetMesh.visible) {
             const t = cs.target;
-            targetMesh.position.set(t.position.x, t.position.y, t.position.z);
+            // Visual sits on terrain (y = AABB_center + visual_half_height).
+            targetMesh.position.set(
+              t.position.x,
+              t.position.y + TARGET_VISUAL_Y_OFFSET,
+              t.position.z,
+            );
             if (t.destroyed) {
               (targetMesh.material as MeshLambertMaterial).color.setHex(
                 TARGET_DEAD_COLOR,
@@ -592,6 +623,13 @@ async function bootstrap() {
       getState: () => audioEngine.getState(),
       getRecentOneShots: () => audioEngine.getRecentOneShots(),
     };
+
+    // WP20 Phase 3 — particle system debug accessor. Deep-copied snapshot per
+    // the per-tick mutable state convention.
+    (window as unknown as { __particles: unknown }).__particles = {
+      getActiveCount: () => particles.getActiveCount(),
+      getSnapshot: () => particles.getSnapshot(),
+    };
   }
 
   // WP11 boot flow: load the manifest, then either auto-start a mission named
@@ -633,12 +671,19 @@ async function bootstrap() {
     // that also clears any tracers left over from a prior combat mission when
     // returning to the menu.)
     resetCombatState();
+    // WP20 Phase 3 — clear any particles from the prior mission so a re-
+    // entered combat mission doesn't show stale muzzle-flash residue.
+    particles.resetParticles();
     // WP16 Phase 3 — show the target only for combat missions. Reset the
     // visual state explicitly so a previously-destroyed target re-appearing in
     // a re-played combat mission shows the alive (orange + upright) visual.
     if (mission.type === 'combat') {
       const t = getCombatState().target;
-      targetMesh.position.set(t.position.x, t.position.y, t.position.z);
+      targetMesh.position.set(
+        t.position.x,
+        t.position.y + TARGET_VISUAL_Y_OFFSET,
+        t.position.z,
+      );
       (targetMesh.material as MeshLambertMaterial).color.setHex(TARGET_ALIVE_COLOR);
       targetMesh.rotation.z = 0;
       targetMesh.visible = true;
@@ -688,13 +733,16 @@ async function bootstrap() {
 
     // WP19 — crash SFX on natural crash fails (not on abort, not on
     // timeout/oob/hook). Trigger before the abort-branch so an aborted run
-    // is silent (matches the no-banner abort UX).
+    // is silent (matches the no-banner abort UX). WP20 Phase 3 — fire a
+    // ground-dust particle burst at the aircraft's last position too.
     if (
       status === 'failed' &&
       !missionRunner.wasAborted() &&
       missionRunner.getFailReason() === 'crash'
     ) {
       audioEngine.triggerCrash();
+      const bs = aircraft.readBodyState();
+      particles.emit('ground-dust', bs.position.x, bs.position.y, bs.position.z);
     }
 
     if (missionRunner.wasAborted()) {

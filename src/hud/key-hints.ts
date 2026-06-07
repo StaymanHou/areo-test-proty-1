@@ -27,8 +27,8 @@ const ROOT_CLASS = 'key-hints-root';
 const CSS = `
   .${ROOT_CLASS} {
     position: absolute;
-    top: 5rem;
-    right: 1rem;
+    bottom: 1.5rem;
+    left: 1rem;
     padding: 0.6rem 0.9rem;
     background: rgba(0, 0, 0, 0.55);
     color: #eee;

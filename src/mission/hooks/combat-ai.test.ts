@@ -42,6 +42,53 @@ describe('combat-ai hook — registration + invocation', () => {
     expect(getHook(COMBAT_HOOK_NAME)).toBe(combatAiHook);
   });
 
+  // WP20 Phase 3: callback signature widened from () => void to
+  // (pos: {x,y,z}) => void so visual particle effects emit at the right spot.
+  // Guard against accidental signature narrowing.
+  it('onFire callback receives the projectile spawn position (WP20 Phase 3)', () => {
+    const captured: { x: number; y: number; z: number }[] = [];
+    registerCombatAi(
+      () => true,
+      () => {},
+      (pos) => captured.push({ ...pos }),
+    );
+    const aircraft = createAircraftState();
+    aircraft.position.x = 100;
+    aircraft.position.y = 50;
+    aircraft.position.z = -200;
+    tryFireGun(aircraft);
+    expect(captured).toHaveLength(1);
+    // Projectile spawns at aircraft position.
+    expect(captured[0]).toEqual({ x: 100, y: 50, z: -200 });
+  });
+
+  it('onImpact callback receives the projectile hit position (WP20 Phase 3)', () => {
+    const captured: { x: number; y: number; z: number }[] = [];
+    registerCombatAi(
+      () => false,
+      () => {},
+      () => {},
+      (pos) => captured.push({ ...pos }),
+    );
+    // Place an active projectile inside the target AABB.
+    const cs = getCombatState();
+    const p = cs.projectiles[0]!;
+    p.active = true;
+    p.position.x = cs.target.position.x;
+    p.position.y = cs.target.position.y;
+    p.position.z = cs.target.position.z;
+    p.ageSec = 0;
+    p.velocity.x = 0;
+    p.velocity.y = 0;
+    p.velocity.z = 0;
+    const objectives: ObjectiveState[] = [{ completed: false, meta: {} }];
+    checkProjectileHits(objectives);
+    expect(captured).toHaveLength(1);
+    expect(captured[0]!.x).toBe(cs.target.position.x);
+    expect(captured[0]!.y).toBe(cs.target.position.y);
+    expect(captured[0]!.z).toBe(cs.target.position.z);
+  });
+
   it('hook function does not throw with empty objectives + non-firing input', () => {
     const state: Record<string, unknown> = {};
     const aircraft = createAircraftState();

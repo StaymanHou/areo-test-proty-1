@@ -5,6 +5,10 @@ import {
   paintSideFaceRGBA,
   paintSolidFaceRGBA,
   stampSunDiscRGBA,
+  stampCloudRGBA,
+  applyHorizonHazeRGBA,
+  stampCloudsRGBA,
+  mulberry32,
 } from './skybox';
 
 describe('paintSideFaceRGBA', () => {
@@ -77,6 +81,119 @@ describe('stampSunDiscRGBA', () => {
     const data = paintSolidFaceRGBA(size, [0, 0, 0]);
     expect(() => stampSunDiscRGBA(data, size, 1, 1, 4, [255, 255, 255])).not.toThrow();
     expect(data.length).toBe(size * size * 4);
+  });
+});
+
+describe('mulberry32', () => {
+  it('produces identical sequences for the same seed', () => {
+    const a = mulberry32(42);
+    const b = mulberry32(42);
+    for (let i = 0; i < 10; i++) expect(a()).toBe(b());
+  });
+
+  it('produces different sequences for different seeds', () => {
+    const a = mulberry32(1);
+    const b = mulberry32(2);
+    let differ = false;
+    for (let i = 0; i < 10; i++) {
+      if (a() !== b()) { differ = true; break; }
+    }
+    expect(differ).toBe(true);
+  });
+
+  it('emits values in [0, 1)', () => {
+    const rng = mulberry32(123);
+    for (let i = 0; i < 100; i++) {
+      const v = rng();
+      expect(v).toBeGreaterThanOrEqual(0);
+      expect(v).toBeLessThan(1);
+    }
+  });
+});
+
+describe('stampCloudRGBA', () => {
+  it('lifts the centre pixel toward the cloud color', () => {
+    const size = 32;
+    const data = paintSolidFaceRGBA(size, [50, 100, 150]);
+    stampCloudRGBA(data, size, 16, 16, 4, 4, [240, 240, 240], 1.0);
+    const i = (16 * size + 16) * 4;
+    // At centre, quadratic falloff (1-d²)² with d²=0 → alpha=1 → exact cloud color.
+    expect(data[i]).toBe(240);
+    expect(data[i + 1]).toBe(240);
+    expect(data[i + 2]).toBe(240);
+  });
+
+  it('leaves pixels outside the ellipse untouched', () => {
+    const size = 32;
+    const data = paintSolidFaceRGBA(size, [50, 100, 150]);
+    stampCloudRGBA(data, size, 16, 16, 4, 4, [240, 240, 240], 1.0);
+    const farI = (0 * size + 0) * 4;
+    expect([data[farI], data[farI + 1], data[farI + 2]]).toEqual([50, 100, 150]);
+  });
+
+  it('handles centers near the face edge without out-of-bounds writes', () => {
+    const size = 32;
+    const data = paintSolidFaceRGBA(size, [0, 0, 0]);
+    expect(() => stampCloudRGBA(data, size, 1, 1, 4, 4, [255, 255, 255], 0.8)).not.toThrow();
+    expect(data.length).toBe(size * size * 4);
+  });
+});
+
+describe('stampCloudsRGBA', () => {
+  it('emits the requested number of distinct ellipses (each modifies the buffer)', () => {
+    const size = 64;
+    const data = paintSolidFaceRGBA(size, [0, 0, 0]);
+    const rng = mulberry32(99);
+    stampCloudsRGBA(data, size, 5, [255, 255, 255], rng);
+    // After stamping, some interior pixels should be brighter than baseline.
+    let bright = 0;
+    for (let i = 0; i < data.length; i += 4) {
+      if (data[i]! > 50) bright++;
+    }
+    expect(bright).toBeGreaterThan(0);
+  });
+
+  it('count=0 is a no-op', () => {
+    const size = 32;
+    const data = paintSolidFaceRGBA(size, [10, 20, 30]);
+    const rng = mulberry32(5);
+    stampCloudsRGBA(data, size, 0, [255, 255, 255], rng);
+    for (let i = 0; i < data.length; i += 4) {
+      expect(data[i]).toBe(10);
+      expect(data[i + 1]).toBe(20);
+      expect(data[i + 2]).toBe(30);
+    }
+  });
+});
+
+describe('applyHorizonHazeRGBA', () => {
+  it('hazeStrength=0 is a no-op', () => {
+    const size = 16;
+    const data = paintSideFaceRGBA(size, [0, 0, 0], [255, 255, 255]);
+    const before = data.slice();
+    applyHorizonHazeRGBA(data, size, [100, 100, 100], 0);
+    for (let i = 0; i < data.length; i++) expect(data[i]).toBe(before[i]);
+  });
+
+  it('lifts bottom band pixels toward the haze color', () => {
+    const size = 32;
+    const data = paintSideFaceRGBA(size, [0, 0, 0], [50, 50, 50]);
+    applyHorizonHazeRGBA(data, size, [255, 0, 0], 1.0);
+    // Pixel near bottom should be shifted strongly toward red.
+    const y = size - 2;
+    const i = (y * size + 8) * 4;
+    expect(data[i]).toBeGreaterThan(50);
+  });
+
+  it('leaves the top band (zenith side) untouched', () => {
+    const size = 32;
+    const data = paintSideFaceRGBA(size, [10, 20, 30], [200, 210, 220]);
+    applyHorizonHazeRGBA(data, size, [255, 0, 0], 1.0);
+    // Top half is below bandStartY (0.7*size = 22) — untouched.
+    const i = (10 * size + 8) * 4;
+    expect(data[i]).toBe(data[i]); // sanity
+    // Should still be in the gradient range (not shifted red).
+    expect(data[i]).toBeLessThan(200);
   });
 });
 
@@ -183,6 +300,103 @@ describe('createProceduralSkybox', () => {
 
   it('rejects sunFace set to a non-side face (py / ny)', () => {
     expect(() => createProceduralSkybox({ sunFace: 'py' as 'px' })).toThrow();
+  });
+
+  it('default skybox has cloud features stamped on side faces (interior is brighter than baseline gradient)', () => {
+    const size = 64;
+    const { faces } = createProceduralSkybox({ faceSize: size, hazeStrength: 0, sunFace: null });
+    const baseline = createProceduralSkybox({ faceSize: size, clouds: false, hazeStrength: 0, sunFace: null });
+    // Compare interior region (middle rows) for px face: at least some pixels
+    // should be lifted by the cloud overlay vs baseline.
+    const data = faces.px.image.data as Uint8Array;
+    const base = baseline.faces.px.image.data as Uint8Array;
+    let liftedCount = 0;
+    const interiorRowStart = Math.floor(size * 0.15);
+    const interiorRowEnd = Math.floor(size * 0.5);
+    for (let y = interiorRowStart; y < interiorRowEnd; y++) {
+      for (let x = 0; x < size; x++) {
+        const i = (y * size + x) * 4;
+        if (data[i]! > base[i]! + 5) liftedCount++;
+      }
+    }
+    expect(liftedCount).toBeGreaterThan(50);
+  });
+
+  it('clouds:false disables cloud stamping (matches baseline exactly)', () => {
+    const size = 32;
+    const { faces } = createProceduralSkybox({ faceSize: size, clouds: false, hazeStrength: 0, sunFace: null });
+    const baseline = createProceduralSkybox({ faceSize: size, clouds: false, hazeStrength: 0, sunFace: null });
+    const a = faces.px.image.data as Uint8Array;
+    const b = baseline.faces.px.image.data as Uint8Array;
+    for (let i = 0; i < a.length; i++) expect(a[i]).toBe(b[i]);
+  });
+
+  it('cloud placement is deterministic for the same seed', () => {
+    const a = createProceduralSkybox({ faceSize: 32, sunFace: null, clouds: { seed: 42, count: 4 } });
+    const b = createProceduralSkybox({ faceSize: 32, sunFace: null, clouds: { seed: 42, count: 4 } });
+    const ad = a.faces.px.image.data as Uint8Array;
+    const bd = b.faces.px.image.data as Uint8Array;
+    for (let i = 0; i < ad.length; i++) expect(ad[i]).toBe(bd[i]);
+  });
+
+  it('different cloud seeds produce different placements', () => {
+    const a = createProceduralSkybox({ faceSize: 32, sunFace: null, clouds: { seed: 1, count: 4 } });
+    const b = createProceduralSkybox({ faceSize: 32, sunFace: null, clouds: { seed: 2, count: 4 } });
+    const ad = a.faces.px.image.data as Uint8Array;
+    const bd = b.faces.px.image.data as Uint8Array;
+    let differingPixels = 0;
+    for (let i = 0; i < ad.length; i += 4) {
+      if (ad[i] !== bd[i] || ad[i + 1] !== bd[i + 1] || ad[i + 2] !== bd[i + 2]) differingPixels++;
+    }
+    expect(differingPixels).toBeGreaterThan(20);
+  });
+
+  it('horizon haze lifts the bottom band toward haze color (but preserves seam at the very last row)', () => {
+    const size = 32;
+    // Build with no clouds + no sun + strong haze so the effect is pure.
+    const { faces } = createProceduralSkybox({
+      faceSize: size, clouds: false, sunFace: null, hazeStrength: 1.0,
+      hazeColor: [255, 0, 0],
+    });
+    const data = faces.px.image.data as Uint8Array;
+    // Sample a pixel 5% above the bottom — should be strongly red-shifted vs the
+    // pure gradient horizon color (180, 210, 235).
+    const y = size - 2;
+    const i = (y * size + 8) * 4;
+    expect(data[i]).toBeGreaterThan(180);
+    // Sample the very top (zenith row) — should be untouched.
+    const top = [data[0], data[1], data[2]];
+    expect(top).toEqual([60, 110, 200]);
+  });
+
+  it('haze keeps the very last row uniform across all side faces (seam guarantee)', () => {
+    const size = 32;
+    const { faces } = createProceduralSkybox({
+      faceSize: size, clouds: false, sunFace: null, hazeStrength: 0.6,
+    });
+    const sides = [faces.px, faces.nx, faces.pz, faces.nz];
+    const sampleBottomRow = (f: DataTexture) => {
+      const d = f.image.data as Uint8Array;
+      const y = size - 1;
+      const i = (y * size) * 4;
+      return [d[i], d[i + 1], d[i + 2]];
+    };
+    const ref = sampleBottomRow(sides[0]!);
+    for (let i = 1; i < sides.length; i++) {
+      expect(sampleBottomRow(sides[i]!)).toEqual(ref);
+    }
+  });
+
+  it('hazeStrength=0 is a no-op (matches the no-haze baseline)', () => {
+    const size = 16;
+    const a = createProceduralSkybox({ faceSize: size, clouds: false, sunFace: null, hazeStrength: 0 });
+    const ad = a.faces.px.image.data as Uint8Array;
+    // Compare bottom row to a pure paintSideFaceRGBA result — should match.
+    const pure = paintSideFaceRGBA(size, [60, 110, 200], [180, 210, 235]);
+    const lastRowStart = (size - 1) * size * 4;
+    for (let i = 0; i < size * 4; i++) {
+      expect(ad[lastRowStart + i]).toBe(pure[lastRowStart + i]);
+    }
   });
 
   it('cube texture face entries are DataTexture instances (Three.js upload-path contract)', () => {

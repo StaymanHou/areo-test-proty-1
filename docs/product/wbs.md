@@ -138,4 +138,7 @@ The archive also contains the Phase 2-era Dependency map, Architectural-gaps sec
 
 `... → WP17(DONE) → WP18(DONE) → WP19(DONE) → WP20 → WP21 → WP22 → WP23 → ship`.
 
+## Session Pause — 2026-06-07 15:00
+Paused. See `workflow/.session.md` to resume. WP19 shipped (`7467f10`) + finalized (`b03140e`); Phase 3 milestone "Audio: engine, wind, weapon, crash sounds" CHECKED. Operator-queued next entry: WP20 visual polish (L) — recommended `/feature-spec` given art-direction scope. Drive mode: full-autopilot.
+
 Phase 1 and the D14→D27 physics cascade dependency map are preserved in the archived WBS.

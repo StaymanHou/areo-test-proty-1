@@ -10,6 +10,15 @@ import {
 
 export type SkyboxFace = 'px' | 'nx' | 'py' | 'ny' | 'pz' | 'nz';
 
+export interface CloudOptions {
+  /** Number of cloud blobs stamped per side face. Default: 6. */
+  count?: number;
+  /** Seed for the deterministic RNG that places clouds. Default: 1337. */
+  seed?: number;
+  /** Cloud color. Default: near-white. */
+  color?: [number, number, number];
+}
+
 export interface SkyboxOptions {
   faceSize?: number;
   /** Top-of-sky color (zenith). Default: deep blue. */
@@ -26,10 +35,25 @@ export interface SkyboxOptions {
   sunRadius?: number;
   /** Sun color. Default: warm white. */
   sunColor?: [number, number, number];
+  /** Cloud stamping options, or `false` to disable clouds entirely. Default: enabled with defaults. */
+  clouds?: CloudOptions | false;
+  /** Horizon haze band intensity 0..1 — 0 disables, 1 lifts the bottom 30% of side faces fully to horizon-haze color. Default: 0.6. */
+  hazeStrength?: number;
+  /** Horizon haze color (warmer/lighter than horizon). Default: pale warm grey. */
+  hazeColor?: [number, number, number];
 }
 
-const DEFAULT: Required<Omit<SkyboxOptions, 'sunFace'>> & { sunFace: SkyboxFace | null } = {
-  faceSize: 256,
+const DEFAULT_CLOUDS: Required<CloudOptions> = {
+  count: 6,
+  seed: 1337,
+  color: [245, 248, 252],
+};
+
+const DEFAULT: Required<Omit<SkyboxOptions, 'sunFace' | 'clouds'>> & {
+  sunFace: SkyboxFace | null;
+  clouds: CloudOptions | false;
+} = {
+  faceSize: 512,
   zenithColor: [60, 110, 200],
   horizonColor: [180, 210, 235],
   groundColor: [80, 75, 65],
@@ -37,6 +61,9 @@ const DEFAULT: Required<Omit<SkyboxOptions, 'sunFace'>> & { sunFace: SkyboxFace 
   sunUv: [0.5, 0.4],
   sunRadius: 0.06,
   sunColor: [255, 240, 210],
+  clouds: DEFAULT_CLOUDS,
+  hazeStrength: 0.6,
+  hazeColor: [220, 220, 215],
 };
 
 function lerp(a: number, b: number, t: number): number {
@@ -126,6 +153,105 @@ export function stampSunDiscRGBA(
   }
 }
 
+/**
+ * Stamp a soft elliptical cloud blob onto an existing RGBA face, in-place. The
+ * cloud is alpha-blended over the existing pixel data with a quadratic falloff
+ * (sharper than the sun disc's linear edge — produces fluffier-looking edges).
+ */
+export function stampCloudRGBA(
+  data: Uint8Array,
+  size: number,
+  cx: number,
+  cy: number,
+  rx: number,
+  ry: number,
+  color: [number, number, number],
+  maxAlpha: number,
+): void {
+  const yMin = Math.max(0, Math.floor(cy - ry));
+  const yMax = Math.min(size - 1, Math.ceil(cy + ry));
+  const xMin = Math.max(0, Math.floor(cx - rx));
+  const xMax = Math.min(size - 1, Math.ceil(cx + rx));
+  for (let y = yMin; y <= yMax; y++) {
+    for (let x = xMin; x <= xMax; x++) {
+      const dx = (x - cx) / rx;
+      const dy = (y - cy) / ry;
+      const d2 = dx * dx + dy * dy;
+      if (d2 > 1) continue;
+      // Quadratic falloff: full opacity at center, zero at ellipse edge.
+      const alpha = maxAlpha * (1 - d2) * (1 - d2);
+      const i = (y * size + x) * 4;
+      data[i] = Math.round(lerp(data[i], color[0], alpha));
+      data[i + 1] = Math.round(lerp(data[i + 1], color[1], alpha));
+      data[i + 2] = Math.round(lerp(data[i + 2], color[2], alpha));
+    }
+  }
+}
+
+/**
+ * Apply a horizon haze band to an existing side-face RGBA buffer, in-place.
+ * Lifts pixels in the lower 30% of the face toward `hazeColor`, with strength
+ * peaking at the horizon (bottom 5%) and falling off linearly to zero at 30%.
+ *
+ * Preserves the bottom row exactly (seam guarantee: horizon row stays uniform
+ * across all side faces).
+ */
+export function applyHorizonHazeRGBA(
+  data: Uint8Array,
+  size: number,
+  hazeColor: [number, number, number],
+  hazeStrength: number,
+): void {
+  if (hazeStrength <= 0) return;
+  const bandStartY = Math.floor(size * 0.7);
+  const lastY = size - 1;
+  for (let y = bandStartY; y <= lastY; y++) {
+    // t goes 0..1 as y traverses the haze band.
+    const t = (y - bandStartY) / Math.max(1, lastY - bandStartY);
+    const alpha = hazeStrength * t * t;
+    for (let x = 0; x < size; x++) {
+      const i = (y * size + x) * 4;
+      data[i] = Math.round(lerp(data[i], hazeColor[0], alpha));
+      data[i + 1] = Math.round(lerp(data[i + 1], hazeColor[1], alpha));
+      data[i + 2] = Math.round(lerp(data[i + 2], hazeColor[2], alpha));
+    }
+  }
+}
+
+/** mulberry32 — small deterministic PRNG, seedable. Returns 0..1. */
+export function mulberry32(seed: number): () => number {
+  let s = seed >>> 0;
+  return function () {
+    s = (s + 0x6d2b79f5) >>> 0;
+    let t = s;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/**
+ * Stamp `count` clouds onto a side face using the supplied RNG. Cloud centers
+ * fall in vertical UV band [0.1, 0.55] (above horizon haze, below zenith) so
+ * they appear at recognizable mid-sky height. Ellipse dimensions vary per blob.
+ */
+export function stampCloudsRGBA(
+  data: Uint8Array,
+  size: number,
+  count: number,
+  color: [number, number, number],
+  rng: () => number,
+): void {
+  for (let i = 0; i < count; i++) {
+    const cx = rng() * size;
+    const cy = (0.1 + rng() * 0.45) * size;
+    const rx = (0.08 + rng() * 0.1) * size;
+    const ry = rx * (0.35 + rng() * 0.25); // flatter ellipse
+    const maxAlpha = 0.55 + rng() * 0.3;
+    stampCloudRGBA(data, size, cx, cy, rx, ry, color, maxAlpha);
+  }
+}
+
 function makeFaceTexture(data: Uint8Array, size: number): DataTexture {
   const tex = new DataTexture(data, size, size, RGBAFormat);
   tex.wrapS = ClampToEdgeWrapping;
@@ -152,6 +278,9 @@ export function createProceduralSkybox(opts: SkyboxOptions = {}): SkyboxResult {
   const sunUv = opts.sunUv ?? DEFAULT.sunUv;
   const sunRadius = opts.sunRadius ?? DEFAULT.sunRadius;
   const sunColor = opts.sunColor ?? DEFAULT.sunColor;
+  const clouds = opts.clouds === false ? false : { ...DEFAULT_CLOUDS, ...(opts.clouds ?? {}) };
+  const hazeStrength = opts.hazeStrength ?? DEFAULT.hazeStrength;
+  const hazeColor = opts.hazeColor ?? DEFAULT.hazeColor;
 
   if (faceSize <= 0 || !Number.isInteger(faceSize)) {
     throw new Error(`createProceduralSkybox: faceSize must be a positive integer, got ${faceSize}`);
@@ -166,6 +295,25 @@ export function createProceduralSkybox(opts: SkyboxOptions = {}): SkyboxResult {
     py: paintSolidFaceRGBA(faceSize, zenithColor),
     ny: paintSolidFaceRGBA(faceSize, groundColor),
   };
+
+  // Clouds first (alpha-blended into the gradient sky), then haze (lifts the
+  // horizon band including any cloud pixels in that band), then sun (sits on
+  // top — never occluded by clouds or haze).
+  if (clouds !== false) {
+    // One RNG seeded per face, each face derived from base seed + a per-face
+    // offset. Keeps faces visually distinct but reproducible.
+    const faceSeedOffset: Record<SkyboxFace, number> = {
+      px: 0, nx: 1000, pz: 2000, nz: 3000, py: 0, ny: 0,
+    };
+    for (const face of sideFaces) {
+      const rng = mulberry32(clouds.seed! + faceSeedOffset[face]);
+      stampCloudsRGBA(faceData[face], faceSize, clouds.count!, clouds.color!, rng);
+    }
+  }
+
+  for (const face of sideFaces) {
+    applyHorizonHazeRGBA(faceData[face], faceSize, hazeColor, hazeStrength);
+  }
 
   if (sunFace !== null) {
     if (!sideFaces.includes(sunFace)) {

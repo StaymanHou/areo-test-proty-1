@@ -161,10 +161,15 @@ let failSignalFn: FailSignalCallback = () => {};
  * WP19 — audio trigger callbacks. Fire on player gun discharge (tryFireGun)
  * and on projectile-hits-target (checkProjectileHits). Default no-ops so unit
  * tests not concerned with audio can ignore the wiring.
+ *
+ * WP20 Phase 3 widened the signature to pass the event position so visual
+ * particle effects can emit at the right spot. Audio callbacks that don't
+ * care about position just ignore the argument.
  */
-type AudioTriggerCallback = () => void;
-let onFireFn: AudioTriggerCallback = () => {};
-let onImpactFn: AudioTriggerCallback = () => {};
+type TriggerPos = { x: number; y: number; z: number };
+type TriggerCallback = (pos: TriggerPos) => void;
+let onFireFn: TriggerCallback = () => {};
+let onImpactFn: TriggerCallback = () => {};
 
 /** Returns the live combat state — used by main.ts onRender for mesh sync + window.__combat. */
 export function getCombatState(): CombatState {
@@ -319,8 +324,9 @@ export function tryFireGun(aircraft: AircraftState): void {
   p.ageSec = 0;
   p.active = true;
   combatState.fireCooldown = FIRE_COOLDOWN_SEC;
-  // WP19 — audio trigger. Default no-op when no callback registered.
-  onFireFn();
+  // WP19 — audio trigger; WP20 — particle trigger (position-aware).
+  // Default no-op when no callback registered.
+  onFireFn(p.position);
 }
 
 /**
@@ -369,10 +375,13 @@ export function checkProjectileHits(objectives: readonly ObjectiveState[]): void
       Math.abs(p.position.y - ty) <= hy &&
       Math.abs(p.position.z - tz) <= hz
     ) {
+      // Snapshot impact position before deactivating the projectile.
+      const hitPos = { x: p.position.x, y: p.position.y, z: p.position.z };
       p.active = false;
       target.hp--;
-      // WP19 — audio trigger fires on every hit (including the killing hit).
-      onImpactFn();
+      // WP19 — audio trigger; WP20 — particle trigger (position-aware).
+      // Fires on every hit (including the killing hit).
+      onImpactFn(hitPos);
       if (target.hp <= 0) {
         target.hp = 0;
         target.destroyed = true;
@@ -510,8 +519,8 @@ export function checkReturnFireHits(aircraft: AircraftState): void {
 export function registerCombatAi(
   gunInputDown: GunInputProvider = () => false,
   failSignal: FailSignalCallback = () => {},
-  onFire: AudioTriggerCallback = () => {},
-  onImpact: AudioTriggerCallback = () => {},
+  onFire: TriggerCallback = () => {},
+  onImpact: TriggerCallback = () => {},
 ): void {
   gunInputDownFn = gunInputDown;
   failSignalFn = failSignal;

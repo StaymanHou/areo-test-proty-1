@@ -66,11 +66,23 @@ describe('Aircraft (rigidbody)', () => {
     expect(lv.z).toBeCloseTo(-30);
   });
 
-  it('builds a placeholder mesh group with one fuselage + four surface meshes', () => {
+  it('builds a placeholder mesh group with one fuselage + four surface meshes (variant=default)', () => {
     const world = new RAPIER.World({ x: 0, y: -9.81, z: 0 });
-    const aircraft = new Aircraft(world, config);
+    const aircraft = new Aircraft(world, config, { meshVariant: 'default' });
     // 1 fuselage + 4 surfaces (wing-L, wing-R, h-stab, v-stab) = 5 children
     expect(aircraft.mesh.children).toHaveLength(5);
+  });
+
+  // WP20 Phase 1: every mesh part of the aircraft must cast shadows so the
+  // sun's DirectionalLight produces a visible ground shadow. Without this,
+  // the lighting upgrade looks half-broken (everything else casts shadows
+  // except the player aircraft).
+  it('every aircraft mesh child has castShadow=true (WP20 Phase 1)', () => {
+    const world = new RAPIER.World({ x: 0, y: -9.81, z: 0 });
+    const aircraft = new Aircraft(world, config);
+    for (const child of aircraft.mesh.children) {
+      expect((child as { castShadow?: boolean }).castShadow).toBe(true);
+    }
   });
 
   // Regression anchor for SURFACE-2026-05-11-05 (WP9 Phase 3): the body must
