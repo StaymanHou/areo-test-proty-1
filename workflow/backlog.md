@@ -17,14 +17,14 @@ Paused. See `workflow/.session.md` to resume. 4 SURFACEs closed this session (-1
 - **Suggested action (future):** Two paths to support true takeoff roll if v1.x adds it: (a) physics — increase Cessna thrust.maxN from 6000N to ~15000N (T/W from 0.6 to 1.5) so the aircraft can accelerate from rest to V_trim in <10s on a 600m runway, OR add a wheels-on-runway pitch-up mechanism so the aircraft can rotate on the ground before lift overcomes weight; (b) world — extend the runway to ~3000m via `createRunway({length: 3000})`. Path (a) is structurally more honest but conflicts with the D14→D27 cascade's tuned Cessna baseline. Path (b) makes the world unrealistic. Both deferred to Phase 3 polish unless an explicit WP raises this.
 - **Status:** mitigated-in-WP15 (V_trim spawn convention); true-takeoff-roll deferred
 
-### SURFACE-2026-06-06-08 — `docs/product/arch.md` exceeds 300-line size guard (2645 lines); same for `wbs.md` (1023 lines)
+### SURFACE-2026-06-06-08 — `docs/product/arch.md` exceeds 300-line size guard (2645 lines); same for `wbs.md` (1023 lines) [RESOLVED 2026-06-06]
 - **Source:** feature:spec (per-mission-airframe, 2026-06-06)
 - **Target level:** product:finalize (durable-doc curation)
 - **Type:** docs / process
 - **Priority:** low
 - **Summary:** Both `arch.md` and `wbs.md` are well past the 300-line size-guard threshold that triggers truncated reads in entry-point skills. Each architect-cycle revision (D14-D27 cascade) appended a full section without summary/archive of the prior revision; the frontmatter `previous_updated_N` chain in `arch.md:4-12` is now ~9 layers deep. Skills still function (truncated read + heading grep is sufficient) but the size guard fires on every read, which is a small ongoing tax.
 - **Suggested action:** At next `/product-finalize`, consider either (a) archiving completed D-cycle sections (D14-D26 are all settled, only D27 is the current cursor) into `docs/product/archive/<cycle-name>/arch-cycle-Dnn-Dmm.md` while keeping a one-line summary in the live `arch.md`, OR (b) splitting `arch.md` into `arch-current.md` (last 1-2 cycles + durable decisions) + `arch-history.md` (everything older).
-- **Status:** pending
+- **Status:** **RESOLVED 2026-06-06 by task `arch-wbs-size-guard-archive`.** Picked shape (a) per single-knob discipline. Two archive directories created: `docs/product/archive/phase-1-flight-poc/` (Phase 1 WBS only) + `docs/product/archive/phase-2-physics-cascade/` (D10-D27 architect cycles + WP10-WP15 completed-WBS + WBS history-notes tail). Live `arch.md` 2645→**144 lines** (18× smaller); live `wbs.md` 1059→**141 lines** (7.5× smaller); both clear the 300-line guard with margin. Archives total 3521 lines of verbatim preserved content. Tests 640/640 unaffected. Future cycles can follow the same archive-header + summary-stub convention.
 
 ### SURFACE-2026-06-06-07 — `?mission=<id>` deep-link silently fell through to mission-select when `<id>` wasn't in `public/missions/index.json`
 - **Source:** task:act (phugoid-probe-harness-refactor, 2026-06-06)
