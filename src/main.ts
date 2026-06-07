@@ -41,6 +41,7 @@ import { KeyHintsOverlay } from './hud/key-hints';
 import { formatActiveObjective, getActiveWaypointPosition } from './hud/format';
 import { parseScriptSpec, configNameToPath } from './engine/scripted-input';
 import { ScriptedInputRunner } from './engine/scripted-input-runner';
+import { AudioEngine } from './audio/audio-engine';
 
 // WP18 — splash overlay helpers. The splash element is inlined in index.html
 // so it paints on first frame, BEFORE the JS bundle parses. These helpers let
@@ -154,6 +155,10 @@ async function bootstrap() {
   registerCombatAi(
     () => input.isDown('Space'),
     (reason) => missionRunner.setHookFailFlag(reason),
+    // WP19 — audio triggers. Fire-and-forget; AudioEngine no-ops if the
+    // context isn't running yet (e.g., before the first user gesture).
+    () => audioEngine.triggerFire(),
+    () => audioEngine.triggerImpact(),
   );
 
   // WP16 Phase 2 — projectile mesh pool. Pre-allocated once at boot; per-frame
@@ -208,6 +213,12 @@ async function bootstrap() {
   // then auto-fades; re-shown on every fresh mission entry.
   const keyHints = new KeyHintsOverlay();
 
+  // WP19 — AudioEngine. Allocation-only at construction; the AudioContext is
+  // created and resumed on the first user gesture (mission-select click) per
+  // Safari/iOS autoplay restrictions (research R4). Phase 1 wires the per-tick
+  // throttle + airspeed inputs; Phase 2 wires the one-shot trigger callbacks.
+  const audioEngine = new AudioEngine();
+
   // WP14.6 trajectory buffer — allocated only under ?debug=true. Records one
   // row per fixed physics tick from `onPhysics` for the parity-test hook
   // `window.__aircraft.getTrajectory()`. Null in production (no allocation
@@ -244,6 +255,13 @@ async function bootstrap() {
         // Record post-step state into the trajectory buffer (debug-only).
         if (trajectoryBuffer !== null) {
           trajectoryBuffer.record(aircraft.readBodyState());
+        }
+        // WP19 — feed audio engine each physics tick. No-op until first
+        // user gesture resumes the AudioContext. Two scalar writes, no alloc.
+        {
+          const bs = aircraft.readBodyState();
+          audioEngine.setEngineThrottle(controls.throttle);
+          audioEngine.setWindAirspeed(bs.linvel.length());
         }
         // Tick the mission runner AFTER the physics step so it observes
         // post-step aircraft state for objective/win/fail evaluation.
@@ -566,6 +584,14 @@ async function bootstrap() {
       getReturnFireCooldown: () => getCombatState().returnFire.cooldown,
       getPlayerHp: () => getCombatState().playerHp,
     };
+
+    // WP19 — audio engine debug accessor. Deep-copied state snapshot per the
+    // per-tick mutable state convention. `getState()` and `getRecentOneShots()`
+    // both return fresh objects/arrays each call.
+    (window as unknown as { __audio: unknown }).__audio = {
+      getState: () => audioEngine.getState(),
+      getRecentOneShots: () => audioEngine.getRecentOneShots(),
+    };
   }
 
   // WP11 boot flow: load the manifest, then either auto-start a mission named
@@ -660,6 +686,17 @@ async function bootstrap() {
     if (activeMission === null) return;
     loop.setPaused(true);
 
+    // WP19 — crash SFX on natural crash fails (not on abort, not on
+    // timeout/oob/hook). Trigger before the abort-branch so an aborted run
+    // is silent (matches the no-banner abort UX).
+    if (
+      status === 'failed' &&
+      !missionRunner.wasAborted() &&
+      missionRunner.getFailReason() === 'crash'
+    ) {
+      audioEngine.triggerCrash();
+    }
+
     if (missionRunner.wasAborted()) {
       // Silent return — no banner, no delay.
       activeMission = null;
@@ -682,6 +719,11 @@ async function bootstrap() {
   });
 
   missionSelect.onSelect((id) => {
+    // WP19 — first user-gesture is the Safari autoplay unlock for Web Audio.
+    // Fire-and-forget: failures only log, never block mission start.
+    void audioEngine.start().catch((err) => {
+      console.warn('AudioEngine.start() rejected:', err);
+    });
     void startMission(id);
   });
 
@@ -701,6 +743,11 @@ async function bootstrap() {
   // for per-mission airframe config resolution — re-using it avoids a second
   // network request.
   if (requestedMissionId !== null) {
+    // WP19 — attempt to resume audio on the deep-link path too. May fail in
+    // Safari if the URL was opened without a gesture; harmless if so.
+    void audioEngine.start().catch((err) => {
+      console.warn('AudioEngine.start() rejected (deep-link path):', err);
+    });
     await startMission(requestedMissionId, preloadedMission);
   } else {
     setSplashStage('Ready');

@@ -334,6 +334,86 @@ describe('MissionRunner — fail conditions', () => {
   });
 });
 
+describe('MissionRunner — getFailReason (WP19)', () => {
+  beforeEach(() => clearRegistry());
+
+  it('null when not failed', () => {
+    const r = new MissionRunner();
+    expect(r.getFailReason()).toBeNull();
+    r.start(makeMission());
+    expect(r.getFailReason()).toBeNull();
+  });
+
+  it("'crash' when natural crash transition", () => {
+    const r = new MissionRunner();
+    r.start(makeMission());
+    r.tick(
+      makeAircraft({ position: { x: 0, y: -0.1, z: 0 }, linvel: { x: 0, y: -10, z: 0 } }),
+      DT,
+    );
+    expect(r.getStatus()).toBe('failed');
+    expect(r.getFailReason()).toBe('crash');
+  });
+
+  it("'timeout' on timeout fail", () => {
+    const r = new MissionRunner();
+    r.start(
+      makeMission({
+        failCondition: 'timeout',
+        timeoutSec: 5,
+        objectives: [
+          { kind: 'reach-waypoint', position: { x: 0, y: 50, z: -1000 }, radius: 5, order: 0 },
+        ],
+      }),
+    );
+    for (let i = 0; i < 60 * 5 + 1; i++) {
+      r.tick(makeAircraft({ position: { x: 0, y: 50, z: 0 } }), DT);
+    }
+    expect(r.getStatus()).toBe('failed');
+    expect(r.getFailReason()).toBe('timeout');
+  });
+
+  it("'out-of-bounds' on oob fail", () => {
+    const r = new MissionRunner();
+    r.start(makeMission({ failCondition: 'out-of-bounds' }));
+    r.tick(
+      makeAircraft({ position: { x: OUT_OF_BOUNDS_LIMIT + 1, y: 50, z: 0 } }),
+      DT,
+    );
+    expect(r.getStatus()).toBe('failed');
+    expect(r.getFailReason()).toBe('out-of-bounds');
+  });
+
+  it("'hook' when setHookFailFlag triggers fail", () => {
+    const r = new MissionRunner();
+    r.start(makeMission());
+    r.setHookFailFlag('shot down');
+    r.tick(makeAircraft({ position: { x: 0, y: 100, z: 0 } }), DT);
+    expect(r.getStatus()).toBe('failed');
+    expect(r.getFailReason()).toBe('hook');
+  });
+
+  it('null when aborted (abort does not set a reason)', () => {
+    const r = new MissionRunner();
+    r.start(makeMission());
+    r.abort();
+    expect(r.getStatus()).toBe('failed');
+    expect(r.getFailReason()).toBeNull();
+  });
+
+  it('start() clears the prior fail reason', () => {
+    const r = new MissionRunner();
+    r.start(makeMission());
+    r.tick(
+      makeAircraft({ position: { x: 0, y: -0.1, z: 0 }, linvel: { x: 0, y: -10, z: 0 } }),
+      DT,
+    );
+    expect(r.getFailReason()).toBe('crash');
+    r.start(makeMission());
+    expect(r.getFailReason()).toBeNull();
+  });
+});
+
 describe('MissionRunner — hook-driven fail flag (WP16 Phase 4)', () => {
   beforeEach(() => clearRegistry());
 

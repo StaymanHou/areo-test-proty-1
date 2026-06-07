@@ -157,6 +157,15 @@ let gunInputDownFn: GunInputProvider = () => false;
 type FailSignalCallback = (reason?: string) => void;
 let failSignalFn: FailSignalCallback = () => {};
 
+/**
+ * WP19 — audio trigger callbacks. Fire on player gun discharge (tryFireGun)
+ * and on projectile-hits-target (checkProjectileHits). Default no-ops so unit
+ * tests not concerned with audio can ignore the wiring.
+ */
+type AudioTriggerCallback = () => void;
+let onFireFn: AudioTriggerCallback = () => {};
+let onImpactFn: AudioTriggerCallback = () => {};
+
 /** Returns the live combat state — used by main.ts onRender for mesh sync + window.__combat. */
 export function getCombatState(): CombatState {
   return combatState;
@@ -310,6 +319,8 @@ export function tryFireGun(aircraft: AircraftState): void {
   p.ageSec = 0;
   p.active = true;
   combatState.fireCooldown = FIRE_COOLDOWN_SEC;
+  // WP19 — audio trigger. Default no-op when no callback registered.
+  onFireFn();
 }
 
 /**
@@ -360,6 +371,8 @@ export function checkProjectileHits(objectives: readonly ObjectiveState[]): void
     ) {
       p.active = false;
       target.hp--;
+      // WP19 — audio trigger fires on every hit (including the killing hit).
+      onImpactFn();
       if (target.hp <= 0) {
         target.hp = 0;
         target.destroyed = true;
@@ -497,9 +510,13 @@ export function checkReturnFireHits(aircraft: AircraftState): void {
 export function registerCombatAi(
   gunInputDown: GunInputProvider = () => false,
   failSignal: FailSignalCallback = () => {},
+  onFire: AudioTriggerCallback = () => {},
+  onImpact: AudioTriggerCallback = () => {},
 ): void {
   gunInputDownFn = gunInputDown;
   failSignalFn = failSignal;
+  onFireFn = onFire;
+  onImpactFn = onImpact;
   registerHook(COMBAT_HOOK_NAME, combatAiHook);
 }
 
@@ -508,4 +525,6 @@ export function _resetCombatStateForTests(): void {
   resetCombatState();
   gunInputDownFn = () => false;
   failSignalFn = () => {};
+  onFireFn = () => {};
+  onImpactFn = () => {};
 }

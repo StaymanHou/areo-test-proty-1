@@ -138,4 +138,7 @@ The archive also contains the Phase 2-era Dependency map, Architectural-gaps sec
 
 `... → WP17(DONE) → WP18(DONE) → WP19 + WP20 → WP21 → WP22 → WP23 → ship`.
 
+## Session Pause — 2026-06-07 14:00
+Paused. See `workflow/.session.md` to resume. WP18 shipped (`63e07fa`) + finalized (`863a104`); Phase 3 milestone "30s to flying" CHECKED. Operator-queued next entry: pick WP19 (audio, S — recommended) or WP20 (visual polish, L) at resume. Drive mode: full-autopilot.
+
 Phase 1 and the D14→D27 physics cascade dependency map are preserved in the archived WBS.

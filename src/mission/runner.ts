@@ -45,6 +45,11 @@ export const OUT_OF_BOUNDS_LIMIT = 5000;
 
 export type MissionEvent = 'objectiveChange' | 'statusChange';
 export type MissionEventListener = () => void;
+/**
+ * Reason for a 'failed' status transition. `null` when not failed (or when
+ * the run aborted). Set at fail-evaluation time, cleared on `start()`.
+ */
+export type FailReason = 'crash' | 'timeout' | 'out-of-bounds' | 'hook';
 
 export class MissionRunner {
   private _mission: Mission | null = null;
@@ -60,6 +65,11 @@ export class MissionRunner {
    * pass (after the hook returns). Reset to null in `start()`.
    */
   private _hookFailFlag: string | null = null;
+  /**
+   * WP19 — set whenever the runner transitions to 'failed' via a natural
+   * fail condition (not abort). Read via `getFailReason()`. Cleared in `start()`.
+   */
+  private _failReason: FailReason | null = null;
   private readonly _listeners = new Map<MissionEvent, MissionEventListener[]>();
 
   /**
@@ -77,6 +87,7 @@ export class MissionRunner {
     this._elapsed = 0;
     this._aborted = false;
     this._hookFailFlag = null;
+    this._failReason = null;
     this._hookState = {};
     if (mission.scriptHook !== undefined) {
       const fn = getHook(mission.scriptHook);
@@ -173,6 +184,7 @@ export class MissionRunner {
     // declarative failCondition. Mutually exclusive with crash/timeout/oob.
     if (this._hookFailFlag !== null) {
       this._hookFailFlag = null;
+      this._failReason = 'hook';
       this._status = 'failed';
       this._emit('statusChange');
       return;
@@ -183,6 +195,7 @@ export class MissionRunner {
         aircraft.position.y <= 0 &&
         Math.abs(aircraft.linvel.y) > CRASH_VSPEED_THRESHOLD
       ) {
+        this._failReason = 'crash';
         this._status = 'failed';
         this._emit('statusChange');
         return;
@@ -190,6 +203,7 @@ export class MissionRunner {
     } else if (failCondition === 'timeout') {
       // `parseMission` enforces timeoutSec is present when failCondition='timeout'.
       if (this._elapsed >= mission.timeoutSec!) {
+        this._failReason = 'timeout';
         this._status = 'failed';
         this._emit('statusChange');
         return;
@@ -199,6 +213,7 @@ export class MissionRunner {
         Math.abs(aircraft.position.x) > OUT_OF_BOUNDS_LIMIT ||
         Math.abs(aircraft.position.z) > OUT_OF_BOUNDS_LIMIT
       ) {
+        this._failReason = 'out-of-bounds';
         this._status = 'failed';
         this._emit('statusChange');
         return;
@@ -208,6 +223,15 @@ export class MissionRunner {
 
   getStatus(): MissionStatus {
     return this._status;
+  }
+
+  /**
+   * WP19 — returns the reason for the most recent 'failed' transition, or
+   * null when not failed (or when the run was aborted — aborts do not set a
+   * reason). Read-only of state set at fail-evaluation time.
+   */
+  getFailReason(): FailReason | null {
+    return this._failReason;
   }
 
   /**
