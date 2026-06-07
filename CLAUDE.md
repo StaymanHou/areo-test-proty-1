@@ -158,6 +158,21 @@ const log = await page.evaluate(() => window.__aircraft.getScriptedLog());
 - **Drag-component test extraction at non-zero AoA — surface normal and airflow direction are NOT orthogonal.** When writing a test that isolates the drag component of an `AeroForceResult` at non-zero AoA, the naive approach of "project Δforce onto a single world axis" fails. With identity body quaternion: lift = `q·A·cl·normal_world` (along +Y for a wing); drag = `q·A·cd·airflow_dir_world` (along the airflow direction, e.g. `(0, vDown/|v|, vFwd/|v|)` for a descending flow). At AoA > 0 these are NOT orthogonal, so `force.y` contains both lift AND a drag component (`q·A·cd·airflow_y_hat`), and similarly `force.z` is drag-only only when airflow is purely along ±Z. Two correct approaches: (a) **project ΔF onto the airflow direction** to recover `q·A·Δcd` as a scalar (drag is purely along that direction), then orthogonal-to-airflow Δ ≈ 0 is a sanity check; (b) **solve a 2D linear system** for cl and cd from the baseline force (`F.y = q·A·(cl·1 + cd·airflow_y_hat)`, `F.z = q·A·(cl·0 + cd·airflow_z_hat)` with identity quat). Pattern (a) is simpler for closed-form sanity; pattern (b) recovers both coefficients. **Origin:** WP14.11.5 Phase 2 P2.2 closed-form D18 induced-drag test — initial test asserted `augLiftY ≈ baseLiftY` and failed at 887 vs 910 because Y-axis included drag's Y component (caught at first Vitest run; rewrote to airflow-projection pattern).
 - **Vitest 4.1.4 `exclude` semantics — flipping include/exclude requires a dedicated config file.** The `--exclude` CLI flag is *additive-only* — it adds globs to the config-file `exclude` array but cannot subtract. Positional file-path filters (`vitest run <path>`) also still respect `exclude` and will return "No test files found" if the path matches an excluded glob. To run a normally-excluded subset (e.g. the perf-only tests excluded from `npm run test`), create a dedicated config file with its own `include`/`exclude` and invoke via `--config`. Project convention: `vitest.config.ts` excludes `**/*.perf.test.ts` from default `npm run test`; `vitest.perf.config.ts` includes only `**/*.perf.test.ts` for `npm run test:perf`. **Origin:** SURFACE-2026-05-16-02 / task `perf-flake-isolate` (commit `76963c0`) — perf assertion was load-flaky in the default suite; first plan-time attempt with positional file path failed at act-time verification.
 
+### Per-tick mutable state — debug accessor + test reset are first-class deliverables
+
+When a new module introduces module-level mutable game state read each physics tick (e.g. a mission hook with a pool, AI state machine, or any per-tick singleton), it MUST ship two surfaces alongside the state itself:
+
+1. **A `window.__X` debug accessor exposing a deep-copied snapshot of the state** (gated on `?debug=true`, mirroring `window.__aircraft` + `window.__combat`). Accessors are read-only snapshots — deep-copy the data so verify-self probes can hold the snapshot across ticks without seeing in-flight mutations.
+2. **A `_resetXForTests()` helper that resets the state to a clean baseline** and resets any injected dependencies (input callbacks, signal callbacks). Tests call it from `beforeEach`. Must preserve object identity (allocation-free reset) so external references remain valid.
+
+The canonical template is `src/mission/hooks/combat-ai.ts`:
+- `getCombatState()` — live accessor for render-loop + debug-accessor reuse
+- `resetCombatState()` — per-mission reset called from `main.ts startMission`
+- `_resetCombatStateForTests()` — test-only reset that also clears injected callbacks
+- `window.__combat = { getProjectileSnapshot, getTargetSnapshot, getReturnFireSnapshot, getPlayerHp, ... }` — deep-copy snapshot surfaces
+
+**Why:** Without both surfaces, verify-self cannot disambiguate "system mechanism broken" from "system tuned wrong" — the verify-self subagent observes only DOM/console and can't introspect singleton module state. Adding either retrofit (as happened at WP16 Phase 4 F9b — 3 accessors retrofit mid-workflow) costs a back-loop. Plan both surfaces at the same time you plan the state.
+
 ## Current Phase
 
 **Phase 2 — Mission System MVP** (see `docs/product/roadmap.md`).
