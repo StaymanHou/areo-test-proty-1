@@ -1,7 +1,7 @@
 ---
 stage: wbs
 state: in-progress
-updated: 2026-06-07 — **WP19 DONE (ship commit `7467f10`).** Phase 3 audio milestone CHECKED. Two-phase impl: (1) AudioEngine + engine-loop (sawtooth, throttle→90-340 Hz, 50ms ramp) + wind (filtered procedural pink-noise, airspeed→cutoff+gain, silent below AS=10); (2) one-shot SFX synthesizers (fire/impact/crash) + Safari autoplay resume on first user gesture + 16-slot ring buffer for verify-self introspection. New `MissionRunner.getFailReason()` accessor for the crash-trigger condition. Final gates: Vitest 741/741 + Playwright e2e 47/47 + tsc + build clean. 1 coverage-gap SURFACEd (-07-03, Phase 3 bundle): live crash-trigger verify-self deferred to WP21/WP23 — aerodynamic damping at V_trim spawn keeps |vY| below 2 m/s threshold on scripted dives; wiring is statically obvious and unit-tested at all three layers. **Phase 3 critical path:** `... → WP18(DONE) → WP19(DONE) → WP20 → WP21 → WP22 → WP23 → ship`. WP20 (visual polish, L) is the last Phase 3 content WP; WP21 cross-browser depends on it.
+updated: 2026-06-07 — **WP20 DONE (ship commit `28bc898`).** Phase 3 visual polish milestone CHECKED. Four-phase impl: (1) skybox cloud-blob stamping with deterministic seeded RNG + horizon haze band + DirectionalLight/AmbientLight + PCF soft shadows; (2) procedural Cessna + MiG-15 meshes via new `src/aircraft/aircraft-mesh.ts`; (3) CPU particle system (`src/world/particles.ts`, 256-pool, kind-tagged emit) for muzzle-flash/impact/ground-dust; (4) SURFACE-2026-06-07-02 close (key-hints re-anchored) + SURFACE-2026-06-07-01 close (target visual decoupled from collider). One e2e regression triaged + auto-fixed (Three.js PCFSoftShadowMap deprecation). Final gates: Vitest 793/793 + Playwright e2e 47/47 + tsc both clean + build clean. **Phase 3 critical path:** `... → WP18(DONE) → WP19(DONE) → WP20(DONE) → WP21 → WP22 → WP23 → ship`. WP21 cross-browser QA is the next item — depends on all three Phase-3 polish WPs (WP18+WP19+WP20) which are now all `[x]`. Earlier 2026-06-07 entry: **WP19 DONE (ship commit `7467f10`).** Phase 3 audio milestone CHECKED. Two-phase impl: (1) AudioEngine + engine-loop (sawtooth, throttle→90-340 Hz, 50ms ramp) + wind (filtered procedural pink-noise, airspeed→cutoff+gain, silent below AS=10); (2) one-shot SFX synthesizers (fire/impact/crash) + Safari autoplay resume on first user gesture + 16-slot ring buffer for verify-self introspection. New `MissionRunner.getFailReason()` accessor for the crash-trigger condition. Final gates: Vitest 741/741 + Playwright e2e 47/47 + tsc + build clean. 1 coverage-gap SURFACEd (-07-03, Phase 3 bundle): live crash-trigger verify-self deferred to WP21/WP23 — aerodynamic damping at V_trim spawn keeps |vY| below 2 m/s threshold on scripted dives; wiring is statically obvious and unit-tested at all three layers. **Phase 3 critical path:** `... → WP18(DONE) → WP19(DONE) → WP20 → WP21 → WP22 → WP23 → ship`. WP20 (visual polish, L) is the last Phase 3 content WP; WP21 cross-browser depends on it.
 previous_updated: 2026-06-07 — **WP18 DONE (ship commit `63e07fa`).** Phase 3 onboarding milestone CHECKED. Three-phase impl: (1) inline splash overlay (index.html + main.ts setSplashStage/removeSplash helpers); (2) `KeyHintsOverlay` per-mission overlay with 20s fade tied to fixed-physics-tick timer (combat adds Fire/Space); (3) `tests/e2e/time-to-airborne.spec.ts` gate ≤30s budget (measured 1.1s, 27× safety margin). Final gates: Vitest 708/708 + Playwright e2e 42/42 + tsc + build clean. 1 cosmetic SURFACE filed (-07-02 lil-gui occlusion in `?debug=true` only; WP20 candidate). Test-only WP: `tests/e2e/phase2-integration.spec.ts` (8 new tests — 4 mission-select→play→terminal→return for each of the four missions + 4 FPS sanity probes at ≥30 FPS) + tightened `phugoid-probe.spec.ts` envelopes. Final gates: Vitest 700/700 + Playwright e2e 35/35 + tsc + build clean. All Phase 2 WPs `[x]`; Phase 3 unblocks.
 ---
 
@@ -97,17 +97,18 @@ The archive also contains the Phase 2-era Dependency map, Architectural-gaps sec
 - [x] Crash SFX — low-saw + filtered-noise envelope (800ms); fired from main.ts statusChange handler when `getFailReason() === 'crash'`. Added `MissionRunner.getFailReason()` accessor.
 - [x] Safari audio check — AudioContext lazily created in `start()` and resumed on first user gesture (mission-select click + deep-link entry path); try/catch with console.warn for rare reject case
 
-### WP20: Visual polish pass
+### WP20: Visual polish pass — DONE (ship commit `28bc898`, 2026-06-07)
 **Description:** Replace placeholders. Nicer skybox, textured terrain (optional terrain upgrade to heightmap — swap via `terrain.ts` interface), better aircraft GLTF, basic particle effects (contrails, explosions, gunfire).
 **Phase:** 3
 **Dependencies:** WP17
 **Size:** L
 **Tasks:**
-- [ ] Skybox: chosen art direction, 6 hi-res faces
-- [ ] Terrain: decide upgrade vs keep flat (swap heightmap impl if upgrade)
-- [ ] Aircraft: final GLTF with materials, animated control surfaces
-- [ ] Particles: contrails, explosion, muzzle flash
-- [ ] Lighting: directional sun + ambient
+- [x] Skybox: cloud-blob stamping (deterministic seeded RNG, 6 blobs per side face) + horizon haze band; 256→512 face resolution. Procedural-improved path chosen over image-based cubemap to keep bundle deterministic.
+- [x] Terrain: kept flat per D4 commitment + spec acceptance-criterion-5 default; texture unchanged from Phase 1. Heightmap upgrade deferred (still a clean swap via `terrain.ts` interface if Phase 3 polish later wants it).
+- [x] Aircraft: procedural primitive meshes for Cessna (cylindrical fuselage + nose cone + high-wing struts + extruded fin) and MiG-15 (intake cone + dorsal hump + 35°-swept wings/h-stab/v-fin via ExtrudeGeometry) via new `src/aircraft/aircraft-mesh.ts`. GLTF + animated control surfaces deferred to v1.x per spec out-of-scope.
+- [x] Particles: CPU-side `src/world/particles.ts` (256-pool, kind-tagged emit) with muzzle-flash (warm-yellow, 8p × 0.15s), impact (hot-orange, 16p × 0.4s), ground-dust (brown-grey, 24p × 0.8s, half-gravity). Shared Points mesh with AdditiveBlending. Wired to combat-ai fire/hit callbacks + main.ts crash branch. window.__particles debug accessor.
+- [x] Lighting: HemisphereLight replaced with DirectionalLight (warm sun at (200,220,60), intensity 1.0) + AmbientLight (cool sky-tint, 0.45). PCF soft shadow, 1024² map, ±250m frustum, bias -0.0005. Aircraft/landmarks already had cast/receive set.
+- [x] **Backlog close (Phase 4 polish sweep):** SURFACE-2026-06-07-02 (key-hints re-anchored bottom-left to clear lil-gui), SURFACE-2026-06-07-01 (target visual decoupled from AABB — collider unchanged, visual is now a 4m × 20m square ground building).
 
 ### WP21: Cross-browser QA
 **Description:** Chrome, Safari, Firefox latest on desktop. 60fps on mid-range laptop. Fix compat regressions.
@@ -136,7 +137,7 @@ The archive also contains the Phase 2-era Dependency map, Architectural-gaps sec
 
 ## Critical path
 
-`... → WP17(DONE) → WP18(DONE) → WP19(DONE) → WP20 → WP21 → WP22 → WP23 → ship`.
+`... → WP17(DONE) → WP18(DONE) → WP19(DONE) → WP20(DONE) → WP21 → WP22 → WP23 → ship`.
 
 ## Session Pause — 2026-06-07 15:00
 Paused. See `workflow/.session.md` to resume. WP19 shipped (`7467f10`) + finalized (`b03140e`); Phase 3 milestone "Audio: engine, wind, weapon, crash sounds" CHECKED. Operator-queued next entry: WP20 visual polish (L) — recommended `/feature-spec` given art-direction scope. Drive mode: full-autopilot.

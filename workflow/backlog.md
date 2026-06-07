@@ -20,16 +20,16 @@ Paused. See `workflow/.session.md` to resume. 4 SURFACEs closed this session (-1
 - **Suggested action:** Two options at WP21 (cross-browser QA) or WP23 (playtesting): (a) lower `CRASH_VSPEED_THRESHOLD` from 2 to ~0.5 m/s — would make casual crashes feel more impactful AND make the test scenario reach the crash branch (but may surface false-positive crashes on soft landings — would need playtest re-validation); (b) add a dedicated test-only fixture mission with a tiny mass / huge thrust airframe that crashes deterministically under scripted input; (c) wait for WP23 playtest to surface a real crash and assert the SFX manually. Option (c) is cheapest and aligns with the operator-as-external Phase 3 re-validation pattern.
 - **Status:** pending (Phase 3 — bundle with WP21/WP23)
 
-### SURFACE-2026-06-07-02 — key-hints overlay occluded by lil-gui debug panel in ?debug=true mode
+### SURFACE-2026-06-07-02 — key-hints overlay occluded by lil-gui debug panel in ?debug=true mode [RESOLVED 2026-06-07]
 - **Source:** feature:verify-self (WP18 Phase 2, 2026-06-07)
 - **Target level:** task workflow (low; cosmetic)
 - **Type:** ui-collision / dev-only
 - **Priority:** low
 - **Summary:** The WP18 key-hints overlay anchors top-right (`top: 5rem; right: 1rem`); the lil-gui debug panel anchors right-edge full-height when `?debug=true` is set. End users in the production build do not see lil-gui and the hints display correctly, but agents/devs verifying under `?debug=true` see the hints text fully occluded. DOM-state and Vitest+e2e gates all confirm the overlay is correctly mounted with full opacity, correct content, and `pointer-events: none`. The collision is a screen-real-estate question, not a hint-overlay bug.
 - **Suggested action:** Two options at WP20 visual polish: (a) move hints to a different anchor (e.g. bottom-left or center-bottom) — would also benefit production users by keeping them out of the airspeed/altitude HUD reading zone; (b) move lil-gui to a collapsible / left-anchored container. Option (a) is cheaper and visually nicer for all users.
-- **Status:** pending
+- **Status:** **RESOLVED 2026-06-07 by feature WP20 Phase 4 P4.1.** Picked option (a) — re-anchored `src/hud/key-hints.ts` CSS from `top: 5rem; right: 1rem` to `bottom: 1.5rem; left: 1rem`. Verify-self confirmed bottom=24px / left=16px computed; no lil-gui overlap under `?debug=true`. As predicted in the suggested-action note, the bottom-left anchor also benefits production users by keeping the hints clear of the airspeed/altitude HUD reading zone.
 
-### SURFACE-2026-06-07-01 — Combat-target "ground target" spec interpretation: y=0 + halfExtents.y=8 vs. y=2 + halfExtents.y=2
+### SURFACE-2026-06-07-01 — Combat-target "ground target" spec interpretation: y=0 + halfExtents.y=8 vs. y=2 + halfExtents.y=2 [RESOLVED 2026-06-07]
 - **Source:** feature:build (WP16 Phase 5 P5.2, 2026-06-07)
 - **Target level:** product:wbs (Phase 3 polish — gameplay re-validation)
 - **Type:** spec-deviation / tuning
@@ -37,7 +37,7 @@ Paused. See `workflow/.session.md` to resume. 4 SURFACEs closed this session (-1
 - **Summary:** Phase 3 outcomes + Acceptance Criteria 3 spec the combat target as a "stationary ground target" with original AABB `(4,2,4)` centered at y=2 — a 4m-tall object on the ground. Phase 5 P5.2 retuned the target to y=0 with halfExtents `(10,8,10)` — a 16m-tall hazard-orange box that extends BELOW ground (y range [-8, +8]). Visually the player sees the upper half of the box. The "ground target" intent is structurally preserved (target IS at ground level) but the visual shape differs from the WP16-spec interpretation.
 - **Context:** Tuned this way because the mig15 airframe (combat.json `config:"mig15"`) settles into a ground-cruise corridor at y≈0; intersecting it requires the AABB to span y∈[-8, +8]. With Cessna at V_trim cruise (y=50+) the player never reaches y=2; with mig15 ground-cruise the player y=0 only intersects a y=2 box edge-on. Casual playtest via scripted-input confirmed both win + loss paths reachable with the y=0 + halfExtents.y=8 tuning.
 - **Suggested action:** At Phase 3 visual polish (WP20) and/or Phase 3 playtest (WP23), re-validate the visual interpretation with an external tester. Two viable evolutions: (a) split AABB-for-hit-detection vs visual-mesh-size — keep AABB tall but render the mesh as a low ground building; (b) raise mig15 cruise altitude band (airframe tune) so target can return to y=2 ground level; (c) accept current state.
-- **Status:** pending
+- **Status:** **RESOLVED 2026-06-07 by feature WP20 Phase 4 P4.2.** Picked option (a) — visual mesh decoupled from hit-detection AABB. Collider unchanged (AABB at y=0, halfExtents=(10,8,10) — gameplay-tuned at WP16 Phase 5 stays intact). Visual mesh changed from `BoxGeometry(20, 16, 20)` straddling y∈[-8,+8] to `BoxGeometry(20, 4, 20)` positioned at `y = t.position.y + TARGET_VISUAL_Y_OFFSET = 2`, giving y∈[0,4] — a low ground building sitting ON the terrain. Added `castShadow=true` to the target visual. Verify-self confirmed correct short/wide ground-building shape across mission re-entries.
 
 ### SURFACE-2026-06-06-09 — Cessna baseline airframe cannot take off from rest on the 600m runway; "true takeoff roll" gameplay structurally infeasible at current T/W
 - **Source:** feature:build (takeoff-landing-mission Phase 1 P1.1, 2026-06-06)
