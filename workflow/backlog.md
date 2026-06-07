@@ -222,15 +222,14 @@ Paused. See `workflow/.session.md` to resume. 4 SURFACEs closed this session (-1
 - **Rationale for low priority:** the flake is observed about 1 in 3 full-suite runs and is always resolved by a single re-run. It does not block any feature. The perf-proxy intent (catch a regression that would 10× the per-tick cost) is still useful but a 50ms threshold at 1000 calls = 50 μs/call is too tight a margin for wall-clock measurement on a loaded CPU.
 - **Status:** **RESOLVED 2026-06-06 by task `perf-flake-isolate`.** Picked suggested-action (b): perf test extracted to `src/aircraft/physics-core/flightmodel.perf.test.ts`; default `npm run test` excludes `**/*.perf.test.ts` (640/640 GREEN, was 641); new `npm run test:perf` runs perf suite via dedicated `vitest.perf.config.ts` (1/1 GREEN in 33ms isolation). Empirical pivot during act: positional file-path filters still respect `exclude`, so a dedicated `--config` file is the cleanest way to flip include/exclude for the perf invocation. Regression signal preserved; codify-cycle tax eliminated.
 
-### SURFACE-2026-05-12-02 — Test-only probe missions are listed on player-facing mission-select
+### SURFACE-2026-05-12-02 — Test-only probe missions are listed on player-facing mission-select [RESOLVED 2026-06-06]
 - **Source:** task:act (WP14.5 T1, 2026-05-12)
 - **Target level:** feature:plan (small UX cleanup) or task
 - **Type:** test-fixture / UX-papercut
 - **Priority:** low
 - **Summary:** The three `phugoid-probe-{low,mid,high}` JSON files (test fixtures for WP14.5's ≥30s probe) had to be added to `public/missions/index.json` because `src/main.ts:353` gates `?mission=<id>` deep-link auto-start on manifest membership (`missionManifest.some(m => m.id === requestedMissionId)`). They now appear on the mission-select screen alongside Free Flight and Waypoint Patrol.
 - **Context:** Two clean fixes possible — (a) make the deep-link permissive: drop the manifest check, try to load the JSON directly, show error screen on fetch failure (the load already has the error path); (b) add a `hidden?: boolean` field to manifest entries and filter on render. Option (a) is smaller and also enables direct-URL access to any mission JSON that exists, which is useful for dev/test. Option (b) preserves manifest-as-allow-list discipline. Don't pick until someone asks.
-- **Suggested action:** Pick (a) or (b) after WP14.5 is closed; tiny task workflow.
-- **Status:** pending
+- **Status:** **RESOLVED 2026-06-06 by option (a) — manifest pre-check removed.** Two-part close: (1) the three `phugoid-probe-{low,mid,high}` entries were pruned from `public/missions/index.json` at the `scripted-input-harness` finalize bundle (commit `14975f4`); (2) the manifest pre-check at `src/main.ts:431-439` was removed by SURFACE-2026-06-06-07 (`phugoid-probe-harness-refactor` task) so deep-link reachability no longer requires manifest membership. Together: probe missions don't appear in the home menu (manifest pruned) but `?mission=phugoid-probe-low` still works for e2e tests (deep-link delegates to `startMission` which fetches JSON directly). Confirmed by WP17 — the 3 phugoid-probe e2e tests still GREEN under this regime.
 
 ### SURFACE-2026-05-11-02 — β1+β4 stable state is a descending glide, not level cruise (parameter-tuning gap)
 - **Source:** feature:build (WP6.5 Phase 3 verify-self, 2026-05-11)

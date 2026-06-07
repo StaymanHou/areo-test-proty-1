@@ -1,8 +1,8 @@
 ---
 stage: wbs
 state: in-progress
-updated: 2026-06-07 — WP16 combat mission DONE (ship commit `5825f09`). Closes Phase 2's last gameplay WP. Combat-ai hook ships per D11 (single hook, no FSM); MissionRunner extended with hook-driven fail flag for player-HP=0 loss path; DomHud extended with `setCombatHP(player, target)` for combat HP rows; mig15 airframe via per-mission `config:` plumbing (SURFACE-2026-06-06-06). **Phase 2 critical path:** `... → WP16(DONE) → WP17(NEXT, Phase 2 verification + level-cruise probe) → Phase 2 exit → Phase 3 ship work`.
-previous_updated: 2026-06-06 — archived Phase 1 (WP1-WP9.6) + Phase 2 completed WPs (WP10-WP15) into `archive/phase-1-flight-poc/wbs-cycle-WP1-WP9.6.md` and `archive/phase-2-physics-cascade/wbs-cycle-WP10-WP15.md` per SURFACE-2026-06-06-08 (size-guard sweep). Live `wbs.md` retained the active critical-path WPs (WP16 + WP17) inline plus Phase 3 WPs inline. No work-content changes — pure structural curation.
+updated: 2026-06-07 — **WP17 DONE (ship commit `88054eb`).** Phase 2 exit gate closed. Test-only WP: `tests/e2e/phase2-integration.spec.ts` (8 new tests — 4 mission-select→play→terminal→return for each of the four missions + 4 FPS sanity probes at ≥30 FPS) + tightened `phugoid-probe.spec.ts` envelopes (per-probe spawn-relative `maxAbsAltDelta` / `maxAbsPitchDelta` gates at ≥1.5× baseline maxima). Final gates: Vitest 700/700 + Playwright e2e 35/35 + tsc + build clean. **Phase 2 critical path complete:** `... → WP16(DONE) → WP17(DONE) → Phase 2 exit ✓ → WP18 + WP19 + WP20 → WP21 → WP22 → WP23 → ship`. All Phase 2 WPs `[x]`; Phase 3 unblocks.
+previous_updated: 2026-06-07 — WP16 combat mission DONE (ship commit `5825f09`). Closes Phase 2's last gameplay WP. Combat-ai hook ships per D11 (single hook, no FSM); MissionRunner extended with hook-driven fail flag for player-HP=0 loss path; DomHud extended with `setCombatHP(player, target)` for combat HP rows; mig15 airframe via per-mission `config:` plumbing (SURFACE-2026-06-06-06). **Phase 2 critical path:** `... → WP16(DONE) → WP17(NEXT, Phase 2 verification + level-cruise probe) → Phase 2 exit → Phase 3 ship work`.
 ---
 
 # Work Breakdown Structure
@@ -60,15 +60,15 @@ The archive also contains the Phase 2-era Dependency map, Architectural-gaps sec
 - [x] Mission JSON: `scriptHook: 'combat-ai'` + a `destroy-target` objective + `config: "mig15"` for casual playability
 - [x] Win: target destroyed (objective.completed flips in same tick per D11). Fail: playerHp=0 → `MissionRunner.setHookFailFlag('shot down')` new API extension
 
-### WP17: Phase 2 verification
+### WP17: Phase 2 verification — DONE (ship commit `88054eb`, 2026-06-07)
 **Description:** All four mission types playable end-to-end via mission-select. Exit-criteria check. Adds a ≥30s level-cruise probe per arch.md Rev 2026-05-12 D13 to validate β5 (`clAlphaDot`) damping under non-zero throttle, since phugoid behavior hides in single-period observation.
 **Phase:** 2
 **Dependencies:** WP13, WP14, WP15, WP16
 **Size:** S
 **Tasks:**
-- [ ] End-to-end mission-select → play → win/lose → return-to-select for each of the four mission types.
-- [ ] ≥30s Playwright probe at non-zero throttles (`0.05`, `0.15`, `0.4`) — assert bounded |altitude − spawn| and bounded pitch oscillation across the full window. Phugoid coverage per D13. (Memory `feedback_verify_self_envelope.md` applies.)
-- [ ] FPS check at Chromium across all four mission types (cross-browser sweep remains WP21).
+- [x] End-to-end mission-select → play → win/lose → return-to-select for each of the four mission types.
+- [x] ≥30s Playwright probe at non-zero throttles (`0.05`, `0.15`, `0.4`) — assert bounded |altitude − spawn| and bounded pitch oscillation across the full window. Phugoid coverage per D13. (Memory `feedback_verify_self_envelope.md` applies.)
+- [x] FPS check at Chromium across all four mission types (cross-browser sweep remains WP21).
 
 ---
 
@@ -136,6 +136,6 @@ The archive also contains the Phase 2-era Dependency map, Architectural-gaps sec
 
 ## Critical path
 
-`... → WP16(DONE) → WP17(NEXT, Phase 2 verification) → Phase 2 exit → WP18 + WP19 + WP20 → WP21 → WP22 → WP23 → ship`.
+`... → WP16(DONE) → WP17(DONE) → Phase 2 exit ✓ → WP18 + WP19 + WP20 → WP21 → WP22 → WP23 → ship`.
 
 Phase 1 and the D14→D27 physics cascade dependency map are preserved in the archived WBS.
