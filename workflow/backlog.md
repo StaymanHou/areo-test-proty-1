@@ -10,6 +10,16 @@ Paused. See `workflow/.session.md` to resume. 4 SURFACEs closed this session (-1
 
 ## Open
 
+### SURFACE-2026-06-13-01 — Runtime fetch sites must use `import.meta.env.BASE_URL` for sub-path deploys [RESOLVED 2026-06-13]
+- **Source:** feature:build (WP22, 2026-06-13 — caught during GitHub Pages re-pick smoke)
+- **Target level:** task workflow (docs / lint rule)
+- **Type:** code-review-rule / tech-debt-prevention
+- **Priority:** low
+- **Summary:** Until WP22, all three runtime fetch sites (`src/mission/loader.ts:16` and `:28`, `src/engine/scripted-input.ts:configNameToPath` lines 156-157) used hardcoded leading-`/` absolute paths like `'/missions/${id}.json'` and `'/config/aircraft.json'`. These worked on `localhost:5173/` and `localhost:4173/` (Vite root deploy) but silently broke on any sub-path deploy because the browser would resolve them against the document origin, not the Vite `base`. WP22's GitHub Pages re-pick (URL path `<user>.github.io/areo-test-proty-1/`) surfaced this immediately on first probe.
+- **Fix shipped:** all 3 sites now prepend `${import.meta.env.BASE_URL}` (evaluates to `/` in dev so existing tests stay green; evaluates to `/areo-test-proty-1/` in prod). Vitest 793/793 + e2e 47/47 + tsc clean post-fix.
+- **Suggested action:** at next opportunity (task workflow, ≤30 min): (a) add a lint rule / CI grep for hardcoded leading-`/` fetch URLs in `src/` (`fetch\\(['\`]/`), or (b) document the convention in CONVENTIONS.md so future code review catches it. Option (a) is stricter; (b) is cheaper. Either prevents the regression from re-entering — a future contributor or LLM-generated patch would naturally reach for `'/missions/...'` again.
+- **Status:** **RESOLVED 2026-06-13 inline at WP22 (commit pending).** Followup task-workflow optional.
+
 ### SURFACE-2026-06-07-03 — crash SFX trigger cannot be live-verified via scripted-input dive
 - **Source:** feature:verify-self (WP19 Phase 2, 2026-06-07)
 - **Target level:** task workflow (low; coverage gap, not a wiring bug)
@@ -18,7 +28,7 @@ Paused. See `workflow/.session.md` to resume. 4 SURFACEs closed this session (-1
 - **Summary:** WP19 Phase 2 wires `audioEngine.triggerCrash()` from `missionRunner.on('statusChange')` when `status === 'failed' && !wasAborted() && getFailReason() === 'crash'`. The wiring is statically obvious (one `&&` chain over three already-unit-tested components: runner's `getFailReason` set to `'crash'` at the y≤0 + |vY|>2 branch; AudioEngine's `triggerCrash` recording the ring entry; and main.ts's single-line condition). However, verify-self could not produce a live crash via scripted-input. Tried (a) free-flight + `hold:KeyS@0:5.0,hold:Throttle=1.0@0:5.0`, (b) free-flight + `hold:KeyS@0:6.0,hold:Throttle=0@0:6.0`, (c) combat (mig15 airframe) + `hold:KeyS@0:8.0,hold:Throttle=0@0:8.0`. All three result in the aircraft sliding/gliding onto terrain with |vY| ≈ 0 — below the runner's `CRASH_VSPEED_THRESHOLD = 2` m/s. The D14→D27-tuned aerodynamic damping is by design strong enough to dissipate vertical velocity before terrain contact at V_trim spawn — same physics that makes SURFACE-2026-06-06-09 (Cessna T/W=0.6 can't take off from rest) what it is.
 - **Context:** This is NOT a wiring defect. The 4 live verify-self outcomes that probed wiring (fire trigger ✓, impact trigger ✓, autoplay-unlock ✓, console clean ✓) all PASS. Unit-level coverage (runner `getFailReason`, AudioEngine `triggerCrash` recording) all GREEN at 741/741 Vitest. The crash trigger's positive-case live verification is the missing piece. Coverage-only gap.
 - **Suggested action:** Two options at WP21 (cross-browser QA) or WP23 (playtesting): (a) lower `CRASH_VSPEED_THRESHOLD` from 2 to ~0.5 m/s — would make casual crashes feel more impactful AND make the test scenario reach the crash branch (but may surface false-positive crashes on soft landings — would need playtest re-validation); (b) add a dedicated test-only fixture mission with a tiny mass / huge thrust airframe that crashes deterministically under scripted input; (c) wait for WP23 playtest to surface a real crash and assert the SFX manually. Option (c) is cheapest and aligns with the operator-as-external Phase 3 re-validation pattern.
-- **Status:** pending (Phase 3 — bundle with WP21/WP23)
+- **Status:** pending (Phase 3 — bundle with WP23 playtest; WP21 cross-browser was dropped 2026-06-07 so WP23 is the sole remaining catch-point for this coverage gap in v1)
 
 ### SURFACE-2026-06-07-02 — key-hints overlay occluded by lil-gui debug panel in ?debug=true mode [RESOLVED 2026-06-07]
 - **Source:** feature:verify-self (WP18 Phase 2, 2026-06-07)

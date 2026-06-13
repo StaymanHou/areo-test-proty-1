@@ -153,8 +153,9 @@ function parseConfigName(raw: string | null, warnings: string[]): string | null 
  * additional validation here.
  */
 export function configNameToPath(name: string | null): string {
-  if (name === null) return '/config/aircraft.json';
-  return `/config/aircraft-${name}.json`;
+  const base = import.meta.env.BASE_URL;
+  if (name === null) return `${base}config/aircraft.json`;
+  return `${base}config/aircraft-${name}.json`;
 }
 
 /** Tick rate (Hz) — exported for the runner to convert seconds<->ticks. */

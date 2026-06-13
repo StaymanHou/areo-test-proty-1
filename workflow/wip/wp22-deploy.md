@@ -10,14 +10,14 @@ size: XS
 # Feature: WP22 — Deploy + share
 
 **Workflow:** feature
-**State:** plan (complete)
+**State:** plan (complete) [updated 2026-06-13: host re-pick — Cloudflare → GitHub Pages]
 **Created:** 2026-06-13
 
 ## Problem Statement
 
-Phase 3 milestone "Deploy to a public URL, shareable link" is unmet — the only remaining Phase-3 blocker before WP23 playtesting and v1 ship. The build pipeline already produces a clean static `dist/` (verified: 2.8 MB, ~980 KB gzipped, no `.wasm` files since Rapier is inlined). Host has been chosen at research: **Cloudflare Pages** (unlimited bandwidth, no commercial-use restriction, no hard-cap pause). This WP is purely configuration + onboarding — no application code changes beyond a Node-version pin and a deployment readme entry. Exit: a public `*.pages.dev` URL where the home screen loads, all four missions are reachable, no debug UI leaks, no console errors.
+Phase 3 milestone "Deploy to a public URL, shareable link" is unmet — the only remaining Phase-3 blocker before WP23 playtesting and v1 ship. The build pipeline already produces a clean static `dist/` (verified: 2.8 MB, ~980 KB gzipped, no `.wasm` files since Rapier is inlined). Host re-picked at operator request 2026-06-13 — **was** Cloudflare Pages (locked out: lost 2FA on dormant account); **now** GitHub Pages (zero additional accounts/auth, native GitHub Actions deploy). Trade-offs accepted: 100 GB/mo soft bandwidth (sufficient for 3–5 playtesters), `<user>.github.io/<repo>` URL path requires Vite `base` config, `.nojekyll` file to skip Jekyll processing. WP is purely configuration + onboarding — no application code changes beyond Vite base path, `.nojekyll`, GitHub Actions workflow, and 404 SPA fallback. Exit: public URL `https://staymanhou.github.io/areo-test-proty-1/` where home screen loads, all four missions reachable, no debug UI leaks, no console errors beyond the pre-existing `favicon.ico` 404 noise.
 
-**3rd-party note:** Cloudflare Pages is the 3rd-party dependency. No probe WP exists, but the research step gathered the constraints; onboarding is dashboard-driven (no API integration shipping in code). Not flagged as a "known unknown" blocking plan-time decisions; if the GitHub-auto-deploy flow hits friction, fall back to `wrangler pages deploy dist` CLI.
+**3rd-party note:** GitHub Pages is the 3rd-party dependency. Operator already has GitHub auth (remote configured: `git@github.com:StaymanHou/areo-test-proty-1.git`). No probe WP needed — Pages deploys via standard `actions/deploy-pages` action with well-documented inputs.
 
 **Frontend-only static deploy** — no backend, no DB (per CLAUDE.md tech stack). Bundle is 2.89 MB unminified, ~980 KB gzipped (SURFACE-04-19-01).
 
@@ -108,10 +108,15 @@ Fallback if Cloudflare Pages onboarding hits friction: **Netlify** (next-best on
 
   - [x] P1.1 Add `.nvmrc` pinning Node 22 (matches local + Cloudflare default; cheap drift insurance)  <!-- status: done -->
   - [x] P1.2 Local pre-deploy smoke: `npm run build` + `npm run preview` then manually hit `localhost:4173/` — main menu + 4 mission tiles + production debug-gate (lil-gui 0, __aircraft accessor absent) all confirmed; positive control at `?debug=true` mounted 15 panels + accessor. Only console entry: `favicon.ico` 404 (harmless, no favicon shipped — flagging as backlog candidate, NOT a blocker).  <!-- status: done -->
-  - [x] P1.3 Commit deploy-prep changes to a branch (`wp22-deploy`, commit `113a2d5`). Pre-existing `roadmap.md`/`wbs.md`/`backlog.md` modifications left unstaged for separate housekeeping (operator decision).  <!-- status: done -->
-  - [ ] P1.4 **MANUAL — operator step:** create the Cloudflare Pages project via dashboard (or run `npx wrangler pages project create test-proj` if operator has `wrangler` authenticated). Connect to the GitHub repo `main` branch (or the `wp22-deploy` branch for the first deploy). Build settings: framework preset = Vite (or None); build command = `npm run build`; output directory = `dist`; root directory = `/`; Node version env var `NODE_VERSION=22` (belt + suspenders alongside `.nvmrc`). Save. **Pause point — orchestrator stops here** (this is an external system requiring operator credentials; verify-self cannot drive Cloudflare dashboard auth).  <!-- status: in-progress (operator action required) -->
-  - [ ] P1.5 Push the branch to GitHub and either merge to `main` (triggers auto-build) OR trigger a manual deploy via dashboard "Create deployment" button. Wait for build to complete (≤2 min expected per local timing).  <!-- status: NOT-STARTED -->
-  - [ ] P1.6 Record the deployed URL (e.g. `https://test-proj-abc.pages.dev`) in the WIP file under `## Deployment` for verify-self + verify-human + future reference.  <!-- status: NOT-STARTED -->
+  - [x] P1.3 Commit deploy-prep changes to a branch (`wp22-deploy`, commit `113a2d5`); branch then fast-forward-merged into `main` at operator request (2026-06-13).  <!-- status: done -->
+  - [x] P1.4-gh Add `vite.config.ts` with `base: '/areo-test-proty-1/'`. Confirmed Vite propagates this to `index.html` asset URLs (`/areo-test-proty-1/assets/...`) AND to `import.meta.env.BASE_URL` for runtime fetch sites.  <!-- status: done -->
+  - [x] P1.5-gh Add `public/.nojekyll` (empty file). Vite copies it to `dist/.nojekyll` on build (verified).  <!-- status: done -->
+  - [x] P1.6-gh 404 SPA fallback handled in the workflow's "Copy index.html to 404.html" step (P1.7-gh), not as a separate file/script.  <!-- status: done (deferred to workflow step) -->
+  - [x] P1.7-gh Add `.github/workflows/deploy.yml` — checkout, setup-node@v4 (reads `.nvmrc`), `npm ci`, `npm run build`, `cp dist/index.html dist/404.html`, `actions/upload-pages-artifact@v3`, `actions/deploy-pages@v4`. Permissions: `pages: write, id-token: write`. Concurrency group `pages` with `cancel-in-progress: false`.  <!-- status: done -->
+  - [x] P1.7b-gh **DISCOVERY — F25 (note-and-continue):** runtime fetch sites at `src/mission/loader.ts:16,28` and `src/engine/scripted-input.ts:156-157` used hardcoded leading-`/` absolute paths (`'/missions/...'`, `'/config/...'`). These break under any sub-path deploy. Fixed by prepending `import.meta.env.BASE_URL` (evaluates to `/` in dev, `/areo-test-proty-1/` in prod). 3 fetch sites total. Vitest 793/793 + e2e 47/47 + tsc clean post-fix. **SURFACE-2026-06-13-01 filed** (low priority — fix in WP22; documents the leading-`/`-fetch anti-pattern for future code review).  <!-- status: done -->
+  - [x] P1.8-gh Local re-smoke after base-path fix: `npm run build` clean, `dist/index.html` references `/areo-test-proty-1/assets/...`, `dist/.nojekyll` present. **Live preview probe** (P1.4 was originally Cloudflare-shaped but `vite preview` DOES honor `base` so I ran it): navigated to `http://localhost:4173/areo-test-proty-1/`, splash cleared, 4 mission tiles rendered, no path-resolution errors. Drilled into `?mission=free-flight&debug=true`, `window.__aircraft.getState()` showed altitude=66.2m + airspeed=49.8 m/s + all finite at 5s. Production debug-gate off-by-default confirmed (lil-gui 0 without `?debug=true`).  <!-- status: done -->
+  - [ ] P1.9-gh **OPERATOR ACTION:** push `main` to GitHub (`git push origin main`), then enable Pages in the repo: Settings → Pages → Source = "GitHub Actions" (one-time click; the workflow handles the rest). The workflow auto-runs on push.  <!-- status: in-progress (operator action required) -->
+  - [ ] P1.10-gh Wait for the deploy workflow run; record the deployed URL (`https://staymanhou.github.io/areo-test-proty-1/`) under `## Deployment` for verify-self.  <!-- status: NOT-STARTED -->
   - [ ] verify-auto  <!-- status: NOT-STARTED -->
     - Standard local pre-deploy gates only: `npm run build` clean, `npx tsc --noEmit` clean, `npm run test` 793/793 green, `npm run test:e2e` 47/47 green. No new tests added — this WP is config-only.
   - [ ] verify-self  <!-- status: NOT-STARTED -->
@@ -122,22 +127,27 @@ Fallback if Cloudflare Pages onboarding hits friction: **Netlify** (next-best on
     - No new behavior to codify. This WP ships infrastructure, not features. The existing test suite already covers all in-product invariants. Skip codify (record decision in retrospect).
 
 ## Current Node
-- **Path:** Feature > Phase 1 > P1.4 (operator pause point)
-- **Active scope:** P1.4 (operator-only Cloudflare Pages onboarding)
-- **Blocked:** P1.5, P1.6, verify-self, verify-human — all blocked on P1.4 (external system requires operator credentials)
-- **Unvisited:** P1.5 (push + auto-build) → P1.6 (record URL) → verify-auto → verify-self → verify-human → verify-codify (skip-record)
-- **Open discoveries:** favicon.ico 404 on root load — harmless dev/preview console noise; same will happen at Cloudflare. Candidate for a 1-line backlog SURFACE (very low priority — adds a 1×1 transparent .ico to public/ to silence; could also be folded into WP23 polish based on operator preference).
+- **Path:** Feature > Phase 1 > P1.9-gh (operator pause point)
+- **Active scope:** P1.9-gh (operator: `git push origin main` + Pages source = "GitHub Actions" toggle)
+- **Blocked:** P1.10-gh, verify-self, verify-human — all blocked on P1.9-gh (push + Pages enable requires operator credentials)
+- **Unvisited:** P1.10-gh (record URL) → verify-auto → verify-self → verify-human → verify-codify (skip-record)
+- **Open discoveries:** favicon.ico 404 (cosmetic, harmless); BASE_URL anti-pattern (resolved inline, filed SURFACE-2026-06-13-01 for future code review).
 
 ## Deployment
-- **Branch:** `wp22-deploy` (pushed by P1.5)
-- **Commit ready to deploy:** `113a2d5` (chore(wp22): deploy prep — pin Node 22 + plan file)
-- **Public URL:** (to be recorded at P1.6 after first deploy)
-- **Cloudflare project name:** TBD by operator at P1.4
+- **Repo:** `git@github.com:StaymanHou/areo-test-proty-1.git`
+- **Branch:** `main`
+- **Commits ready to push:**
+  - `113a2d5` — chore(wp22): deploy prep — pin Node 22 + plan file
+  - `b17fe15` — chore(wp22): update WIP — P1.1–P1.3 complete, paused at P1.4
+  - (uncommitted ahead: vite.config.ts + .nojekyll + .github/workflows/deploy.yml + the BASE_URL fix + WIP update)
+- **Public URL (expected):** `https://staymanhou.github.io/areo-test-proty-1/`
+- **One-time operator click:** Settings → Pages → Source = "GitHub Actions"
 
 ## Discoveries
 <!-- Format: [SURFACED-<date>] <target node> — <summary>
      Each entry is also logged to workflow/backlog.md -->
 - [SURFACED-2026-06-13] Phase 1 — `favicon.ico` 404 on root load is the only console noise in the production build. Low/cosmetic. Decision: surface as 1-line note here; defer backlog filing until verify-self confirms it persists on the live deploy (which it will). Operator may opt to silence with a tiny `public/favicon.ico` or accept and close.
+- [SURFACED-2026-06-13] P1.7b-gh — Runtime fetch sites in `src/mission/loader.ts` (×2) and `src/engine/scripted-input.ts` (`configNameToPath`, ×1) used hardcoded leading-`/` absolute paths, which break under any sub-path deploy. Resolved inline by prepending `import.meta.env.BASE_URL`. File SURFACE-2026-06-13-01 documents the anti-pattern for future code review.
 
 ---
 

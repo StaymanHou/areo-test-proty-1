@@ -13,7 +13,7 @@ import { parseMission } from './parse';
 import type { Mission, MissionManifestEntry } from './types';
 
 export async function loadMission(id: string): Promise<Mission> {
-  const url = `/missions/${id}.json`;
+  const url = `${import.meta.env.BASE_URL}missions/${id}.json`;
   const res = await fetch(url);
   if (!res.ok) {
     throw new Error(
@@ -25,7 +25,7 @@ export async function loadMission(id: string): Promise<Mission> {
 }
 
 export async function loadMissionList(): Promise<MissionManifestEntry[]> {
-  const url = '/missions/index.json';
+  const url = `${import.meta.env.BASE_URL}missions/index.json`;
   const res = await fetch(url);
   if (!res.ok) {
     throw new Error(

@@ -1,7 +1,7 @@
 ---
 stage: wbs
 state: in-progress
-updated: 2026-06-07 — **WP20 DONE (ship commit `28bc898`).** Phase 3 visual polish milestone CHECKED. Four-phase impl: (1) skybox cloud-blob stamping with deterministic seeded RNG + horizon haze band + DirectionalLight/AmbientLight + PCF soft shadows; (2) procedural Cessna + MiG-15 meshes via new `src/aircraft/aircraft-mesh.ts`; (3) CPU particle system (`src/world/particles.ts`, 256-pool, kind-tagged emit) for muzzle-flash/impact/ground-dust; (4) SURFACE-2026-06-07-02 close (key-hints re-anchored) + SURFACE-2026-06-07-01 close (target visual decoupled from collider). One e2e regression triaged + auto-fixed (Three.js PCFSoftShadowMap deprecation). Final gates: Vitest 793/793 + Playwright e2e 47/47 + tsc both clean + build clean. **Phase 3 critical path:** `... → WP18(DONE) → WP19(DONE) → WP20(DONE) → WP21 → WP22 → WP23 → ship`. WP21 cross-browser QA is the next item — depends on all three Phase-3 polish WPs (WP18+WP19+WP20) which are now all `[x]`. Earlier 2026-06-07 entry: **WP19 DONE (ship commit `7467f10`).** Phase 3 audio milestone CHECKED. Two-phase impl: (1) AudioEngine + engine-loop (sawtooth, throttle→90-340 Hz, 50ms ramp) + wind (filtered procedural pink-noise, airspeed→cutoff+gain, silent below AS=10); (2) one-shot SFX synthesizers (fire/impact/crash) + Safari autoplay resume on first user gesture + 16-slot ring buffer for verify-self introspection. New `MissionRunner.getFailReason()` accessor for the crash-trigger condition. Final gates: Vitest 741/741 + Playwright e2e 47/47 + tsc + build clean. 1 coverage-gap SURFACEd (-07-03, Phase 3 bundle): live crash-trigger verify-self deferred to WP21/WP23 — aerodynamic damping at V_trim spawn keeps |vY| below 2 m/s threshold on scripted dives; wiring is statically obvious and unit-tested at all three layers. **Phase 3 critical path:** `... → WP18(DONE) → WP19(DONE) → WP20 → WP21 → WP22 → WP23 → ship`. WP20 (visual polish, L) is the last Phase 3 content WP; WP21 cross-browser depends on it.
+updated: 2026-06-07 — **WP21 cross-browser QA dropped** (operator directive). Chromium-only is the v1 acceptance bar — extends WP9.6 / Phase 1 precedent. Cross-browser deferred to v1.x. Phase 3 critical path becomes `WP20(DONE) → WP22 deploy → WP23 playtest → v1 ship`. Earlier 2026-06-07 entry: **WP20 DONE (ship commit `28bc898`).** Phase 3 visual polish milestone CHECKED. Four-phase impl: (1) skybox cloud-blob stamping with deterministic seeded RNG + horizon haze band + DirectionalLight/AmbientLight + PCF soft shadows; (2) procedural Cessna + MiG-15 meshes via new `src/aircraft/aircraft-mesh.ts`; (3) CPU particle system (`src/world/particles.ts`, 256-pool, kind-tagged emit) for muzzle-flash/impact/ground-dust; (4) SURFACE-2026-06-07-02 close (key-hints re-anchored) + SURFACE-2026-06-07-01 close (target visual decoupled from collider). One e2e regression triaged + auto-fixed (Three.js PCFSoftShadowMap deprecation). Final gates: Vitest 793/793 + Playwright e2e 47/47 + tsc both clean + build clean. **Phase 3 critical path:** `... → WP18(DONE) → WP19(DONE) → WP20(DONE) → WP21 → WP22 → WP23 → ship`. WP21 cross-browser QA is the next item — depends on all three Phase-3 polish WPs (WP18+WP19+WP20) which are now all `[x]`. Earlier 2026-06-07 entry: **WP19 DONE (ship commit `7467f10`).** Phase 3 audio milestone CHECKED. Two-phase impl: (1) AudioEngine + engine-loop (sawtooth, throttle→90-340 Hz, 50ms ramp) + wind (filtered procedural pink-noise, airspeed→cutoff+gain, silent below AS=10); (2) one-shot SFX synthesizers (fire/impact/crash) + Safari autoplay resume on first user gesture + 16-slot ring buffer for verify-self introspection. New `MissionRunner.getFailReason()` accessor for the crash-trigger condition. Final gates: Vitest 741/741 + Playwright e2e 47/47 + tsc + build clean. 1 coverage-gap SURFACEd (-07-03, Phase 3 bundle): live crash-trigger verify-self deferred to WP21/WP23 — aerodynamic damping at V_trim spawn keeps |vY| below 2 m/s threshold on scripted dives; wiring is statically obvious and unit-tested at all three layers. **Phase 3 critical path:** `... → WP18(DONE) → WP19(DONE) → WP20 → WP21 → WP22 → WP23 → ship`. WP20 (visual polish, L) is the last Phase 3 content WP; WP21 cross-browser depends on it.
 previous_updated: 2026-06-07 — **WP18 DONE (ship commit `63e07fa`).** Phase 3 onboarding milestone CHECKED. Three-phase impl: (1) inline splash overlay (index.html + main.ts setSplashStage/removeSplash helpers); (2) `KeyHintsOverlay` per-mission overlay with 20s fade tied to fixed-physics-tick timer (combat adds Fire/Space); (3) `tests/e2e/time-to-airborne.spec.ts` gate ≤30s budget (measured 1.1s, 27× safety margin). Final gates: Vitest 708/708 + Playwright e2e 42/42 + tsc + build clean. 1 cosmetic SURFACE filed (-07-02 lil-gui occlusion in `?debug=true` only; WP20 candidate). Test-only WP: `tests/e2e/phase2-integration.spec.ts` (8 new tests — 4 mission-select→play→terminal→return for each of the four missions + 4 FPS sanity probes at ≥30 FPS) + tightened `phugoid-probe.spec.ts` envelopes. Final gates: Vitest 700/700 + Playwright e2e 35/35 + tsc + build clean. All Phase 2 WPs `[x]`; Phase 3 unblocks.
 ---
 
@@ -110,21 +110,13 @@ The archive also contains the Phase 2-era Dependency map, Architectural-gaps sec
 - [x] Lighting: HemisphereLight replaced with DirectionalLight (warm sun at (200,220,60), intensity 1.0) + AmbientLight (cool sky-tint, 0.45). PCF soft shadow, 1024² map, ±250m frustum, bias -0.0005. Aircraft/landmarks already had cast/receive set.
 - [x] **Backlog close (Phase 4 polish sweep):** SURFACE-2026-06-07-02 (key-hints re-anchored bottom-left to clear lil-gui), SURFACE-2026-06-07-01 (target visual decoupled from AABB — collider unchanged, visual is now a 4m × 20m square ground building).
 
-### WP21: Cross-browser QA
-**Description:** Chrome, Safari, Firefox latest on desktop. 60fps on mid-range laptop. Fix compat regressions.
-**Phase:** 3
-**Dependencies:** WP18, WP19, WP20
-**Size:** S
-**Tasks:**
-- [ ] Test each mission in each browser
-- [ ] FPS meter on mid-range hardware (user's existing laptop is the reference machine)
-- [ ] Input feel check (mouse sensitivity differs per browser)
-- [ ] WASM load on slow connection (throttled network in devtools)
+### WP21: Cross-browser QA — DROPPED (2026-06-07, operator directive)
+**Status:** Dropped from v1 scope. Chromium-only is the v1 acceptance bar — extends the operator-as-tester precedent from Phase 1 (WP9 closed Chromium-only with cross-browser deferred here). Cross-browser support becomes a v1.x concern; if WP23 playtest surfaces a Safari/Firefox regression that blocks a casual player, file a SURFACE and address inline. Playwright runner already supports all three engines natively (adopted WP9.6) so a future v1.x cross-browser WP is config-only.
 
 ### WP22: Deploy + share
 **Description:** Pick a static host (Vercel / Netlify / Cloudflare Pages — equivalent), deploy, public URL.
 **Phase:** 3
-**Dependencies:** WP21
+**Dependencies:** WP20
 **Size:** XS
 
 ### WP23: Playtesting
@@ -133,11 +125,36 @@ The archive also contains the Phase 2-era Dependency map, Architectural-gaps sec
 **Dependencies:** WP22
 **Size:** S
 
+### WP24: Aircraft selection UI
+**Description:** Surface airframe choice (Cessna-class default, MiG-15-class jet) on the mission-select screen so players can pick before launching a mission. Today the jet ships as a deep-link-only fixture (`?mission=jet-test`, WP14.21) — this WP promotes per-mission `config?` plumbing (WP14.20) to a player-facing choice. Consider whether the choice is per-mission (each mission constrains airframe), free across all missions, or hybrid (default per mission + override). Default position: free across all four missions; per-mission override only if a mission becomes unplayable in a given airframe (e.g., true takeoff roll on Cessna per SURFACE-2026-06-06-09).
+**Phase:** 3
+**Dependencies:** WP22
+**Size:** S–M (depends on per-mission default vs free; tuning second airframe to feel-quality bar is the variable cost)
+**Vision-constraint note:** `docs/product/roadmap.md:62` lists "Multiple aircraft selection" as **out of scope for v1**. This WP **negotiates that exclusion** — the second airframe already exists (WP14.21) and only the UI + a feel-tuning pass are missing. Operator should confirm: (a) promote to v1 (this WP), or (b) keep deep-link-only and defer the UI to v1.x. The exclusion was originally written when no second airframe existed; the cost calculus has changed.
+**Open questions for spec/plan time:**
+- Per-mission constraint vs free choice (see Description).
+- Does the aerobatic seed (`aircraft-aerobatic.json` from `scripted-input-harness` ship, 2026-06-06) become a third selectable option, or stay a test fixture? See SURFACE-2026-06-06-06 (Phase B feel-tune deferred).
+- Naming on the UI — "Cessna" / "MiG-15" / "Aerobatic" vs class names ("Trainer" / "Jet" / "Aerobatic")?
+- Where on the mission-select does the choice live — global toggle or per-mission tile?
+
+### WP25: In-game control manual (read-only)
+**Description:** Read-only reference card listing the active keymap (pitch / roll / yaw / throttle / fire, plus camera + Escape-to-menu). Reached from the mission-select screen via a "Controls" button or from in-mission via a pause/help key (e.g. `?` or `H`). Closes the gap between the 20s key-hints overlay (WP18) and a player who alt-tabs away and comes back having forgotten the bindings. No rebinding — just a static reference. Static HTML overlay (same DOM-overlay pattern as `src/hud/key-hints.ts` and `src/hud/dom-hud.ts` per D12). Content rendered from `DEFAULT_KEY_MAP` so it stays in sync if keymap changes (single source of truth).
+**Phase:** 3
+**Dependencies:** WP22
+**Size:** XS–S
+**Open questions for spec/plan time:**
+- Trigger key — `?` (matches Vim/many games) vs `H` vs both?
+- Mission-select entry — dedicated tile/button, or a small `(?)` icon in a corner?
+- In-mission trigger — pause the runner while open, or non-blocking overlay?
+- Does the manual list mission objectives too, or just controls? (Recommend just controls — objectives stay in HUD per D12.)
+
 ---
 
 ## Critical path
 
-`... → WP17(DONE) → WP18(DONE) → WP19(DONE) → WP20(DONE) → WP21 → WP22 → WP23 → ship`.
+`... → WP17(DONE) → WP18(DONE) → WP19(DONE) → WP20(DONE) → WP22 → WP23 → ship`. (WP21 cross-browser QA dropped 2026-06-07 — Chromium-only acceptance; cross-browser to v1.x.)
+
+**WP24 + WP25 are not on the critical path** — both depend on WP22 deploy completing so they ship to the same URL. WP24 negotiates the v1 multi-aircraft exclusion (`roadmap.md:62`); WP25 is straightforward Phase 3 polish. Sequence after WP22: either before WP23 playtest (so testers see them) or after (if WP23 surfaces them as needs). Recommend slotting both before WP23 so the playtest feedback covers the full v1 surface.
 
 ## Session Pause — 2026-06-07 15:00
 Paused. See `workflow/.session.md` to resume. WP19 shipped (`7467f10`) + finalized (`b03140e`); Phase 3 milestone "Audio: engine, wind, weapon, crash sounds" CHECKED. Operator-queued next entry: WP20 visual polish (L) — recommended `/feature-spec` given art-direction scope. Drive mode: full-autopilot.
