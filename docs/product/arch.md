@@ -1,8 +1,8 @@
 ---
 stage: arch
 state: complete
-updated: 2026-06-06 — archived D10-D27 cascade history to `archive/phase-2-physics-cascade/arch-cycle-D10-D27.md` per SURFACE-2026-06-06-08 (size-guard sweep). Live `arch.md` retains durable core + one-line summaries for each Revision; full prose preserved verbatim in the archive. No architectural changes — pure structural curation.
-previous_updated: 2026-05-25 (D27 — mission JSON spawn AS recalibration to V_trim=78, closing the D14→D27 cascade. See archive for full revision history including the D14→D27 cascade, D10/D11/D12/D13 Phase 2 boundary decisions, and D15/D16/D17/D18 mechanism-layer ancestors.)
+updated: 2026-06-13 — product-finalize resync at v1-ship-readiness. Updated "Infrastructure" line to anchor GitHub Pages as the picked v1 host (was "Vercel / Netlify / Cloudflare Pages — decide at deploy time" pre-WP22). No new D-numbered decisions; Phase 3 polish WPs (WP18 onboarding, WP19 audio, WP20 visual, WP22 deploy, WP24 aircraft selection UI, WP26 audio mix) extended existing module boundaries without arch revision. D10-D27 cascade archive remains authoritative for physics history.
+previous_updated: 2026-06-06 — archived D10-D27 cascade history to `archive/phase-2-physics-cascade/arch-cycle-D10-D27.md` per SURFACE-2026-06-06-08 (size-guard sweep). Live `arch.md` retains durable core + one-line summaries for each Revision; full prose preserved verbatim in the archive. No architectural changes — pure structural curation.
 ---
 
 
@@ -20,7 +20,7 @@ previous_updated: 2026-05-25 (D27 — mission JSON spawn AS recalibration to V_t
 - **Dev UI: lil-gui** behind `?debug=true` — per research.
 - **Perf: Stats.js** — FPS counter enabled from day one to catch regressions.
 - **Database: none** — v1 is stateless. No persistence, no accounts.
-- **Infrastructure: static hosting** (Vercel / Netlify / Cloudflare Pages — decide at deploy time; all are equivalent for a static build). No backend in v1.
+- **Infrastructure: static hosting** (GitHub Pages — picked at WP22 deploy 2026-06-13 after a mid-feature Cloudflare lockout; Vercel / Netlify / equivalent alternatives are still drop-in replacements since the build output is plain static assets). No backend in v1. Live URL: https://staymanhou.github.io/areo-test-proty-1/.
 
 ## System Design
 

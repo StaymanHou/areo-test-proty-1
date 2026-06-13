@@ -34,7 +34,7 @@ Paused. See `workflow/.session.md` to resume. 4 SURFACEs closed this session (-1
 - **Summary:** `tests/e2e/phugoid-probe.spec.ts > phugoid probe @ throttle=0.4: 60s bounded, no NaN` times out at `waitForFunction(isScriptComplete)` (120s timeout) after the cessna thrust tune `maxN: 6000 → 4500`. The script never reports complete, suggesting the physics hits an indeterminate state (likely NaN cascade given the test name's NaN check). The other two phugoid probes (throttle 0.05, 0.15) pass cleanly. Both `npm run test` (Vitest) AND `tsc` are clean — the regression only shows in Playwright e2e.
 - **Suggested action:** Two paths: (a) regenerate the phugoid-probe-high baseline at the new thrust value — its initial conditions were tuned to maxN=6000 and may now produce a divergent trajectory; (b) widen the e2e timeout if 4500 N just makes the probe more energetic. Investigation at task-plan: ~15 min Playwright probe with telemetry to characterize what the script log shows when `isScriptComplete()` doesn't fire — likely a NaN in `linvel.y` or `position.y`.
 - **Context:** Caught at e2e run during the free-flight throttle change task (`free-flight.json throttle: 0 → 1`). The free-flight task itself passes all consumer tests; this regression is from `ab807e0` (cessna-trainer-feel-tune) which only ran Vitest at its verify gate. Verify-gap lesson: physics tune verify gates should include Playwright e2e for missions that consume the changed config — not just Vitest.
-- **Status:** pending (low-effort task workflow when operator returns)
+- **Status:** deferred to v1.x — carried past 2026-06-13 product-finalize. Phugoid-probe-high regression is a test-envelope vs deployed-thrust mismatch; player-facing missions and live URL unaffected. Low-effort task when operator returns.
 
 ### SURFACE-2026-06-13-QUALITY-vite-base-hardcoded
 - **Source:** feature:review-quality (WP22, 2026-06-13)
@@ -42,7 +42,7 @@ Paused. See `workflow/.session.md` to resume. 4 SURFACEs closed this session (-1
 - **Type:** code-quality / config-hygiene
 - **Priority:** medium
 - **Summary:** `vite.config.ts:1-5` hardcodes `base: '/areo-test-proty-1/'` as a string literal with no comment explaining its coupling to the GitHub repo name. Repo rename or fork-redeploy under a different path silently breaks prod (dev `localhost:5173/` still works, prod 404s on every asset). Suggested fix: `base: process.env.BASE_URL ?? '/areo-test-proty-1/'` + a one-line comment "MUST match GitHub repo name; see .github/workflows/deploy.yml". Bundle with the other two WP22-quality SURFACEs at next task workflow.
-- **Status:** open
+- **Status:** deferred to v1.x — carried past 2026-06-13 product-finalize. Quality polish; non-blocking for v1 ship.
 
 ### SURFACE-2026-06-13-QUALITY-ci-no-test-gate
 - **Source:** feature:review-quality (WP22, 2026-06-13)
@@ -50,7 +50,7 @@ Paused. See `workflow/.session.md` to resume. 4 SURFACEs closed this session (-1
 - **Type:** ci / test-coverage / silent-deploy-risk
 - **Priority:** medium
 - **Summary:** `.github/workflows/deploy.yml` runs `npm run build` and ships straight to Pages — no `npm run test`, no `npm run test:e2e`, no `tsc --noEmit` step. An inadvertently-merged broken test or type error deploys to the live URL anyway. Local verify-auto gates ran (Vitest 793/793 + e2e 47/47 + tsc clean) but don't persist into CI. Minimum cheap fix: add `tsc --noEmit` step before build. Full fix: add `npm run test` step too. (e2e is slower at ~7min so weigh against deploy latency.)
-- **Status:** open
+- **Status:** deferred to v1.x — carried past 2026-06-13 product-finalize. Quality polish; non-blocking for v1 ship.
 
 ### SURFACE-2026-06-13-QUALITY-unnecessary-404-fallback
 - **Source:** feature:review-quality (WP22, 2026-06-13)
@@ -58,7 +58,7 @@ Paused. See `workflow/.session.md` to resume. 4 SURFACEs closed this session (-1
 - **Type:** code-quality / dead-code
 - **Priority:** medium
 - **Summary:** `.github/workflows/deploy.yml:38` step "Copy index.html to 404.html (SPA fallback)" is unnecessary per the WP22 WIP's own analysis. The app uses URL query params only (`?mission=...`, `?debug=true`), no client-side path routing — every URL hits `/index.html`. 404→index trick is for client-routed SPAs. Either delete the step or add a defensive comment explaining future-proofing intent.
-- **Status:** open
+- **Status:** deferred to v1.x — carried past 2026-06-13 product-finalize. Quality polish; non-blocking for v1 ship.
 
 ### SURFACE-2026-06-13-QUALITY-base-url-trailing-slash-contract
 - **Source:** feature:review-quality (WP22, 2026-06-13)
@@ -66,7 +66,7 @@ Paused. See `workflow/.session.md` to resume. 4 SURFACEs closed this session (-1
 - **Type:** code-quality / contract-assertion
 - **Priority:** low
 - **Summary:** `src/mission/loader.ts:16,28` (and `src/engine/scripted-input.ts:configNameToPath`) build URLs via `${import.meta.env.BASE_URL}missions/${id}.json`, relying on Vite's contract that `BASE_URL` ends with `/`. A typo like `base: '/areo-test-proty-1'` in `vite.config.ts` produces malformed `/areo-test-proty-1missions/...` URLs. Suggested mitigation: combine with SURFACE-2026-06-13-01 lint rule (require `${import.meta.env.BASE_URL}` prefix on all `src/` fetch URLs) + a vite.config-level assert that `base` ends with `/`.
-- **Status:** open
+- **Status:** deferred to v1.x — carried past 2026-06-13 product-finalize. Quality polish; non-blocking for v1 ship.
 
 ### SURFACE-2026-06-13-QUALITY-wip-duplicate-research-heading
 - **Source:** feature:review-quality (WP22, 2026-06-13)
@@ -74,7 +74,7 @@ Paused. See `workflow/.session.md` to resume. 4 SURFACEs closed this session (-1
 - **Type:** docs / cosmetic
 - **Priority:** low
 - **Summary:** `workflow/wip/wp22-deploy.md` contains two `## Research` headings — the second labeled "Original research findings retained below for context" but a grep for "Research" returns two matches. Rename second to `## Research (superseded — original Cloudflare recommendation)` for disambiguation. Cosmetic; safe to ignore until archive.
-- **Status:** open
+- **Status:** deferred to v1.x — carried past 2026-06-13 product-finalize. Cosmetic; the wip/ archive contains the file post-finalize so this is now a documentation-history concern, not an active blocker.
 
 ### SURFACE-2026-06-13-QUALITY-deploy-lockfile-not-asserted
 - **Source:** feature:review-quality (WP22, 2026-06-13)
@@ -82,7 +82,7 @@ Paused. See `workflow/.session.md` to resume. 4 SURFACEs closed this session (-1
 - **Type:** ci / defensive-check
 - **Priority:** low
 - **Summary:** `.github/workflows/deploy.yml:23` uses `actions/setup-node@v4` with `cache: npm` and `npm ci` install (line 30) — both require `package-lock.json`. Workflow does not assert lockfile presence; a missing lockfile fails at `npm ci` time with a less obvious error. Fix: trivial — add `test -f package-lock.json` before `npm ci`, or rely on `npm ci`'s own error (current state). Cosmetic.
-- **Status:** open
+- **Status:** deferred to v1.x — carried past 2026-06-13 product-finalize. Cosmetic; non-blocking.
 
 ### SURFACE-2026-06-13-QUALITY-surface01-stale-status
 - **Source:** feature:review-quality (WP22, 2026-06-13)
@@ -110,7 +110,7 @@ Paused. See `workflow/.session.md` to resume. 4 SURFACEs closed this session (-1
 - **Summary:** WP19 Phase 2 wires `audioEngine.triggerCrash()` from `missionRunner.on('statusChange')` when `status === 'failed' && !wasAborted() && getFailReason() === 'crash'`. The wiring is statically obvious (one `&&` chain over three already-unit-tested components: runner's `getFailReason` set to `'crash'` at the y≤0 + |vY|>2 branch; AudioEngine's `triggerCrash` recording the ring entry; and main.ts's single-line condition). However, verify-self could not produce a live crash via scripted-input. Tried (a) free-flight + `hold:KeyS@0:5.0,hold:Throttle=1.0@0:5.0`, (b) free-flight + `hold:KeyS@0:6.0,hold:Throttle=0@0:6.0`, (c) combat (mig15 airframe) + `hold:KeyS@0:8.0,hold:Throttle=0@0:8.0`. All three result in the aircraft sliding/gliding onto terrain with |vY| ≈ 0 — below the runner's `CRASH_VSPEED_THRESHOLD = 2` m/s. The D14→D27-tuned aerodynamic damping is by design strong enough to dissipate vertical velocity before terrain contact at V_trim spawn — same physics that makes SURFACE-2026-06-06-09 (Cessna T/W=0.6 can't take off from rest) what it is.
 - **Context:** This is NOT a wiring defect. The 4 live verify-self outcomes that probed wiring (fire trigger ✓, impact trigger ✓, autoplay-unlock ✓, console clean ✓) all PASS. Unit-level coverage (runner `getFailReason`, AudioEngine `triggerCrash` recording) all GREEN at 741/741 Vitest. The crash trigger's positive-case live verification is the missing piece. Coverage-only gap.
 - **Suggested action:** Two options at WP21 (cross-browser QA) or WP23 (playtesting): (a) lower `CRASH_VSPEED_THRESHOLD` from 2 to ~0.5 m/s — would make casual crashes feel more impactful AND make the test scenario reach the crash branch (but may surface false-positive crashes on soft landings — would need playtest re-validation); (b) add a dedicated test-only fixture mission with a tiny mass / huge thrust airframe that crashes deterministically under scripted input; (c) wait for WP23 playtest to surface a real crash and assert the SFX manually. Option (c) is cheapest and aligns with the operator-as-external Phase 3 re-validation pattern.
-- **Status:** pending (Phase 3 — bundle with WP23 playtest; WP21 cross-browser was dropped 2026-06-07 so WP23 is the sole remaining catch-point for this coverage gap in v1)
+- **Status:** deferred to v1.x — carried past 2026-06-13 product-finalize. WP21 + WP23 both dropped from v1; the crash-trigger live-verification coverage gap rolls forward as a v1.x bundle item. Operator playtest may catch it sooner.
 
 ### SURFACE-2026-06-07-02 — key-hints overlay occluded by lil-gui debug panel in ?debug=true mode [RESOLVED 2026-06-07]
 - **Source:** feature:verify-self (WP18 Phase 2, 2026-06-07)
@@ -139,7 +139,7 @@ Paused. See `workflow/.session.md` to resume. 4 SURFACEs closed this session (-1
 - **Summary:** Probed scripted-input harness at `?mission=takeoff-landing&script=hold:Throttle=1.0@0:15.0` with a from-rest spawn (linvel=0). Aircraft reached only AS≈18 m/s after 16s on a flat runway — well below the V_trim=78 m/s required for liftoff. Plan-time arithmetic predicted ~6 m/s² accel; live data shows ~1.1 m/s² because drag (fuselageDrag, inducedDragK) is much more aggressive at low AS than the back-of-envelope `T/m` estimate accounted for. Followup probe with rolling-start linvel=−40 confirmed the aircraft IS glued flat to the terrain (no rotation possible from box-cuboid collider resting on terrain) until natural liftoff around AS≈78 m/s, which occurs at z≈-1100 m — 800m PAST the visible runway end at z=-300.
 - **Mitigation in WP15:** Mission redesigned to spawn at V_trim=78 m/s (matches all other missions' convention per CLAUDE.md Rule #9). Gameplay becomes "rotate at takeoff speed → climb → pattern → land" rather than "takeoff roll → rotate → climb → land." Spec AC2's Rule #9 carve-out for ground-rest spawn is dropped; convention adopted instead.
 - **Suggested action (future):** Two paths to support true takeoff roll if v1.x adds it: (a) physics — increase Cessna thrust.maxN from 6000N to ~15000N (T/W from 0.6 to 1.5) so the aircraft can accelerate from rest to V_trim in <10s on a 600m runway, OR add a wheels-on-runway pitch-up mechanism so the aircraft can rotate on the ground before lift overcomes weight; (b) world — extend the runway to ~3000m via `createRunway({length: 3000})`. Path (a) is structurally more honest but conflicts with the D14→D27 cascade's tuned Cessna baseline. Path (b) makes the world unrealistic. Both deferred to Phase 3 polish unless an explicit WP raises this.
-- **Status:** mitigated-in-WP15 (V_trim spawn convention); true-takeoff-roll deferred
+- **Status:** mitigated-in-WP15 (V_trim spawn convention); true-takeoff-roll deferred to v1.x — carried past 2026-06-13 product-finalize. Player experience already provides a "takeoff" mission via V_trim spawn at runway threshold; structural takeoff-from-rest would need a thrust bump (T/W > 0.8) or runway extension and is gameplay-tuning, not v1 ship gate.
 
 ### SURFACE-2026-06-06-08 — `docs/product/arch.md` exceeds 300-line size guard (2645 lines); same for `wbs.md` (1023 lines) [RESOLVED 2026-06-06]
 - **Source:** feature:spec (per-mission-airframe, 2026-06-06)
@@ -181,7 +181,7 @@ Paused. See `workflow/.session.md` to resume. 4 SURFACEs closed this session (-1
 - **Memory anchors:** `feedback_browser_walkthrough_load_bearing.md` (any physics-feel WP requires harness probe), `feedback_operator_as_external.md` (under full-autopilot, operator-as-playtester is unavailable for Phase B verify-human; document the deviation), CLAUDE.md "Not goals for v1: multiple aircraft" (the closure of this SURFACE explicitly defers the *flyable* aerobatic model to Phase 3 / multi-aircraft work; the *seed config* + the *plumbing* are in place at Phase A close).
 - **Phase A close (2026-06-06, commit `bb1c242`):** Per-mission `config?` schema + parser + `main.ts` boot-path thread-through + 2 new e2e tests + 5 new Vitest cases shipped at WP14.20. Fixture mission `public/missions/aerobatic-test.json` (deep-link-only) declares `config: "aerobatic"` for the e2e gate. Vision-constraint negotiation: Phase A is plumbing only; Phase B + C remain deferred under the v1 multi-aircraft exclusion.
 - **Phase C close (2026-06-13, commit `f3daffb`):** Mission-select airframe picker shipped at WP24 (`src/mission/aircraft-options.ts` + `MissionSelectScreen` extension + main.ts boot wiring). Vision-constraint negotiated: `roadmap.md:62` exclusion struck for Trainer + Jet pairing. Aerobatic intentionally kept out of picker pending Phase B.
-- **Status:** partial — Phase A + Phase C CLOSED; Phase B (Aerobatic feel-tune) deferred
+- **Status:** partial — Phase A + Phase C CLOSED; Phase B (Aerobatic feel-tune) deferred to v1.x — carried past 2026-06-13 product-finalize. WP24 explicitly kept Aerobatic out of the v1 picker pending feel-tune; the airframe survives as a test fixture. Promote to a v1.x WP if operator decides to ship aerobatic gameplay.
 
 ### SURFACE-2026-06-06-05 — Refactor `phugoid-probe.spec.ts` to use the new `?script=` harness as a dogfooding exercise
 - **Source:** feature:finalize (scripted-input-harness, 2026-06-06; operator question during finalize)
@@ -282,7 +282,7 @@ Paused. See `workflow/.session.md` to resume. 4 SURFACEs closed this session (-1
   3. If the test passes: the parity-diff is something else (config-file caching? read of `public/config/aircraft.json` differing between optimizer process and dump-script process?). Worth checking that `runHarness` reads the same `aircraft.json` content in both contexts.
 - **Why medium priority:** the ratio of 1.50× is not 1.0 but is also not the 10,000× of pre-tooling-fix asymmetric search. The optimizer's score is still a usable proxy for branch decisions (Branch B was clear at either −2.003e9 or −2.999e9 — both saturate the threshold). The methodology-fix at `tune-cli-link-flag` is mostly load-bearing; the residual 1.50× is a methodology gap that needs further investigation but doesn't invalidate the cascade's evidence base.
 - **Memory anchor that fired this WP:** `feedback_tune_cli_search_vs_deploy.md` (all four uses) — the rule "always re-score the deployed config via `score-deployed.mjs`" was load-bearing at WP14.14 P1.4. Without it, WP14.14 would have reported −2.999e9 as the deployed score and the architect-cycle interpretation would have missed the partial-success in the mid regime (visible only via per-regime breakdown of the deployed CSVs, not the optimizer's aggregate score). The rule's *practical value* survives the parity-diff bug; the rule's *theoretical foundation* (`--link` makes search = deploy) is the part that needs the fix.
-- **Status:** open
+- **Status:** deferred to v1.x — carried past 2026-06-13 product-finalize. Diagnostic concern only; the D14→D27 cascade closed Branch B-accept without needing this resolved, so it's a methodology-cleanup item for any future physics-tune cycle.
 - **Blocks:** nothing (diagnostic concern; future tune-pass WPs should keep using `score-deployed.mjs` as the binding gate while this parity-diff is investigated)
 
 ### SURFACE-2026-05-24-02 — Axis-naming error in arch.md Revision 2026-05-23 line 800 + propagation through SURFACE-23-01 and SURFACE-24-01 prose ("Iyy" used where "Ixx" is the pitch-axis inertia in our Y-up convention)
@@ -351,7 +351,7 @@ Paused. See `workflow/.session.md` to resume. 4 SURFACEs closed this session (-1
 - **Summary:** With wings incidenceRad=+2°, h-stab incidenceRad=-1°, wings clQ=3, h-stab clQ=8, the airframe is dynamically stable (max|pRate|=149°/s, no tumble). But airspeed bleeds 30→2 m/s and altitude trends 50→33m within the 6s observation window. The system is in a low-energy descending glide because at mass=1000 kg, spawn airspeed v=30 m/s, and zero throttle, lift is only ~14.8% of weight. Force balance for level flight requires v≈90 m/s OR baseline throttle ≈ 0.4 OR reduced mass.
 - **Context:** WP6.5 closed the *architectural* gap (no level-trim equilibrium / dynamic instability). The remaining "feels like flight" tuning is exactly WP7 Phase E's job. WP7 was already paused awaiting WP6.5; it now resumes with a clean stable baseline to tune against.
 - **Suggested action:** At WP7 Phase E entry: experiment with (a) baseline `throttle = 0.4` at spawn (cheapest — `Controls` class might need a constructor option), (b) `mass = 500–700 kg` (changes ground feel), (c) `area = 9–10 m²` per wing (changes visual feel of wing size). Iterate via lil-gui live; export preset to `aircraft.json` when it feels right. The strong physical priors (incidence 0–4°, clQ 0–16, lift/weight ratio ~1 at cruise speed) make this a bounded search — likely 1–2 lil-gui sessions.
-- **Status:** WP7 Phase E disposition 2026-05-11 — the "level cruise" goal is **not closable within Phase 1 scope** due to SURFACE-2026-05-11-04 (phugoid undamped). Phase E shipped option (c) (accept descending glide). This entry stays open as a candidate for Phase 2 if the casual-player feel-check (Phase F AC #7) rejects the descending glide as unplayable.
+- **Status:** Phase 2 cascade (D14→D27, closed at WP14.19 2026-05-25) dispositioned this — V_trim=78 spawn convention + phugoid-stable β5 mechanism means level cruise is now attainable from the L=W trim airspeed (the WP6.5-era 30 m/s spawn was the actual root cause, not the airframe). **Deferred to v1.x — carried past 2026-06-13 product-finalize.** Survives as a historical record; closes-by-cascade.
 
 ### SURFACE-2026-04-19-01 — Bundle size: Rapier WASM dominates build
 - **Source:** feature:build (WP1 verify-auto)
@@ -361,5 +361,5 @@ Paused. See `workflow/.session.md` to resume. 4 SURFACEs closed this session (-1
 - **Context:** Relates to R1 in research.md (WASM load UX). At 978 KB gzipped, first-load on a mid-range connection is meaningful. WP18 (onboarding) already plans to preload WASM in parallel with splash — this is the mitigation. No action needed before Phase 3.
 - **Suggested action:** Leave as-is for Phase 1/2. At Phase 3 WP18/WP21, measure real load time and consider: (a) code-splitting Rapier via dynamic import, (b) loading WASM from `@dimforge/rapier3d-compat`'s external `.wasm` file instead of inlining.
 - **Priority:** low (tracked, not urgent)
-- **Status:** pending
+- **Status:** deferred to v1.x — carried past 2026-06-13 product-finalize. Live URL is up and acceptably fast on Chromium; bundle optimization is a polish item for v1.x, not a v1 blocker.
 
