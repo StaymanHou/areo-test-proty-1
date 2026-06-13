@@ -1,7 +1,8 @@
 ---
 name: Fix MiG-15 mesh — wing/h-stab/v-stab rendered on edge
 type: feature
-state: verify-codify (all phases complete)
+state: ship (complete)
+ship_commit: b419728
 created: 2026-06-13
 drive_mode: full-autopilot
 size: XS
@@ -159,3 +160,12 @@ All five hold → F33 → plan.
 - P1.3 (v-stab rotation): **medium** — combining two rotations always has a sign trap. The test fails loudly if I get it wrong; expect possibly one iteration.
 
 Will run the failing tests after each impl edit to catch sign errors immediately.
+
+---
+
+## Retrospect
+
+- **What changed in our understanding:** The plan-time analysis of the bug had the right shape (extrusion-axis-confusion → wing on edge) but the wrong axis labels — I conflated "shape's local Z" with "the chord direction." Three.js `Shape` is authored in the local XY plane and `ExtrudeGeometry` extrudes along local Z. The chord was actually in shape's local Y, not local Z. The empirical discipline (CLAUDE.md Rule #1 — write failing test before reasoning about the fix) was load-bearing here: the test caught my plan-time misread cheaply, and the debug log immediately localized the wing fix to "the rotation worked, the test filter was just wrong."
+- **Assumptions that held:** (a) The fix is a one-liner per affected mesh (`rotation.x = -π/2`). Confirmed. (b) `BoxGeometry`-based Cessna mesh is unaffected by any rotation-based fix in the Extrude path. Confirmed via verify-self regression check. (c) The reproduce artifact red-greens cleanly when the fix is correct, regardless of plan-time axis mislabeling. Confirmed.
+- **Assumptions that were wrong:** (a) Plan-time axis labels (shape-X/Z vs shape-X/Y). Caught at first test run. (b) Test candidate filters using bbox-center — once a rotation moves a mesh's bbox center along an axis, the filter rejects the post-fix mesh. Switched to `position`-based filters which are invariant under rotation. (c) V-stab was already correctly oriented — my plan-time concern about "combining two rotations" was unwarranted; the test failure was a too-loose filter picking h-stab meshes instead of the v-stab.
+- **Approach delta:** Took 1 extra iteration vs the plan (debug-log-then-fix-test-filters), but the iteration was cheap (~5 min) and was exactly what the red-green discipline + CLAUDE.md Rule #1 are designed to enable. Net: matched plan's "≤1h" estimate with the iteration included. No back-loop required.
