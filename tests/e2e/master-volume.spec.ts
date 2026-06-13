@@ -23,17 +23,17 @@ declare global {
 
 const STORAGE_KEY = 'flightsim.volume.master';
 
-test('mission-select renders the master-volume slider with default value 0.5', async ({ page }) => {
+test('mission-select renders the master-volume slider with default value 0.1', async ({ page }) => {
   await page.goto('/?debug=true');
   await page.waitForSelector('[data-testid="mission-select"]', { timeout: 20_000 });
 
   const slider = page.locator('input[data-testid="master-volume-slider"]');
   await expect(slider).toBeVisible();
   await expect(slider).toHaveAttribute('type', 'range');
-  await expect(slider).toHaveValue('0.5');
+  await expect(slider).toHaveValue('0.1');
 
   const valueLabel = page.locator('[data-testid="master-volume-value"]');
-  await expect(valueLabel).toHaveText('50%');
+  await expect(valueLabel).toHaveText('10%');
 });
 
 test('dragging the slider applies in real time and persists to localStorage', async ({ page }) => {

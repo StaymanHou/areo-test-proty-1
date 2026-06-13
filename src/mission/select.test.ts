@@ -225,12 +225,12 @@ describe('MissionSelectScreen — master volume slider (WP26)', () => {
     expect(slider!.step).toBe('0.05');
   });
 
-  it('initial slider value matches getMasterVolume() (default 0.5 on fresh storage)', () => {
+  it('initial slider value matches getMasterVolume() (default 0.1 on fresh storage)', () => {
     screen.show(MISSIONS);
     const slider = document.querySelector<HTMLInputElement>(
       'input[data-testid="master-volume-slider"]',
     )!;
-    expect(Number(slider.value)).toBeCloseTo(0.5, 6);
+    expect(Number(slider.value)).toBeCloseTo(0.1, 6);
   });
 
   it('initial slider value reflects a previously-persisted master volume', () => {

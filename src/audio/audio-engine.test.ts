@@ -123,7 +123,7 @@ beforeEach(() => {
   (window as unknown as { AudioContext: typeof AudioContext }).AudioContext =
     FakeAudioContext as unknown as typeof AudioContext;
   // WP26: AudioEngine reads master-volume from localStorage on construction.
-  // Tests assume fresh storage → DEFAULT_MASTER_VOLUME (0.5) baseline.
+  // Tests assume fresh storage → DEFAULT_MASTER_VOLUME (0.1) baseline.
   localStorage.clear();
 });
 
@@ -237,7 +237,7 @@ describe('AudioEngine', () => {
 
   it('WP26 — construction falls back to DEFAULT_MASTER_VOLUME on empty storage', () => {
     const eng = new AudioEngine();
-    expect(eng.getState().masterGain).toBeCloseTo(0.5, 3);
+    expect(eng.getState().masterGain).toBeCloseTo(0.1, 3);
   });
 
   it('WP26 — start() applies the constructor-read master gain to the master node', async () => {
@@ -265,8 +265,8 @@ describe('AudioEngine', () => {
     eng._resetForTests();
     expect(eng.getState().contextState).toBe('unset');
     expect(eng.getState().engineFreqHz).toBe(0);
-    // WP26: default master baseline lowered 0.6 → 0.5 (DEFAULT_MASTER_VOLUME).
-    expect(eng.getState().masterGain).toBeCloseTo(0.5, 3);
+    // WP26: default master baseline lowered to DEFAULT_MASTER_VOLUME (0.1).
+    expect(eng.getState().masterGain).toBeCloseTo(0.1, 3);
   });
 
   it('trigger methods are safe before start() — record but do not play', () => {

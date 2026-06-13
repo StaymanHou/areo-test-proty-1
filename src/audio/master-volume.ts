@@ -5,7 +5,7 @@
 // missing / throwing storage all collapse to DEFAULT_MASTER_VOLUME.
 
 export const MASTER_VOLUME_STORAGE_KEY = 'flightsim.volume.master';
-export const DEFAULT_MASTER_VOLUME = 0.5;
+export const DEFAULT_MASTER_VOLUME = 0.1;
 
 function clamp01(v: number): number {
   if (v < 0) return 0;
