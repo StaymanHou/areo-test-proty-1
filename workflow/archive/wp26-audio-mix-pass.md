@@ -1,6 +1,7 @@
 ---
 workflow: feature
-state: verify-codify (all phases complete)
+state: ship (complete)
+ship_commit: 9ce3644
 created: 2026-06-13
 drive_mode: full-autopilot
 ---
@@ -55,6 +56,19 @@ Classification: Pre-existing regression unrelated to WP26 — already filed as S
 Confidence: high
 Evidence: SURFACE-2026-06-13-PHUGOID-HIGH-REGRESSION (backlog.md:16) documents the exact failure: `waitForFunction(isScriptComplete)` timeout introduced by commit `ab807e0` (cessna thrust tune, maxN: 6000→4500). WP26 only touches `src/audio/*`, `src/mission/select.ts`, `src/mission/select.test.ts`, `src/main.ts` (1-line volume-callback wire), and `tests/e2e/master-volume.spec.ts` — no overlap with `src/aircraft/`, `public/config/aircraft.json`, `public/missions/phugoid-probe-high.json`, or `tests/e2e/phugoid-probe.spec.ts`. Three new master-volume e2e specs PASS.
 Action: No test modification or code change. The failure is independent of WP26 and tracked at the backlog SURFACE — operator-chosen to address as a separate task workflow per session-pause queue. WP26 proceeds to ship; the pre-existing regression is not a WP26-introduced bug.
+
+## Retrospect
+
+- **What changed in our understanding:** Nothing surprising — the WP19 audio module was clean enough that "ship a slider" was almost entirely composition. The existing `AudioEngine.setMasterGain(v)` was already wired through the master gain node end-to-end; the missing pieces were a persistence module, a constructor read, and a DOM element. Plan→build was direct.
+- **Assumptions that held:** (a) `aircraft-options.ts` was a good template for the defensive `localStorage` pattern — copy/adapt landed cleanly. (b) Slider input event works the same way in jsdom + real Chromium for synthetic dispatch. (c) The verify-self subagent could resolve `window.__audio.getState()` cleanly because the boot path applies `_masterGainValue` to the master node at `start()` (no race window). (d) The verify-gap lesson logged at session pause ("include Playwright e2e in physics-tune gates") generalized cleanly to this audio gate — the full e2e run surfaced the pre-existing phugoid regression as a known item, not a WP26 introduction.
+- **Assumptions that were wrong:** None. One thing was *better* than expected: the slider's `input` event in Playwright via `evaluate + dispatchEvent` reached the React-less DOM handler reliably without needing the React-fiber workaround documented in the verify-self heuristic.
+- **Approach delta:** None. Implementation matched the plan exactly. The only mid-build adjustment was discovering no standalone `engine-loop.test.ts` existed (gain coverage lived in `audio-engine.test.ts`); the plan was updated inline with no scope change.
+
+## Communicate
+
+> **Feature complete:** WP26 Audio mix pass has shipped. Engine sound is now 40% quieter at the same throttle, and a master-volume slider on the mission-select screen lets players set their own mix with localStorage persistence so the choice survives reloads. Live at https://staymanhou.github.io/areo-test-proty-1/ within 1-2 minutes of push (deploy SHA `9ce3644`).
+
+Requester = operator — closure notice for self-record.
 
 ## Discoveries
 <!-- Format: [SURFACED-<date>] <target node> — <summary> -->
