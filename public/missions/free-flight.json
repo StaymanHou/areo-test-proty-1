@@ -5,7 +5,7 @@
   "spawn": {
     "position": { "x": 0, "y": 50, "z": 0 },
     "linvel": { "x": 0, "y": 0, "z": -78 },
-    "throttle": 0
+    "throttle": 1
   },
   "objectives": []
 }

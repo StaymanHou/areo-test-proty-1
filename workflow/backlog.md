@@ -13,6 +13,16 @@ Paused. See `workflow/.session.md` to resume. 4 SURFACEs closed this session (-1
 
 ## Open
 
+### SURFACE-2026-06-13-PHUGOID-HIGH-REGRESSION
+- **Source:** task:close verify-gap surfaced post-cessna-trainer-feel-tune (commit `ab807e0`)
+- **Target level:** task workflow (small follow-up; either retune phugoid-probe-high.json's `targetThrottle` semantics or update test envelope)
+- **Type:** test regression caused by upstream tune
+- **Priority:** medium
+- **Summary:** `tests/e2e/phugoid-probe.spec.ts > phugoid probe @ throttle=0.4: 60s bounded, no NaN` times out at `waitForFunction(isScriptComplete)` (120s timeout) after the cessna thrust tune `maxN: 6000 → 4500`. The script never reports complete, suggesting the physics hits an indeterminate state (likely NaN cascade given the test name's NaN check). The other two phugoid probes (throttle 0.05, 0.15) pass cleanly. Both `npm run test` (Vitest) AND `tsc` are clean — the regression only shows in Playwright e2e.
+- **Suggested action:** Two paths: (a) regenerate the phugoid-probe-high baseline at the new thrust value — its initial conditions were tuned to maxN=6000 and may now produce a divergent trajectory; (b) widen the e2e timeout if 4500 N just makes the probe more energetic. Investigation at task-plan: ~15 min Playwright probe with telemetry to characterize what the script log shows when `isScriptComplete()` doesn't fire — likely a NaN in `linvel.y` or `position.y`.
+- **Context:** Caught at e2e run during the free-flight throttle change task (`free-flight.json throttle: 0 → 1`). The free-flight task itself passes all consumer tests; this regression is from `ab807e0` (cessna-trainer-feel-tune) which only ran Vitest at its verify gate. Verify-gap lesson: physics tune verify gates should include Playwright e2e for missions that consume the changed config — not just Vitest.
+- **Status:** pending (low-effort task workflow when operator returns)
+
 ### SURFACE-2026-06-13-QUALITY-vite-base-hardcoded
 - **Source:** feature:review-quality (WP22, 2026-06-13)
 - **Target level:** task workflow (small follow-up)
