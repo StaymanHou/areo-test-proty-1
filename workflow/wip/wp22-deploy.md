@@ -106,10 +106,10 @@ Fallback if Cloudflare Pages onboarding hits friction: **Netlify** (next-best on
   - HTTP: `curl -I https://<project>.pages.dev/` returns `HTTP/2 200`, `content-type: text/html`, `cf-ray:` header present (confirms Cloudflare edge).
   - HTTP: `curl -I https://<project>.pages.dev/assets/index-*.js` returns `HTTP/2 200`, `content-type: application/javascript` (or `text/javascript`), `content-encoding: br` or `gzip`.
 
-  - [ ] P1.1 Add `.nvmrc` pinning Node 22 (matches local + Cloudflare default; cheap drift insurance)  <!-- status: NOT-STARTED -->
-  - [ ] P1.2 Local pre-deploy smoke: `npm run build` + `npm run preview` then manually hit `localhost:4173/` (or whatever Vite preview prints), confirm main menu + Free Flight + no console errors. (Catches any prod-build regression before pushing.)  <!-- status: NOT-STARTED -->
-  - [ ] P1.3 Commit deploy-prep changes to a branch (e.g. `wp22-deploy`) — defer push-to-main until Cloudflare project is configured, to avoid a half-configured first deploy. Commit message references WP22.  <!-- status: NOT-STARTED -->
-  - [ ] P1.4 **MANUAL — operator step:** create the Cloudflare Pages project via dashboard (or run `npx wrangler pages project create test-proj` if operator has `wrangler` authenticated). Connect to the GitHub repo `main` branch. Build settings: framework preset = Vite (or None); build command = `npm run build`; output directory = `dist`; root directory = `/`; Node version env var `NODE_VERSION=22` (belt + suspenders alongside `.nvmrc`). Save. **Pause point — orchestrator stops here** (this is an external system requiring operator credentials; verify-self cannot drive Cloudflare dashboard auth).  <!-- status: NOT-STARTED -->
+  - [x] P1.1 Add `.nvmrc` pinning Node 22 (matches local + Cloudflare default; cheap drift insurance)  <!-- status: done -->
+  - [x] P1.2 Local pre-deploy smoke: `npm run build` + `npm run preview` then manually hit `localhost:4173/` — main menu + 4 mission tiles + production debug-gate (lil-gui 0, __aircraft accessor absent) all confirmed; positive control at `?debug=true` mounted 15 panels + accessor. Only console entry: `favicon.ico` 404 (harmless, no favicon shipped — flagging as backlog candidate, NOT a blocker).  <!-- status: done -->
+  - [x] P1.3 Commit deploy-prep changes to a branch (`wp22-deploy`, commit `113a2d5`). Pre-existing `roadmap.md`/`wbs.md`/`backlog.md` modifications left unstaged for separate housekeeping (operator decision).  <!-- status: done -->
+  - [ ] P1.4 **MANUAL — operator step:** create the Cloudflare Pages project via dashboard (or run `npx wrangler pages project create test-proj` if operator has `wrangler` authenticated). Connect to the GitHub repo `main` branch (or the `wp22-deploy` branch for the first deploy). Build settings: framework preset = Vite (or None); build command = `npm run build`; output directory = `dist`; root directory = `/`; Node version env var `NODE_VERSION=22` (belt + suspenders alongside `.nvmrc`). Save. **Pause point — orchestrator stops here** (this is an external system requiring operator credentials; verify-self cannot drive Cloudflare dashboard auth).  <!-- status: in-progress (operator action required) -->
   - [ ] P1.5 Push the branch to GitHub and either merge to `main` (triggers auto-build) OR trigger a manual deploy via dashboard "Create deployment" button. Wait for build to complete (≤2 min expected per local timing).  <!-- status: NOT-STARTED -->
   - [ ] P1.6 Record the deployed URL (e.g. `https://test-proj-abc.pages.dev`) in the WIP file under `## Deployment` for verify-self + verify-human + future reference.  <!-- status: NOT-STARTED -->
   - [ ] verify-auto  <!-- status: NOT-STARTED -->
@@ -122,15 +122,22 @@ Fallback if Cloudflare Pages onboarding hits friction: **Netlify** (next-best on
     - No new behavior to codify. This WP ships infrastructure, not features. The existing test suite already covers all in-product invariants. Skip codify (record decision in retrospect).
 
 ## Current Node
-- **Path:** Feature > Phase 1 > P1.1
-- **Active scope:** P1.1 (`.nvmrc` add)
-- **Blocked:** none
-- **Unvisited:** P1.2 (local smoke) → P1.3 (branch commit) → P1.4 (operator: Cloudflare onboarding) → P1.5 (push + auto-build) → P1.6 (record URL) → verify-auto → verify-self → verify-human → verify-codify (skip-record)
-- **Open discoveries:** none
+- **Path:** Feature > Phase 1 > P1.4 (operator pause point)
+- **Active scope:** P1.4 (operator-only Cloudflare Pages onboarding)
+- **Blocked:** P1.5, P1.6, verify-self, verify-human — all blocked on P1.4 (external system requires operator credentials)
+- **Unvisited:** P1.5 (push + auto-build) → P1.6 (record URL) → verify-auto → verify-self → verify-human → verify-codify (skip-record)
+- **Open discoveries:** favicon.ico 404 on root load — harmless dev/preview console noise; same will happen at Cloudflare. Candidate for a 1-line backlog SURFACE (very low priority — adds a 1×1 transparent .ico to public/ to silence; could also be folded into WP23 polish based on operator preference).
+
+## Deployment
+- **Branch:** `wp22-deploy` (pushed by P1.5)
+- **Commit ready to deploy:** `113a2d5` (chore(wp22): deploy prep — pin Node 22 + plan file)
+- **Public URL:** (to be recorded at P1.6 after first deploy)
+- **Cloudflare project name:** TBD by operator at P1.4
 
 ## Discoveries
 <!-- Format: [SURFACED-<date>] <target node> — <summary>
      Each entry is also logged to workflow/backlog.md -->
+- [SURFACED-2026-06-13] Phase 1 — `favicon.ico` 404 on root load is the only console noise in the production build. Low/cosmetic. Decision: surface as 1-line note here; defer backlog filing until verify-self confirms it persists on the live deploy (which it will). Operator may opt to silence with a tiny `public/favicon.ico` or accept and close.
 
 ---
 
