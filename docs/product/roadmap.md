@@ -59,7 +59,8 @@ The following are explicitly out of scope for v1 and not on the roadmap — note
 - User accounts, progression, persistence
 - Mobile / touch controls
 - Monetization
-- Multiple aircraft selection (v1 ships with one aircraft)
+- ~~Multiple aircraft selection (v1 ships with one aircraft)~~ — **negotiated into v1 at WP24 (2026-06-13)**: Trainer (Cessna) + Jet (MiG-15) selectable from mission-select. Cost calculus shifted once WP14.21 jet shipped; only the UI was missing.
 - Mission editor / user-generated content
 - Campaign / mission chains
 - Study-level flight model refinements
+- Third selectable airframe (Aerobatic) — `aircraft-aerobatic.json` exists as a test fixture but WP24 explicitly kept it out of the picker pending SURFACE-2026-06-06-06 Phase B feel-tune; promote if the operator decides to ship the aerobatic in a future v1.x WP

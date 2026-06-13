@@ -1,7 +1,8 @@
 ---
 name: WP24 — Aircraft selection UI
 type: feature
-state: verify-codify (all phases complete)
+state: ship (complete)
+ship_commit: f3daffb
 created: 2026-06-13
 drive_mode: full-autopilot
 size: S–M
@@ -169,3 +170,12 @@ Action: Replace with a one-shot `await page.evaluate(() => localStorage.removeIt
 ## Roadmap.md update (at finalize)
 
 Per Q1 resolution: `docs/product/roadmap.md:62` "Multiple aircraft selection (v1 ships with one aircraft)" — strike from out-of-scope list; replace with v1 line item if needed. `feature-finalize` handles this.
+
+---
+
+## Retrospect
+
+- **What changed in our understanding:** Nothing fundamental — the spec's 5 proposed Q-resolutions all stood through implementation. The only surprise was a self-inflicted test bug at codify (Playwright `context.addInitScript()` re-firing on EVERY navigation, including reloads, which wiped the just-persisted localStorage pick between picker click and post-reload boot read). Caught on first full e2e run and fixed cheaply (~5 min) by dropping the init-script in favor of Playwright's default per-test fresh context.
+- **Assumptions that held:** (a) `resolveAirframeName` is extractable as pure logic and unit-testable in isolation — verified by 8 precedence cases in Phase 1. (b) `MissionSelectScreen.show()` is the right extension point — picker block injected cleanly above the mission list with no signature break (back-compat preserved via optional `pinnedConfigs?` in `ShowOpts`). (c) Boot-time binding via localStorage + `window.location.assign(?mission=<id>)` reload works in practice, not just in theory (verify-self confirmed). (d) Eager-fetch of all 4 manifest missions for the `pinnedConfigs` map is cheap (no observable boot-time hit). (e) Mode 4 full-autopilot skipping verify-human worked correctly through 3 phases — no human-only signal was needed.
+- **Assumptions that were wrong:** Only one — that `context.addInitScript()` could be used as a clean per-test localStorage clear. Documented in the Test Triage section; the lesson is that Playwright's default isolation is already sufficient for localStorage between tests, so the init-script was redundant AND harmful.
+- **Approach delta:** Tracked the plan closely. Only deviation: P2.2 was satisfied by Phase 1's existing 8 unit tests (resolveAirframeName precedence) rather than writing new Phase-2-specific Vitest. Phase 3's e2e (`tests/e2e/aircraft-picker.spec.ts`) consolidated the integration-boundary verification that the plan had open between Phase 2 and Phase 3. Net: 30 lines fewer than the original plan estimate, 3 phases ran tip-to-tip in one orchestrator session with no back-loops.
