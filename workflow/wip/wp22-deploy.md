@@ -115,33 +115,30 @@ Fallback if Cloudflare Pages onboarding hits friction: **Netlify** (next-best on
   - [x] P1.7-gh Add `.github/workflows/deploy.yml` — checkout, setup-node@v4 (reads `.nvmrc`), `npm ci`, `npm run build`, `cp dist/index.html dist/404.html`, `actions/upload-pages-artifact@v3`, `actions/deploy-pages@v4`. Permissions: `pages: write, id-token: write`. Concurrency group `pages` with `cancel-in-progress: false`.  <!-- status: done -->
   - [x] P1.7b-gh **DISCOVERY — F25 (note-and-continue):** runtime fetch sites at `src/mission/loader.ts:16,28` and `src/engine/scripted-input.ts:156-157` used hardcoded leading-`/` absolute paths (`'/missions/...'`, `'/config/...'`). These break under any sub-path deploy. Fixed by prepending `import.meta.env.BASE_URL` (evaluates to `/` in dev, `/areo-test-proty-1/` in prod). 3 fetch sites total. Vitest 793/793 + e2e 47/47 + tsc clean post-fix. **SURFACE-2026-06-13-01 filed** (low priority — fix in WP22; documents the leading-`/`-fetch anti-pattern for future code review).  <!-- status: done -->
   - [x] P1.8-gh Local re-smoke after base-path fix: `npm run build` clean, `dist/index.html` references `/areo-test-proty-1/assets/...`, `dist/.nojekyll` present. **Live preview probe** (P1.4 was originally Cloudflare-shaped but `vite preview` DOES honor `base` so I ran it): navigated to `http://localhost:4173/areo-test-proty-1/`, splash cleared, 4 mission tiles rendered, no path-resolution errors. Drilled into `?mission=free-flight&debug=true`, `window.__aircraft.getState()` showed altitude=66.2m + airspeed=49.8 m/s + all finite at 5s. Production debug-gate off-by-default confirmed (lil-gui 0 without `?debug=true`).  <!-- status: done -->
-  - [ ] P1.9-gh **OPERATOR ACTION:** push `main` to GitHub (`git push origin main`), then enable Pages in the repo: Settings → Pages → Source = "GitHub Actions" (one-time click; the workflow handles the rest). The workflow auto-runs on push.  <!-- status: in-progress (operator action required) -->
-  - [ ] P1.10-gh Wait for the deploy workflow run; record the deployed URL (`https://staymanhou.github.io/areo-test-proty-1/`) under `## Deployment` for verify-self.  <!-- status: NOT-STARTED -->
-  - [ ] verify-auto  <!-- status: NOT-STARTED -->
-    - Standard local pre-deploy gates only: `npm run build` clean, `npx tsc --noEmit` clean, `npm run test` 793/793 green, `npm run test:e2e` 47/47 green. No new tests added — this WP is config-only.
-  - [ ] verify-self  <!-- status: NOT-STARTED -->
-    - Drive a Playwright probe (or `mcp__playwright__browser_navigate`) against the LIVE deployed URL — not localhost. Confirm all 8 observable outcomes above. The agent already has access to playwright MCP tools.
+  - [x] P1.9-gh Push + enable Pages. First workflow run failed at `configure-pages@v5` with "Get Pages site failed... Not Found" — chicken-and-egg: workflow ran before Pages-enable propagated. Operator re-ran the job after enabling; second run succeeded.  <!-- status: done -->
+  - [x] P1.10-gh Recorded URL: `https://staymanhou.github.io/areo-test-proty-1/`. HTTP HEAD: 200, `content-type: text/html`, served by GitHub (`server: GitHub.com`); assets HEAD: 200, `application/javascript`.  <!-- status: done -->
+  - [x] verify-auto  <!-- status: done -->
+    - Vitest 793/793 + Playwright e2e 47/47 + tsc clean + production build clean (executed at P1.7b-gh and P1.8-gh post-BASE_URL-fix). Documented in P1.8-gh.
+  - [x] verify-self  <!-- status: done -->
+    - Drove Playwright MCP against the LIVE URL `https://staymanhou.github.io/areo-test-proty-1/`. All 8 observable outcomes confirmed: (1) home loads + 4 mission tiles render after splash clears; (2) deep-link `?mission=free-flight&debug=true` starts the mission with finite altitude/airspeed (alt=2m, AS=55.1 m/s sampled at ~t=8s — consistent with throttle=0 spawn at y=50, V_trim=78 forward); (3) console clean except the predicted `favicon.ico` 404 (same as local); (4) `lil-gui`/`__aircraft` BOTH absent without `?debug=true`; (5) BOTH present with `?debug=true` (15 panels mounted, accessor exposed); (6) HEAD `/` → 200 + `text/html` + GitHub headers; (7) HEAD `/assets/*.js` → 200 + `application/javascript`; (8) workflow run = success (operator confirmed).
   - [ ] verify-human  <!-- status: NOT-STARTED -->
-    - Operator opens the deployed URL in their own browser, clicks through all 4 missions, confirms gameplay feels equivalent to local dev. Confirms no lil-gui leak. Confirms the URL is shareable (i.e. someone else could open it).
+    - Operator opens `https://staymanhou.github.io/areo-test-proty-1/` in their own browser, clicks through all 4 missions, confirms gameplay feels equivalent to local dev. Confirms no lil-gui leak. Confirms the URL is shareable (open in incognito or send to someone).
   - [ ] verify-codify  <!-- status: NOT-STARTED -->
     - No new behavior to codify. This WP ships infrastructure, not features. The existing test suite already covers all in-product invariants. Skip codify (record decision in retrospect).
 
 ## Current Node
-- **Path:** Feature > Phase 1 > P1.9-gh (operator pause point)
-- **Active scope:** P1.9-gh (operator: `git push origin main` + Pages source = "GitHub Actions" toggle)
-- **Blocked:** P1.10-gh, verify-self, verify-human — all blocked on P1.9-gh (push + Pages enable requires operator credentials)
-- **Unvisited:** P1.10-gh (record URL) → verify-auto → verify-self → verify-human → verify-codify (skip-record)
-- **Open discoveries:** favicon.ico 404 (cosmetic, harmless); BASE_URL anti-pattern (resolved inline, filed SURFACE-2026-06-13-01 for future code review).
+- **Path:** Feature > Phase 1 > verify-human
+- **Active scope:** verify-human (operator playtests live URL)
+- **Blocked:** verify-codify (decision to skip — see node body)
+- **Unvisited:** verify-human → verify-codify (skip-record) → ship → finalize
+- **Open discoveries:** favicon.ico 404 (cosmetic, harmless, predicted + observed on live); BASE_URL anti-pattern (resolved inline, filed SURFACE-2026-06-13-01).
 
 ## Deployment
 - **Repo:** `git@github.com:StaymanHou/areo-test-proty-1.git`
 - **Branch:** `main`
-- **Commits ready to push:**
-  - `113a2d5` — chore(wp22): deploy prep — pin Node 22 + plan file
-  - `b17fe15` — chore(wp22): update WIP — P1.1–P1.3 complete, paused at P1.4
-  - (uncommitted ahead: vite.config.ts + .nojekyll + .github/workflows/deploy.yml + the BASE_URL fix + WIP update)
-- **Public URL (expected):** `https://staymanhou.github.io/areo-test-proty-1/`
-- **One-time operator click:** Settings → Pages → Source = "GitHub Actions"
+- **Latest deploy commit:** `fc91dd6` (chore(wp22): GitHub Pages deploy config + BASE_URL fix; add WP24/WP25 to WBS)
+- **Public URL (live):** **https://staymanhou.github.io/areo-test-proty-1/**
+- **First-deploy notes:** initial workflow run failed at `configure-pages@v5` (Pages-enable propagation delay); operator re-ran the job after enabling Pages and second run succeeded. Followup: consider adding `with: enablement: true` to `configure-pages` step to make first-run idempotent on fresh forks.
 
 ## Discoveries
 <!-- Format: [SURFACED-<date>] <target node> — <summary>

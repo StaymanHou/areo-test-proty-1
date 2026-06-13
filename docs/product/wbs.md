@@ -148,13 +148,24 @@ The archive also contains the Phase 2-era Dependency map, Architectural-gaps sec
 - In-mission trigger — pause the runner while open, or non-blocking overlay?
 - Does the manual list mission objectives too, or just controls? (Recommend just controls — objectives stay in HUD per D12.)
 
+### WP26: Audio mix pass — quieter engine + volume control
+**Description:** Operator playtest at WP22 deploy (2026-06-13) flagged engine-loop sound as too loud. Lower the engine baseline gain (currently set during WP19 — see `src/audio/engine-loop.ts`) AND add a master volume control surface so players can adjust to taste. Likely a slider in the HUD or mission-select chrome; persist via localStorage so the choice survives page reloads. Consider whether wind / SFX get the same master multiplier or separate sliders (recommend: single master for v1 simplicity).
+**Phase:** 3
+**Dependencies:** WP22 (so the fix ships to the live URL)
+**Size:** S
+**Open questions for spec/plan time:**
+- Single master slider, or per-channel (engine/wind/SFX)? Recommend master-only for v1.
+- Slider location — mission-select corner, HUD corner, in a small pause/settings overlay? (WP25 control manual could share the same surface.)
+- Persistence — localStorage with a key like `flightsim.volume.master` (0..1 float)? Default value if absent — 0.5? Lower per the operator's "too loud" feedback.
+- Should the engine-loop baseline gain in `src/audio/engine-loop.ts` be lowered as the default (independent of the master slider), so the at-1.0 master is the new "loud"? Recommend yes — slider centered around a comfortable default, not forcing the user to drag every load.
+
 ---
 
 ## Critical path
 
 `... → WP17(DONE) → WP18(DONE) → WP19(DONE) → WP20(DONE) → WP22 → WP23 → ship`. (WP21 cross-browser QA dropped 2026-06-07 — Chromium-only acceptance; cross-browser to v1.x.)
 
-**WP24 + WP25 are not on the critical path** — both depend on WP22 deploy completing so they ship to the same URL. WP24 negotiates the v1 multi-aircraft exclusion (`roadmap.md:62`); WP25 is straightforward Phase 3 polish. Sequence after WP22: either before WP23 playtest (so testers see them) or after (if WP23 surfaces them as needs). Recommend slotting both before WP23 so the playtest feedback covers the full v1 surface.
+**WP24, WP25, WP26 are not on the critical path** — all three depend on WP22 deploy completing so they ship to the same URL. WP24 negotiates the v1 multi-aircraft exclusion (`roadmap.md:62`); WP25 is straightforward Phase 3 polish; WP26 fixes the engine-loop loudness flagged at WP22 verify-human (2026-06-13). Sequence after WP22: either before WP23 playtest (so testers see them) or after (if WP23 surfaces them as needs). Recommend slotting all three before WP23 so the playtest feedback covers the full v1 surface. **WP26 is the highest priority of the three** — it addresses a concrete operator-flagged playtest issue, while WP24/WP25 are speculative.
 
 ## Session Pause — 2026-06-07 15:00
 Paused. See `workflow/.session.md` to resume. WP19 shipped (`7467f10`) + finalized (`b03140e`); Phase 3 milestone "Audio: engine, wind, weapon, crash sounds" CHECKED. Operator-queued next entry: WP20 visual polish (L) — recommended `/feature-spec` given art-direction scope. Drive mode: full-autopilot.
