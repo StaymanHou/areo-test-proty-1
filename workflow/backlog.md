@@ -10,6 +10,62 @@ Paused. See `workflow/.session.md` to resume. 4 SURFACEs closed this session (-1
 
 ## Open
 
+### SURFACE-2026-06-13-QUALITY-vite-base-hardcoded
+- **Source:** feature:review-quality (WP22, 2026-06-13)
+- **Target level:** task workflow (small follow-up)
+- **Type:** code-quality / config-hygiene
+- **Priority:** medium
+- **Summary:** `vite.config.ts:1-5` hardcodes `base: '/areo-test-proty-1/'` as a string literal with no comment explaining its coupling to the GitHub repo name. Repo rename or fork-redeploy under a different path silently breaks prod (dev `localhost:5173/` still works, prod 404s on every asset). Suggested fix: `base: process.env.BASE_URL ?? '/areo-test-proty-1/'` + a one-line comment "MUST match GitHub repo name; see .github/workflows/deploy.yml". Bundle with the other two WP22-quality SURFACEs at next task workflow.
+- **Status:** open
+
+### SURFACE-2026-06-13-QUALITY-ci-no-test-gate
+- **Source:** feature:review-quality (WP22, 2026-06-13)
+- **Target level:** task workflow (small follow-up)
+- **Type:** ci / test-coverage / silent-deploy-risk
+- **Priority:** medium
+- **Summary:** `.github/workflows/deploy.yml` runs `npm run build` and ships straight to Pages — no `npm run test`, no `npm run test:e2e`, no `tsc --noEmit` step. An inadvertently-merged broken test or type error deploys to the live URL anyway. Local verify-auto gates ran (Vitest 793/793 + e2e 47/47 + tsc clean) but don't persist into CI. Minimum cheap fix: add `tsc --noEmit` step before build. Full fix: add `npm run test` step too. (e2e is slower at ~7min so weigh against deploy latency.)
+- **Status:** open
+
+### SURFACE-2026-06-13-QUALITY-unnecessary-404-fallback
+- **Source:** feature:review-quality (WP22, 2026-06-13)
+- **Target level:** task workflow (small follow-up)
+- **Type:** code-quality / dead-code
+- **Priority:** medium
+- **Summary:** `.github/workflows/deploy.yml:38` step "Copy index.html to 404.html (SPA fallback)" is unnecessary per the WP22 WIP's own analysis. The app uses URL query params only (`?mission=...`, `?debug=true`), no client-side path routing — every URL hits `/index.html`. 404→index trick is for client-routed SPAs. Either delete the step or add a defensive comment explaining future-proofing intent.
+- **Status:** open
+
+### SURFACE-2026-06-13-QUALITY-base-url-trailing-slash-contract
+- **Source:** feature:review-quality (WP22, 2026-06-13)
+- **Target level:** task workflow (bundle with QUALITY-vite-base-hardcoded)
+- **Type:** code-quality / contract-assertion
+- **Priority:** low
+- **Summary:** `src/mission/loader.ts:16,28` (and `src/engine/scripted-input.ts:configNameToPath`) build URLs via `${import.meta.env.BASE_URL}missions/${id}.json`, relying on Vite's contract that `BASE_URL` ends with `/`. A typo like `base: '/areo-test-proty-1'` in `vite.config.ts` produces malformed `/areo-test-proty-1missions/...` URLs. Suggested mitigation: combine with SURFACE-2026-06-13-01 lint rule (require `${import.meta.env.BASE_URL}` prefix on all `src/` fetch URLs) + a vite.config-level assert that `base` ends with `/`.
+- **Status:** open
+
+### SURFACE-2026-06-13-QUALITY-wip-duplicate-research-heading
+- **Source:** feature:review-quality (WP22, 2026-06-13)
+- **Target level:** task or cleanup-during-finalize
+- **Type:** docs / cosmetic
+- **Priority:** low
+- **Summary:** `workflow/wip/wp22-deploy.md` contains two `## Research` headings — the second labeled "Original research findings retained below for context" but a grep for "Research" returns two matches. Rename second to `## Research (superseded — original Cloudflare recommendation)` for disambiguation. Cosmetic; safe to ignore until archive.
+- **Status:** open
+
+### SURFACE-2026-06-13-QUALITY-deploy-lockfile-not-asserted
+- **Source:** feature:review-quality (WP22, 2026-06-13)
+- **Target level:** task workflow (bundle with QUALITY-ci-no-test-gate)
+- **Type:** ci / defensive-check
+- **Priority:** low
+- **Summary:** `.github/workflows/deploy.yml:23` uses `actions/setup-node@v4` with `cache: npm` and `npm ci` install (line 30) — both require `package-lock.json`. Workflow does not assert lockfile presence; a missing lockfile fails at `npm ci` time with a less obvious error. Fix: trivial — add `test -f package-lock.json` before `npm ci`, or rely on `npm ci`'s own error (current state). Cosmetic.
+- **Status:** open
+
+### SURFACE-2026-06-13-QUALITY-surface01-stale-status
+- **Source:** feature:review-quality (WP22, 2026-06-13)
+- **Target level:** cleanup-during-finalize
+- **Type:** docs / stale-state
+- **Priority:** low
+- **Summary:** `workflow/backlog.md` SURFACE-2026-06-13-01 status line says "RESOLVED 2026-06-13 inline at WP22 (commit pending)" — at this point the commit has shipped (ship SHA `f8d804b`). Trivially stale; finalize sweep will catch.
+- **Status:** **RESOLVED 2026-06-13 at WP22 finalize sweep** — SURFACE-2026-06-13-01 status line updated to reference ship SHA `f8d804b`.
+
 ### SURFACE-2026-06-13-01 — Runtime fetch sites must use `import.meta.env.BASE_URL` for sub-path deploys [RESOLVED 2026-06-13]
 - **Source:** feature:build (WP22, 2026-06-13 — caught during GitHub Pages re-pick smoke)
 - **Target level:** task workflow (docs / lint rule)
@@ -18,7 +74,7 @@ Paused. See `workflow/.session.md` to resume. 4 SURFACEs closed this session (-1
 - **Summary:** Until WP22, all three runtime fetch sites (`src/mission/loader.ts:16` and `:28`, `src/engine/scripted-input.ts:configNameToPath` lines 156-157) used hardcoded leading-`/` absolute paths like `'/missions/${id}.json'` and `'/config/aircraft.json'`. These worked on `localhost:5173/` and `localhost:4173/` (Vite root deploy) but silently broke on any sub-path deploy because the browser would resolve them against the document origin, not the Vite `base`. WP22's GitHub Pages re-pick (URL path `<user>.github.io/areo-test-proty-1/`) surfaced this immediately on first probe.
 - **Fix shipped:** all 3 sites now prepend `${import.meta.env.BASE_URL}` (evaluates to `/` in dev so existing tests stay green; evaluates to `/areo-test-proty-1/` in prod). Vitest 793/793 + e2e 47/47 + tsc clean post-fix.
 - **Suggested action:** at next opportunity (task workflow, ≤30 min): (a) add a lint rule / CI grep for hardcoded leading-`/` fetch URLs in `src/` (`fetch\\(['\`]/`), or (b) document the convention in CONVENTIONS.md so future code review catches it. Option (a) is stricter; (b) is cheaper. Either prevents the regression from re-entering — a future contributor or LLM-generated patch would naturally reach for `'/missions/...'` again.
-- **Status:** **RESOLVED 2026-06-13 inline at WP22 (commit pending).** Followup task-workflow optional.
+- **Status:** **RESOLVED 2026-06-13 inline at WP22 ship commit `f8d804b`.** Followup task-workflow optional. (Also closes SURFACE-2026-06-13-QUALITY-surface01-stale-status which flagged this exact "commit pending" wording.)
 
 ### SURFACE-2026-06-07-03 — crash SFX trigger cannot be live-verified via scripted-input dive
 - **Source:** feature:verify-self (WP19 Phase 2, 2026-06-07)

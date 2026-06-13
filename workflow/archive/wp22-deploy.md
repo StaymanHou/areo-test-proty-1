@@ -1,16 +1,19 @@
 ---
 name: WP22 — Deploy + share
 type: feature
-state: plan (complete)
+state: Completed
+completed: 2026-06-13
 drive_mode: autopilot
 created: 2026-06-13
 size: XS
+ship_commit: f8d804b
+live_url: https://staymanhou.github.io/areo-test-proty-1/
 ---
 
 # Feature: WP22 — Deploy + share
 
 **Workflow:** feature
-**State:** plan (complete) [updated 2026-06-13: host re-pick — Cloudflare → GitHub Pages]
+**State:** ship (complete)
 **Created:** 2026-06-13
 
 ## Problem Statement
@@ -127,11 +130,11 @@ Fallback if Cloudflare Pages onboarding hits friction: **Netlify** (next-best on
     - No new behavior to codify. This WP ships infrastructure, not features. The existing test suite already covers all in-product invariants. Skip codify (record decision in retrospect).
 
 ## Current Node
-- **Path:** Feature > Phase 1 > verify-human
-- **Active scope:** verify-human (operator playtests live URL)
-- **Blocked:** verify-codify (decision to skip — see node body)
-- **Unvisited:** verify-human → verify-codify (skip-record) → ship → finalize
-- **Open discoveries:** favicon.ico 404 (cosmetic, harmless, predicted + observed on live); BASE_URL anti-pattern (resolved inline, filed SURFACE-2026-06-13-01).
+- **Path:** Feature > review-quality (complete) → finalize
+- **Active scope:** finalize (next skill)
+- **Blocked:** none
+- **Unvisited:** finalize → close
+- **Open discoveries:** favicon.ico 404 (cosmetic); BASE_URL anti-pattern (SURFACE-2026-06-13-01); 3 MAJOR + 4 MINOR code-quality findings auto-backlogged (SURFACE-2026-06-13-QUALITY-* — all medium/low priority).
 
 ## Deployment
 - **Repo:** `git@github.com:StaymanHou/areo-test-proty-1.git`
@@ -166,3 +169,48 @@ Sources consulted:
 - [GitHub Pages WASM MIME — community discussion](https://github.com/orgs/community/discussions/22863)
 - [Cloudflare Pages WASM MIME issue thread](https://community.cloudflare.com/t/hosting-content-on-cloudflare-pages-service-and-mime-types/259686)
 - [Vite — static deploy guide](https://vite.dev/guide/static-deploy)
+
+---
+
+## Code-Quality Review — wp22-deploy
+
+### Strengths
+- BASE_URL fix is comprehensive: all 3 runtime fetch sites identified and patched together (`src/mission/loader.ts:16,28`, `src/engine/scripted-input.ts:156-157`), with the discovery filed as SURFACE-2026-06-13-01 so the anti-pattern gets a code-review rule rather than recurring silently.
+- WIP problem statement is honest about a mid-flight pivot (Cloudflare Pages → GitHub Pages due to 2FA lockout) and re-states the trade-offs explicitly — future readers will understand why the original research recommendation was overridden.
+- `verify-codify` is explicitly skipped with a recorded rationale ("ships infrastructure, not features") rather than going through the motions — correct discipline for a config-only WP.
+- Workflow file uses pinned major-version action tags (`@v4`, `@v5`, `@v3`) consistently and lays out the standard Pages build-then-deploy split correctly with `pages: write` + `id-token: write` and `concurrency: pages / cancel-in-progress: false`.
+- `.nvmrc` + `setup-node@v4` with `node-version-file: .nvmrc` + `cache: npm` is the right shape for build-environment reproducibility per Risk #1 of the research section.
+
+### Issues
+**CRITICAL**
+- (none)
+
+**MAJOR**
+- [vite.config.ts:1-5] The new `vite.config.ts` hardcodes `base: '/areo-test-proty-1/'` as a string literal. Any rename of the GitHub repo (or any subsequent fork/redeploy under a different path) silently breaks the production deploy because dev (`localhost:5173/`) still works while prod 404s on every asset. — *Why it matters:* the value lives in two places (the workflow URL implicitly, and this file explicitly), and the file has zero comment explaining the coupling. A `BASE_URL` env override (`base: process.env.BASE_URL ?? '/areo-test-proty-1/'`) plus a one-line comment "MUST match GitHub repo name; see .github/workflows/deploy.yml" would make the constraint discoverable. The convention this repo otherwise follows (per `CLAUDE.md`: flight-model constants in JSON, not code; debug gated on URL params, not hardcoded) is to externalize tuning/environment values — this commit ships an environment value as a string constant with no breadcrumb.
+- [.github/workflows/deploy.yml:1-56] No verification gate before deploy. The workflow runs `npm run build` and ships straight to Pages — there is no `npm run test` or `npm run test:e2e` step, and no `tsc --noEmit` check. — *Why it matters:* this means an inadvertently-merged broken test or type error will deploy to the live URL anyway. The WP22 verify-auto step ran tests locally (Vitest 793/793 + e2e 47/47 + tsc) but those gates do not persist into CI. For a project that just survived the D14→D27 cascade specifically because verify-auto disciplined the workflow, omitting test gating from the deploy pipeline is a real coverage regression. Reasonable scope-limit defense: the workflow ships infra, not feature gates — but at minimum a `tsc --noEmit` step is cheap and prevents the most common silent-deploy class.
+- [.github/workflows/deploy.yml:38] The "Copy index.html to 404.html (SPA fallback)" step is unnecessary per the WIP's own analysis. WIP line 24 states: "the app uses URL **query params** ... there is **no client-side path routing**. Every URL hits `/index.html`. **No `_redirects` file is needed.**" The 404→index trick is for SPAs with client-side routing; this app's URLs always end at `/`. — *Why it matters:* code that does nothing is debt. A reader six months later wonders what unhandled routes the 404 fallback exists to catch; if a future contributor adds client-side routing they may assume this already handles SPA fallback correctly when in fact it's a leftover. Either delete the step or add a comment explaining why it ships defensively (e.g., "guard against future deep-link sharing on `?mission=...` queries that bookmark as 404s — currently a no-op").
+
+**MINOR**
+- [src/mission/loader.ts:16,28] `${import.meta.env.BASE_URL}missions/${id}.json` relies on `BASE_URL` always ending with `/` (Vite's documented contract). It does in practice, but no test asserts this, and a typo like `base: '/areo-test-proty-1'` (missing trailing slash) in `vite.config.ts` would produce malformed URLs like `/areo-test-proty-1missions/free-flight.json`. — *Why it matters:* the SURFACE-2026-06-13-01 suggestion (lint rule for leading-`/` fetches) would also catch a missing-trailing-slash bug if expressed as "all fetch URLs in `src/` must start with `${import.meta.env.BASE_URL}`" plus a vite.config check that `base` ends with `/`. Worth noting in the SURFACE write-up.
+- [workflow/wip/wp22-deploy.md:151-168] The WIP retains the original Cloudflare-recommendation Research section verbatim below the GitHub Pages pivot. Two `## Research` headings in one file is parseable noise — the second is labeled "Original research findings retained below for context" but a future grep for "Research" in this WIP returns two matches. A `## Research (superseded — original Cloudflare recommendation)` heading would disambiguate. Cosmetic.
+- [.github/workflows/deploy.yml:23] `actions/setup-node@v4` with `cache: npm` is correct, but no `package-lock.json` lockfile presence is verified. If `npm ci` is the install step (it is, line 30), the lockfile must be present — fine here, but worth a one-line CI sanity assert or just confidence in repo discipline.
+- [workflow/backlog.md:18] The SURFACE entry's `**Status:**` line says "(commit pending)" — at this point the commit has shipped (the ship SHA is `f8d804b`). Trivially stale; the next backlog sweep will catch it. Cosmetic.
+
+### Assessment
+This is a well-scoped XS feature that ships exactly what its plan said it would: pin Node, add a Vite base path, ship a `.nojekyll`, wire a deploy workflow, fix the BASE_URL fetch sites that the sub-path deploy surfaced. The mid-flight host pivot (Cloudflare → GitHub Pages) is documented honestly and the BASE_URL discovery handled inline with discipline (SURFACE filed, all 3 sites caught, full verify-auto rerun). The two MAJOR findings (hardcoded base path with no override, missing test gate in CI) are real but easily addressed in a small followup task. The WP doesn't accrue meaningful debt — future readers will find the changes minimal and well-documented, with only the unnecessary 404.html copy step likely to confuse. The infrastructure-vs-feature boundary is correctly observed (verify-codify skipped with rationale). Overall: ship it as-is, file a small task for the CI test-gate + base-path-override.
+
+### If you disagree
+Operator: dismiss any finding by editing this section in the WIP file and marking the line `[DISMISSED]` before `feature-finalize` archives the WIP. The finding will be skipped by the orchestrator's severity-tier action matrix.
+
+---
+
+## Retrospect
+- **What changed in our understanding:** The bundle uses `@dimforge/rapier3d-compat` which **inlines WASM as base64** into the JS bundle (no `.wasm` file in `dist/`). The original research weighted heavily on WASM MIME support — a non-issue here. Also confirmed at smoke time: 3 runtime fetch sites used hardcoded leading-`/` absolute paths (`'/missions/...'`, `'/config/...'`) that silently broke under any sub-path deploy. Vite `BASE_URL` is the right substrate; `import.meta.env.BASE_URL` is `/` in dev (keeping existing tests green) and `/areo-test-proty-1/` in prod.
+- **Assumptions that held:** Static-deploy hosts are interchangeable for ergonomics. The Vite `base` config propagates correctly into `index.html` asset URLs without further tuning. The `?debug=true` gate works the same in prod-bundle as in dev. The build is fast (~200ms locally; ~30s on CI cold). The plan's "no client-side routing → no _redirects needed" assertion was correct (the 404→index step turned out to be unnecessary, flagged at code-quality review).
+- **Assumptions that were wrong:** (1) The original research's host pick (Cloudflare Pages) was overridden mid-feature — operator was locked out of Cloudflare via 2FA loss on a dormant account. The pivot to GitHub Pages cost ~15min of re-plan + new infra (workflow + base path + .nojekyll). (2) The plan said "single-step PAUSE at P1.4 for operator dashboard onboarding" — actual flow had two operator-pause steps (push + Pages-enable click). (3) The first workflow run failed at `configure-pages@v5` with "Get Pages site failed" — chicken-and-egg between Pages-enable propagation and the workflow trigger. Self-resolved via job re-run; flagged for hardening at next iteration via `enablement: true`.
+- **Approach delta:** The plan called for ~3 host-onboarding tasks (P1.4–P1.6). Actual shipped: 8 GitHub-Pages-specific tasks (P1.4-gh through P1.10-gh) plus an unplanned BASE_URL-prepend fix touching 3 source files. The latter was caught at the live-preview smoke step, not at code-review of the workflow YAML — confirming the value of doing a live URL probe (P1.8-gh) before declaring config-only work done. Verify-codify was correctly skipped (infra-only WP) with rationale recorded in the plan.
+
+## Communicate
+> **Feature complete:** WP22 deploy + share has shipped. The web flight sim is now live at **https://staymanhou.github.io/areo-test-proty-1/** — anyone with the link can open it in a Chromium browser and play all four missions (Free Flight, Waypoint Patrol, Takeoff & Landing, Combat). Verify by opening the URL: splash → mission-select with 4 tiles → click any mission → fly. To check it's the real deploy, the URL is `staymanhou.github.io/areo-test-proty-1/` and the GitHub Actions tab shows the "Deploy to GitHub Pages" workflow run as the source.
+>
+> Requester = operator — closure notice for self-record.
