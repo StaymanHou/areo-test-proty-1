@@ -1,7 +1,8 @@
 ---
 name: Fix MiG-15 mesh — chord direction reversed (trailing edge in -Z instead of +Z)
 type: feature
-state: verify-codify (all phases complete)
+state: ship (complete)
+ship_commit: c7e74b5
 created: 2026-06-13
 drive_mode: full-autopilot
 size: XS
@@ -86,3 +87,12 @@ All five hold → F33 → plan.
 **High.** Magnitude assertions (X/Y/Z extent) are sign-symmetric — flipping the rotation sign preserves them. Direction assertions (where the chord points) are the new gate. The simplest possible fix (sign flip), with a clear empirical test.
 
 Note: I'll also verify the thickness now sits at world -Y (below the chord plane) instead of +Y, but that's cosmetic and the magnitude test stays green either way.
+
+---
+
+## Retrospect
+
+- **What changed in our understanding:** The prior fix's test set asserted *magnitudes* (X=span, Y=thin, Z=chord-extent) but not the *signed direction* of the chord axis. Magnitude assertions are sign-symmetric — `-π/2` and `+π/2` rotations produce identical bbox magnitudes, but opposite chord directions. The fix that lay the wings flat ALSO reversed them front-to-back, and the magnitude-only tests silently let the second bug ship. The lesson is now codified in the new test pattern: "extent behind anchor > extent forward of anchor" — a sign-sensitive geometric assertion that catches direction reversals.
+- **Assumptions that held:** (a) Sign flip on a single axis is the right fix. Confirmed at first impl-edit-and-run. (b) The wing's mesh anchor is at chord midpoint (`root.z - rootChord/2`), so half the chord sits forward of the anchor — this is a code convention, not a bug. (c) Cessna BoxGeometry path remains unaffected by the rotation change. Confirmed via verify-self regression check.
+- **Assumptions that were wrong:** (a) Initial test threshold `min.z >= -0.5` was too strict; the wing legitimately extends ~0.8m forward of the anchor (half-chord) under the chord-midpoint anchor convention. Loosened to "extent behind anchor > extent forward of anchor" (asymmetry-based, anchor-relative) which holds for any chord-midpoint or quarter-chord anchor convention. (b) No other wrong assumptions — the sign-flip itself was correct first try.
+- **Approach delta:** Matched the plan exactly. One iteration on the test threshold (cheap, ~2 min) — the rotation code change was correct on first edit. No code-level back-loop.
