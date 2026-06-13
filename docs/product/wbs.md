@@ -142,16 +142,8 @@ The archive also contains the Phase 2-era Dependency map, Architectural-gaps sec
 - Global picker on mission-select; per-mission tiles label their pinned overrides inline.
 **Verification:** Vitest 823/823 (21 new + 9 new picker cases); Playwright e2e 53/53 (6 new in aircraft-picker.spec.ts including consuming-surface integration boundary); tsc + production build clean.
 
-### WP25: In-game control manual (read-only)
-**Description:** Read-only reference card listing the active keymap (pitch / roll / yaw / throttle / fire, plus camera + Escape-to-menu). Reached from the mission-select screen via a "Controls" button or from in-mission via a pause/help key (e.g. `?` or `H`). Closes the gap between the 20s key-hints overlay (WP18) and a player who alt-tabs away and comes back having forgotten the bindings. No rebinding — just a static reference. Static HTML overlay (same DOM-overlay pattern as `src/hud/key-hints.ts` and `src/hud/dom-hud.ts` per D12). Content rendered from `DEFAULT_KEY_MAP` so it stays in sync if keymap changes (single source of truth).
-**Phase:** 3
-**Dependencies:** WP22
-**Size:** XS–S
-**Open questions for spec/plan time:**
-- Trigger key — `?` (matches Vim/many games) vs `H` vs both?
-- Mission-select entry — dedicated tile/button, or a small `(?)` icon in a corner?
-- In-mission trigger — pause the runner while open, or non-blocking overlay?
-- Does the manual list mission objectives too, or just controls? (Recommend just controls — objectives stay in HUD per D12.)
+### WP25: ~~In-game control manual~~ — DROPPED 2026-06-13
+Redundant. `src/hud/key-hints.ts` (shipped WP18 onboarding) already renders the active keymap from `DEFAULT_KEY_MAP`; operator confirmed the card is visible in-game. No separate reference manual needed.
 
 ### WP26: Audio mix pass — quieter engine + volume control
 **Description:** Operator playtest at WP22 deploy (2026-06-13) flagged engine-loop sound as too loud. Lower the engine baseline gain (currently set during WP19 — see `src/audio/engine-loop.ts`) AND add a master volume control surface so players can adjust to taste. Likely a slider in the HUD or mission-select chrome; persist via localStorage so the choice survives page reloads. Consider whether wind / SFX get the same master multiplier or separate sliders (recommend: single master for v1 simplicity).
@@ -160,7 +152,7 @@ The archive also contains the Phase 2-era Dependency map, Architectural-gaps sec
 **Size:** S
 **Open questions for spec/plan time:**
 - Single master slider, or per-channel (engine/wind/SFX)? Recommend master-only for v1.
-- Slider location — mission-select corner, HUD corner, in a small pause/settings overlay? (WP25 control manual could share the same surface.)
+- Slider location — mission-select corner, HUD corner, in a small pause/settings overlay?
 - Persistence — localStorage with a key like `flightsim.volume.master` (0..1 float)? Default value if absent — 0.5? Lower per the operator's "too loud" feedback.
 - Should the engine-loop baseline gain in `src/audio/engine-loop.ts` be lowered as the default (independent of the master slider), so the at-1.0 master is the new "loud"? Recommend yes — slider centered around a comfortable default, not forcing the user to drag every load.
 
@@ -168,9 +160,9 @@ The archive also contains the Phase 2-era Dependency map, Architectural-gaps sec
 
 ## Critical path
 
-`... → WP17(DONE) → WP18(DONE) → WP19(DONE) → WP20(DONE) → WP22(DONE) → WP24(DONE) → ship`. (WP21 cross-browser QA dropped 2026-06-07. WP23 playtest dropped 2026-06-13 — operator handles outside workflow system.) **Critical path is empty.** v1 ship gate is now operator-choice — the four v1 mission types are playable from the live URL, and the jet airframe is now selectable from mission-select; the only remaining items are non-critical WP25/WP26 polish.
+`... → WP17(DONE) → WP18(DONE) → WP19(DONE) → WP20(DONE) → WP22(DONE) → WP24(DONE) → ship`. (WP21 cross-browser QA dropped 2026-06-07. WP23 playtest dropped 2026-06-13 — operator handles outside workflow system. WP25 control manual dropped 2026-06-13 — redundant with WP18 key-hints overlay.) **Critical path is empty.** v1 ship gate is now operator-choice — the four v1 mission types are playable from the live URL, and the jet airframe is now selectable from mission-select; the only remaining item is non-critical WP26 audio polish.
 
-**WP25, WP26 — non-critical polish.** Both depend on WP22 deploy (DONE) so they ship to the live URL. WP25 is straightforward Phase 3 polish; WP26 fixes the engine-loop loudness flagged at WP22 verify-human (2026-06-13). Neither gates v1 ship — operator-chosen enhancements.
+**WP26 — non-critical polish.** Depends on WP22 deploy (DONE) so the fix ships to the live URL. Fixes the engine-loop loudness flagged at WP22 verify-human (2026-06-13). Does not gate v1 ship — operator-chosen enhancement.
 
 ## Session Pause — 2026-06-07 15:00
 Paused. See `workflow/.session.md` to resume. WP19 shipped (`7467f10`) + finalized (`b03140e`); Phase 3 milestone "Audio: engine, wind, weapon, crash sounds" CHECKED. Operator-queued next entry: WP20 visual polish (L) — recommended `/feature-spec` given art-direction scope. Drive mode: full-autopilot.

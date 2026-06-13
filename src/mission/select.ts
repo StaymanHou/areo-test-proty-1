@@ -14,6 +14,7 @@ import {
   setSelectedAirframe,
   type AirframeId,
 } from './aircraft-options';
+import { getMasterVolume, setMasterVolume } from '../audio/master-volume';
 
 const ROOT_CLASS = 'mission-select';
 const BUTTON_CLASS = 'mission-select-button';
@@ -22,6 +23,7 @@ const OUTCOME_CLASS = 'mission-outcome-banner';
 const PICKER_CLASS = 'aircraft-picker';
 const PICKER_BUTTON_CLASS = 'aircraft-picker-button';
 const PICKER_BUTTON_SELECTED_CLASS = 'aircraft-picker-button-selected';
+const VOLUME_CLASS = 'master-volume';
 
 // One-time CSS injection. Keeps the styling self-contained (no separate
 // stylesheet to wire into index.html).
@@ -116,6 +118,28 @@ function ensureCss(): void {
       color: #fff;
       border-color: #48a;
     }
+    .${VOLUME_CLASS} {
+      display: flex;
+      flex-direction: row;
+      gap: 0.5rem;
+      margin: 0 0 1.5rem;
+      align-items: center;
+    }
+    .${VOLUME_CLASS}-label {
+      font-size: 0.95rem;
+      color: #bbb;
+      margin-right: 0.5rem;
+    }
+    .${VOLUME_CLASS}-slider {
+      width: 10rem;
+      cursor: pointer;
+    }
+    .${VOLUME_CLASS}-value {
+      font-size: 0.9rem;
+      color: #888;
+      min-width: 2.5rem;
+      text-align: right;
+    }
   `;
   document.head.appendChild(style);
 }
@@ -154,6 +178,7 @@ export interface ShowOpts {
 export class MissionSelectScreen {
   private _root: HTMLDivElement | null = null;
   private _onSelect: ((id: string) => void) | undefined = undefined;
+  private _onVolumeChange: ((v: number) => void) | undefined = undefined;
 
   show(missions: readonly MissionManifestEntry[], opts: ShowOpts = {}): void {
     ensureCss();
@@ -177,6 +202,7 @@ export class MissionSelectScreen {
     }
 
     root.appendChild(this._buildAircraftPicker());
+    root.appendChild(this._buildVolumeSlider());
 
     const pinnedConfigs = opts.pinnedConfigs;
     const list = document.createElement('ul');
@@ -237,6 +263,46 @@ export class MissionSelectScreen {
     return picker;
   }
 
+  private _buildVolumeSlider(): HTMLDivElement {
+    const container = document.createElement('div');
+    container.className = VOLUME_CLASS;
+    container.setAttribute('data-testid', 'master-volume');
+
+    const label = document.createElement('span');
+    label.className = `${VOLUME_CLASS}-label`;
+    label.textContent = 'Volume:';
+    container.appendChild(label);
+
+    const slider = document.createElement('input');
+    slider.type = 'range';
+    slider.min = '0';
+    slider.max = '1';
+    slider.step = '0.05';
+    slider.className = `${VOLUME_CLASS}-slider`;
+    slider.setAttribute('data-testid', 'master-volume-slider');
+    slider.setAttribute('aria-label', 'Master volume');
+
+    const initial = getMasterVolume();
+    slider.value = String(initial);
+
+    const valueLabel = document.createElement('span');
+    valueLabel.className = `${VOLUME_CLASS}-value`;
+    valueLabel.setAttribute('data-testid', 'master-volume-value');
+    valueLabel.textContent = `${Math.round(initial * 100)}%`;
+
+    slider.addEventListener('input', () => {
+      const v = Number(slider.value);
+      if (!Number.isFinite(v)) return;
+      setMasterVolume(v);
+      valueLabel.textContent = `${Math.round(v * 100)}%`;
+      if (this._onVolumeChange !== undefined) this._onVolumeChange(v);
+    });
+
+    container.appendChild(slider);
+    container.appendChild(valueLabel);
+    return container;
+  }
+
   hide(): void {
     if (this._root === null) return;
     this._root.remove();
@@ -249,6 +315,10 @@ export class MissionSelectScreen {
 
   onSelect(cb: (id: string) => void): void {
     this._onSelect = cb;
+  }
+
+  onVolumeChange(cb: (v: number) => void): void {
+    this._onVolumeChange = cb;
   }
 
   /**

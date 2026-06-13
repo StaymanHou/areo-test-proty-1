@@ -14,6 +14,7 @@
 import { EngineLoop } from './engine-loop';
 import { Wind } from './wind';
 import { playFire, playImpact, playCrash } from './sfx';
+import { getMasterVolume } from './master-volume';
 
 /**
  * AudioContext constructor type. Browsers also expose a webkitAudioContext
@@ -52,11 +53,18 @@ export class AudioEngine {
   private _master: GainNode | null = null;
   private _engineLoop: EngineLoop | null = null;
   private _wind: Wind | null = null;
-  private _masterGainValue = 0.6;
+  private _masterGainValue: number;
   private _startInFlight: Promise<void> | null = null;
   // Ring buffer of recent one-shot triggers (debug-only, deep-copied on read).
   private _oneShots: OneShotEntry[] = [];
   private _oneShotCursor = 0;
+
+  constructor() {
+    // Read the persisted master-volume at construction so the engine starts
+    // at the player's last choice. Missing/invalid storage collapses to
+    // DEFAULT_MASTER_VOLUME (0.5) per master-volume.ts.
+    this._masterGainValue = getMasterVolume();
+  }
 
   /**
    * Resolve and instantiate the AudioContext, then resume it. Idempotent —
@@ -190,7 +198,7 @@ export class AudioEngine {
     this._master = null;
     this._engineLoop = null;
     this._wind = null;
-    this._masterGainValue = 0.6;
+    this._masterGainValue = getMasterVolume();
     this._startInFlight = null;
     this._oneShots = [];
     this._oneShotCursor = 0;

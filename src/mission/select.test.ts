@@ -3,6 +3,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { MissionSelectScreen } from './select';
 import type { MissionManifestEntry } from './types';
 import { AIRFRAME_STORAGE_KEY, getSelectedAirframe } from './aircraft-options';
+import { MASTER_VOLUME_STORAGE_KEY, getMasterVolume } from '../audio/master-volume';
 
 const MISSIONS: MissionManifestEntry[] = [
   { id: 'free-flight', name: 'Free Flight' },
@@ -196,5 +197,102 @@ describe('MissionSelectScreen — aircraft picker (WP24)', () => {
     screen.show(MISSIONS, { pinnedConfigs });
     const ffBtn = document.querySelector('button[data-mission-id="free-flight"]')!;
     expect(ffBtn.textContent).toBe('Free Flight [su27-future-airframe]');
+  });
+});
+
+describe('MissionSelectScreen — master volume slider (WP26)', () => {
+  let screen: MissionSelectScreen;
+
+  beforeEach(() => {
+    document.body.innerHTML = '';
+    localStorage.clear();
+    screen = new MissionSelectScreen();
+  });
+
+  afterEach(() => {
+    screen.hide();
+  });
+
+  it('renders a master-volume slider with min=0, max=1, step=0.05', () => {
+    screen.show(MISSIONS);
+    const slider = document.querySelector<HTMLInputElement>(
+      'input[data-testid="master-volume-slider"]',
+    );
+    expect(slider).not.toBeNull();
+    expect(slider!.type).toBe('range');
+    expect(slider!.min).toBe('0');
+    expect(slider!.max).toBe('1');
+    expect(slider!.step).toBe('0.05');
+  });
+
+  it('initial slider value matches getMasterVolume() (default 0.5 on fresh storage)', () => {
+    screen.show(MISSIONS);
+    const slider = document.querySelector<HTMLInputElement>(
+      'input[data-testid="master-volume-slider"]',
+    )!;
+    expect(Number(slider.value)).toBeCloseTo(0.5, 6);
+  });
+
+  it('initial slider value reflects a previously-persisted master volume', () => {
+    localStorage.setItem(MASTER_VOLUME_STORAGE_KEY, '0.75');
+    screen.show(MISSIONS);
+    const slider = document.querySelector<HTMLInputElement>(
+      'input[data-testid="master-volume-slider"]',
+    )!;
+    expect(Number(slider.value)).toBeCloseTo(0.75, 6);
+  });
+
+  it('value-display label shows percent of current slider value', () => {
+    localStorage.setItem(MASTER_VOLUME_STORAGE_KEY, '0.3');
+    screen.show(MISSIONS);
+    const valueLabel = document.querySelector('[data-testid="master-volume-value"]');
+    expect(valueLabel!.textContent).toBe('30%');
+  });
+
+  it('input event persists the new value to localStorage and updates the % label', () => {
+    screen.show(MISSIONS);
+    const slider = document.querySelector<HTMLInputElement>(
+      'input[data-testid="master-volume-slider"]',
+    )!;
+    slider.value = '0.8';
+    slider.dispatchEvent(new Event('input'));
+    expect(getMasterVolume()).toBeCloseTo(0.8, 6);
+    const valueLabel = document.querySelector('[data-testid="master-volume-value"]');
+    expect(valueLabel!.textContent).toBe('80%');
+  });
+
+  it('input event fires onVolumeChange callback with the new value', () => {
+    const cb = vi.fn();
+    screen.onVolumeChange(cb);
+    screen.show(MISSIONS);
+    const slider = document.querySelector<HTMLInputElement>(
+      'input[data-testid="master-volume-slider"]',
+    )!;
+    slider.value = '0.4';
+    slider.dispatchEvent(new Event('input'));
+    expect(cb).toHaveBeenCalledTimes(1);
+    expect(cb).toHaveBeenCalledWith(0.4);
+  });
+
+  it('input event with no onVolumeChange callback still persists (UI-only mode)', () => {
+    screen.show(MISSIONS);
+    const slider = document.querySelector<HTMLInputElement>(
+      'input[data-testid="master-volume-slider"]',
+    )!;
+    slider.value = '0.65';
+    expect(() => slider.dispatchEvent(new Event('input'))).not.toThrow();
+    expect(getMasterVolume()).toBeCloseTo(0.65, 6);
+  });
+
+  it('slider input does NOT trigger mission onSelect', () => {
+    const cb = vi.fn();
+    screen.onSelect(cb);
+    screen.show(MISSIONS);
+    const slider = document.querySelector<HTMLInputElement>(
+      'input[data-testid="master-volume-slider"]',
+    )!;
+    slider.value = '0.2';
+    slider.dispatchEvent(new Event('input'));
+    expect(cb).not.toHaveBeenCalled();
   });
 });

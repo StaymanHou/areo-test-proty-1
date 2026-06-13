@@ -122,6 +122,9 @@ beforeEach(() => {
     FakeAudioContext as unknown as typeof AudioContext;
   (window as unknown as { AudioContext: typeof AudioContext }).AudioContext =
     FakeAudioContext as unknown as typeof AudioContext;
+  // WP26: AudioEngine reads master-volume from localStorage on construction.
+  // Tests assume fresh storage → DEFAULT_MASTER_VOLUME (0.5) baseline.
+  localStorage.clear();
 });
 
 describe('AudioEngine', () => {
@@ -156,13 +159,13 @@ describe('AudioEngine', () => {
     expect(s.engineGain).toBeCloseTo(0, 3);
   });
 
-  it('setEngineThrottle(1) → redline frequency 340 Hz, gain 0.2', async () => {
+  it('setEngineThrottle(1) → redline frequency 340 Hz, gain 0.12', async () => {
     const eng = new AudioEngine();
     await eng.start();
     eng.setEngineThrottle(1);
     const s = eng.getState();
     expect(s.engineFreqHz).toBeCloseTo(340, 1);
-    expect(s.engineGain).toBeCloseTo(0.2, 3);
+    expect(s.engineGain).toBeCloseTo(0.12, 3);
   });
 
   it('setEngineThrottle is monotonic in throttle and clamps out-of-range', async () => {
@@ -226,6 +229,24 @@ describe('AudioEngine', () => {
     expect(eng.getState().masterGain).toBe(0);
   });
 
+  it('WP26 — construction reads master-volume from localStorage', () => {
+    localStorage.setItem('flightsim.volume.master', '0.83');
+    const eng = new AudioEngine();
+    expect(eng.getState().masterGain).toBeCloseTo(0.83, 3);
+  });
+
+  it('WP26 — construction falls back to DEFAULT_MASTER_VOLUME on empty storage', () => {
+    const eng = new AudioEngine();
+    expect(eng.getState().masterGain).toBeCloseTo(0.5, 3);
+  });
+
+  it('WP26 — start() applies the constructor-read master gain to the master node', async () => {
+    localStorage.setItem('flightsim.volume.master', '0.2');
+    const eng = new AudioEngine();
+    await eng.start();
+    expect(eng.getState().masterGain).toBeCloseTo(0.2, 3);
+  });
+
   it('setEngineThrottle and setWindAirspeed are no-ops before start()', () => {
     const eng = new AudioEngine();
     eng.setEngineThrottle(0.5);
@@ -244,7 +265,8 @@ describe('AudioEngine', () => {
     eng._resetForTests();
     expect(eng.getState().contextState).toBe('unset');
     expect(eng.getState().engineFreqHz).toBe(0);
-    expect(eng.getState().masterGain).toBeCloseTo(0.6, 3);
+    // WP26: default master baseline lowered 0.6 → 0.5 (DEFAULT_MASTER_VOLUME).
+    expect(eng.getState().masterGain).toBeCloseTo(0.5, 3);
   });
 
   it('trigger methods are safe before start() — record but do not play', () => {

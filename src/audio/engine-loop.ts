@@ -8,7 +8,7 @@
 const IDLE_HZ = 90;
 const REDLINE_HZ = 340;
 const MIN_GAIN = 0;
-const MAX_GAIN = 0.2;
+const MAX_GAIN = 0.12;
 const RAMP_SEC = 0.05;
 
 export class EngineLoop {

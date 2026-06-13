@@ -781,6 +781,13 @@ async function bootstrap() {
     });
   });
 
+  // WP26 — slider drags forward to AudioEngine for real-time apply. Persistence
+  // is handled inside the slider's `input` handler (calls setMasterVolume(v))
+  // so the choice survives reloads regardless of this callback being wired.
+  missionSelect.onVolumeChange((v) => {
+    audioEngine.setMasterGain(v);
+  });
+
   missionSelect.onSelect((id) => {
     // WP24 Phase 3 — reload-after-airframe-change. Boot binds the airframe
     // once (Aircraft/FlightModel/world constructed pre-mission); mid-session
