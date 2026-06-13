@@ -2,6 +2,9 @@
 
 Surface-notes from workflow runs. Consumed and resolved by higher-level workflows (arch revisions, new WPs, etc.).
 
+## Session Pause — 2026-06-13 09:30
+Paused after WP22 ship + finalize. Live at https://staymanhou.github.io/areo-test-proty-1/. Ship commit `f8d804b` + close commit `6bc0c00` (local only — operator's call on push). **WP23 playtest DROPPED at finalize** (operator directive — operator handles outside workflow system); critical path now empty, v1 ship is operator-choice. **Operator-queued next: WP24 aircraft selection UI** via feature workflow at next session. WP24 negotiates v1 multi-aircraft exclusion (`roadmap.md:62`) — operator should confirm scope at /feature-spec entry. WP25 read-only control manual + WP26 audio mix (quieter engine + volume control) also queued, non-critical. 3 MAJOR + 4 MINOR code-quality findings from WP22 review-quality auto-backlogged as `SURFACE-2026-06-13-QUALITY-*`. Drive mode for this session: autopilot.
+
 ## Session Pause — 2026-06-06 21:05
 Paused. See `workflow/.session.md` to resume. 4 commits shipped this session (`76963c0` perf-flake-isolate, `258b9fe` docs vitest convention, `8320ef7` arch-wbs-size-guard-archive, `c7ce6a8` roll-damping-investigation) closing 3 SURFACEs (-16-02, -06-08, -06-03 refuted at investigation). arch.md/wbs.md size-guard cleared. **Operator-queued next session entry point: WP16 combat mission** via `/session-start`. Drive mode: full-autopilot. Critical path: `... → WP15(DONE) → WP16(NEXT) → WP17 → ship`. See `.session.md` for the spec-time decisions enumerated for the architect-as-operator pick at resume.
 

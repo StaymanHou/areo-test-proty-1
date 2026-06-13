@@ -45,7 +45,7 @@ updated: 2026-06-13 — **WP22 shipped — Deploy + share** at ship commit `f8d8
 - [x] Visual polish pass: skybox, terrain textures, aircraft model, basic effects (contrails, explosions) (WP20 shipped 2026-06-07, commit `28bc898`)
 - [~] Cross-browser QA: Chrome, Safari, Firefox latest on desktop — **DROPPED from v1** (2026-06-07, operator directive). Chromium-only acceptance bar; cross-browser deferred to v1.x. If WP23 playtest surfaces a Safari/Firefox compat regression that blocks a casual player, file a SURFACE and address inline.
 - [x] Deploy to a public URL, shareable link (WP22 shipped 2026-06-13, commit `f8d804b`, live at https://staymanhou.github.io/areo-test-proty-1/)
-- [ ] Playtesting: 3–5 casual players complete at least one mission without help
+- [~] Playtesting: 3–5 casual players complete at least one mission without help — **DROPPED from v1** (2026-06-13, operator directive). Operator handles outside the workflow system.
 
 **Exit Criteria:** A shareable URL where a casual gamer can fly and complete a mission in under 5 minutes of first visit, at 60fps on a mid-range laptop.
 
