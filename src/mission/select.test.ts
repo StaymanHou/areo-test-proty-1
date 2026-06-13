@@ -2,6 +2,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { MissionSelectScreen } from './select';
 import type { MissionManifestEntry } from './types';
+import { AIRFRAME_STORAGE_KEY, getSelectedAirframe } from './aircraft-options';
 
 const MISSIONS: MissionManifestEntry[] = [
   { id: 'free-flight', name: 'Free Flight' },
@@ -13,6 +14,7 @@ describe('MissionSelectScreen', () => {
 
   beforeEach(() => {
     document.body.innerHTML = '';
+    localStorage.clear();
     screen = new MissionSelectScreen();
   });
 
@@ -97,5 +99,102 @@ describe('MissionSelectScreen', () => {
     vi.advanceTimersByTime(500);
     await promise;
     vi.useRealTimers();
+  });
+});
+
+describe('MissionSelectScreen — aircraft picker (WP24)', () => {
+  let screen: MissionSelectScreen;
+
+  beforeEach(() => {
+    document.body.innerHTML = '';
+    localStorage.clear();
+    screen = new MissionSelectScreen();
+  });
+
+  afterEach(() => {
+    screen.hide();
+  });
+
+  it('renders an aircraft-picker with at least Trainer (Cessna) + Jet (MiG-15)', () => {
+    screen.show(MISSIONS);
+    const picker = document.querySelector('[data-testid="aircraft-picker"]');
+    expect(picker).not.toBeNull();
+    const buttons = picker!.querySelectorAll('button[data-airframe-id]');
+    expect(buttons.length).toBeGreaterThanOrEqual(2);
+    const ids = Array.from(buttons).map((b) => b.getAttribute('data-airframe-id'));
+    expect(ids).toContain('default');
+    expect(ids).toContain('mig15');
+  });
+
+  it('button labels read "<Class> (<Airframe>)"', () => {
+    screen.show(MISSIONS);
+    const defaultBtn = document.querySelector('button[data-airframe-id="default"]');
+    const jetBtn = document.querySelector('button[data-airframe-id="mig15"]');
+    expect(defaultBtn!.textContent).toBe('Trainer (Cessna)');
+    expect(jetBtn!.textContent).toBe('Jet (MiG-15)');
+  });
+
+  it('selected button has the selected class + aria-pressed=true', () => {
+    localStorage.setItem(AIRFRAME_STORAGE_KEY, 'mig15');
+    screen.show(MISSIONS);
+    const jetBtn = document.querySelector('button[data-airframe-id="mig15"]')!;
+    const defaultBtn = document.querySelector('button[data-airframe-id="default"]')!;
+    expect(jetBtn.classList.contains('aircraft-picker-button-selected')).toBe(true);
+    expect(jetBtn.getAttribute('aria-pressed')).toBe('true');
+    expect(defaultBtn.classList.contains('aircraft-picker-button-selected')).toBe(false);
+    expect(defaultBtn.getAttribute('aria-pressed')).toBe('false');
+  });
+
+  it('default selection is "default" when localStorage is empty', () => {
+    screen.show(MISSIONS);
+    const defaultBtn = document.querySelector('button[data-airframe-id="default"]')!;
+    expect(defaultBtn.classList.contains('aircraft-picker-button-selected')).toBe(true);
+  });
+
+  it('clicking a picker button persists to localStorage and updates selected highlight', () => {
+    screen.show(MISSIONS);
+    expect(getSelectedAirframe()).toBe('default');
+    const jetBtn = document.querySelector<HTMLButtonElement>('button[data-airframe-id="mig15"]')!;
+    jetBtn.click();
+    expect(getSelectedAirframe()).toBe('mig15');
+    expect(jetBtn.classList.contains('aircraft-picker-button-selected')).toBe(true);
+    const defaultBtn = document.querySelector('button[data-airframe-id="default"]')!;
+    expect(defaultBtn.classList.contains('aircraft-picker-button-selected')).toBe(false);
+  });
+
+  it('clicking a picker button does NOT trigger mission onSelect', () => {
+    const cb = vi.fn();
+    screen.onSelect(cb);
+    screen.show(MISSIONS);
+    const jetBtn = document.querySelector<HTMLButtonElement>('button[data-airframe-id="mig15"]')!;
+    jetBtn.click();
+    expect(cb).not.toHaveBeenCalled();
+  });
+
+  it('mission button shows pinned-config suffix when pinnedConfigs has a mapping', () => {
+    const pinnedConfigs = new Map([['combat-1', 'mig15']]);
+    const missions: MissionManifestEntry[] = [
+      { id: 'free-flight', name: 'Free Flight' },
+      { id: 'combat-1', name: 'Combat' },
+    ];
+    screen.show(missions, { pinnedConfigs });
+    const ffBtn = document.querySelector('button[data-mission-id="free-flight"]')!;
+    const combatBtn = document.querySelector('button[data-mission-id="combat-1"]')!;
+    expect(ffBtn.textContent).toBe('Free Flight');
+    expect(combatBtn.textContent).toBe('Combat [MiG-15]');
+  });
+
+  it('mission button without pinned config renders raw name even when pinnedConfigs has unrelated entries', () => {
+    const pinnedConfigs = new Map([['other-mission', 'mig15']]);
+    screen.show(MISSIONS, { pinnedConfigs });
+    const ffBtn = document.querySelector('button[data-mission-id="free-flight"]')!;
+    expect(ffBtn.textContent).toBe('Free Flight');
+  });
+
+  it('mission button with unknown pinned config gracefully falls back to raw config name', () => {
+    const pinnedConfigs = new Map([['free-flight', 'su27-future-airframe']]);
+    screen.show(MISSIONS, { pinnedConfigs });
+    const ffBtn = document.querySelector('button[data-mission-id="free-flight"]')!;
+    expect(ffBtn.textContent).toBe('Free Flight [su27-future-airframe]');
   });
 });

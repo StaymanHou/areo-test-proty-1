@@ -28,6 +28,7 @@ import { step as physicsStep } from './aircraft/physics-core/step';
 import { loadMission, loadMissionList } from './mission/loader';
 import { MissionRunner } from './mission/runner';
 import { MissionSelectScreen } from './mission/select';
+import { resolveAirframeName, getSelectedAirframe } from './mission/aircraft-options';
 import type { Mission, MissionManifestEntry } from './mission/types';
 import {
   registerCombatAi,
@@ -66,25 +67,24 @@ async function bootstrap() {
   const scriptedInput = parseScriptSpec(urlParams);
   for (const w of scriptedInput.warnings) console.warn(w);
 
-  // Airframe config resolution — precedence: URL ?config= > mission config? > default.
+  // Airframe config resolution — precedence (WP24):
+  //   URL ?config= > preloaded-mission `config?` > localStorage pick > default.
   // When the URL has no ?config= but does have ?mission=<id> and the mission
   // declares its own `config?`, we pre-load that mission so its `config?` can
   // shape the boot-time `loadAircraftConfig` call. The pre-loaded mission is
   // handed to startMission below to avoid a second fetch.
-  // Phase A scope: only the deep-link path consults mission.config. Returning
-  // to the menu and picking a different-airframe mission keeps the original
-  // airframe (mid-session swap requires Aircraft+FlightModel reconstruction,
-  // deferred to Phase C). SURFACE-2026-06-06-06.
+  // Mid-session swap is still unsupported — the mission-select picker (WP24
+  // Phase 3) calls location.reload() when the player changes airframe between
+  // missions, so the new pick is honored via this same boot path on reload.
+  // SURFACE-2026-06-06-06 (Phase B feel-tune deferred; Phase C swap deferred).
   const urlConfigName = scriptedInput.plan?.configName ?? null;
   const requestedMissionId = urlParams.get('mission');
   let preloadedMission: Mission | null = null;
-  let resolvedConfigName: string | null = urlConfigName;
+  let missionConfig: string | null | undefined = null;
   if (urlConfigName === null && requestedMissionId !== null) {
     try {
       preloadedMission = await loadMission(requestedMissionId);
-      if (preloadedMission.config !== undefined) {
-        resolvedConfigName = preloadedMission.config;
-      }
+      missionConfig = preloadedMission.config;
     } catch (err) {
       // Pre-load failed — fall back to default airframe; startMission below
       // re-attempts the fetch and surfaces the error via errorForId path.
@@ -94,7 +94,22 @@ async function bootstrap() {
       );
     }
   }
+  const airframeResolution = resolveAirframeName({
+    urlConfig: urlConfigName,
+    missionConfig,
+  });
+  const resolvedConfigName: string | null = airframeResolution.name;
   const aircraftConfigPath = configNameToPath(resolvedConfigName);
+
+  // Debug accessor — surface resolved airframe + its source for verify-self
+  // probes and developer inspection. Gated on ?debug=true to keep the prod
+  // boot path side-effect-free.
+  if (debugEnabled) {
+    (window as unknown as { __aircraftConfig: { name: string | null; source: string } }).__aircraftConfig = {
+      name: resolvedConfigName,
+      source: airframeResolution.source,
+    };
+  }
 
   setSplashStage('Loading physics…');
   const rapierReady = RAPIER.init();
@@ -648,7 +663,7 @@ async function bootstrap() {
       } catch (err) {
         console.error(`Failed to load mission "${id}":`, err);
         // Re-show the select screen with the error state.
-        missionSelect.show(missionManifest, { errorForId: id });
+        missionSelect.show(missionManifest, { errorForId: id, pinnedConfigs });
         return;
       }
     }
@@ -751,7 +766,7 @@ async function bootstrap() {
       hud.hide();
       keyHints.hide();
       targetMesh.visible = false;
-      missionSelect.show(missionManifest);
+      missionSelect.show(missionManifest, { pinnedConfigs });
       return;
     }
 
@@ -762,11 +777,33 @@ async function bootstrap() {
       hud.hide();
       keyHints.hide();
       targetMesh.visible = false;
-      missionSelect.show(missionManifest);
+      missionSelect.show(missionManifest, { pinnedConfigs });
     });
   });
 
   missionSelect.onSelect((id) => {
+    // WP24 Phase 3 — reload-after-airframe-change. Boot binds the airframe
+    // once (Aircraft/FlightModel/world constructed pre-mission); mid-session
+    // swap is unsupported. The picker has persisted the player's choice to
+    // localStorage — if it differs from what boot loaded AND the mission
+    // doesn't pin its own config (which would override the picker anyway),
+    // reload so the new pick is honored via the boot path. Per-mission
+    // pinned configs still win — no reload when the mission's pinned
+    // airframe matches the currently-loaded airframe.
+    const pickedAirframe: string = getSelectedAirframe(); // 'default' | 'mig15' | …
+    const picked: string | null = pickedAirframe === 'default' ? null : pickedAirframe;
+    const missionPinned = pinnedConfigs.get(id) ?? null;
+    const effectiveNext = missionPinned ?? picked;
+    if (effectiveNext !== resolvedConfigName) {
+      // The picker writes the choice to localStorage on click; boot reads it.
+      // Include `?mission=<id>` so the deep-link auto-start runs the chosen
+      // mission immediately after reload (instead of dropping the player
+      // back on the menu).
+      const url = new URL(window.location.href);
+      url.searchParams.set('mission', id);
+      window.location.assign(url.toString());
+      return;
+    }
     // WP19 — first user-gesture is the Safari autoplay unlock for Web Audio.
     // Fire-and-forget: failures only log, never block mission start.
     void audioEngine.start().catch((err) => {
@@ -781,6 +818,23 @@ async function bootstrap() {
     console.error('Failed to load mission manifest:', err);
     missionManifest = [];
   }
+
+  // WP24 Phase 3 — eager-fetch every manifest mission's JSON so the picker can
+  // label per-mission pinned-config overrides inline (e.g. "Combat [MiG-15]").
+  // Phase 2 has 4 missions; parallel fetch is cheap. Failures are non-fatal —
+  // a mission with no entry in pinnedConfigs renders as free-pick.
+  const pinnedConfigs = new Map<string, string>();
+  await Promise.all(
+    missionManifest.map(async (entry) => {
+      try {
+        const m = await loadMission(entry.id);
+        if (m.config !== undefined) pinnedConfigs.set(entry.id, m.config);
+      } catch {
+        // Manifest entry exists but JSON failed to fetch — drop silently;
+        // tile renders as free-pick, deep-link path will surface the error.
+      }
+    }),
+  );
 
   // `?mission=<id>` deep-link: if present, try auto-start. We hand off to
   // startMission() unconditionally — it loads the JSON directly (independent
@@ -799,7 +853,7 @@ async function bootstrap() {
     await startMission(requestedMissionId, preloadedMission);
   } else {
     setSplashStage('Ready');
-    missionSelect.show(missionManifest);
+    missionSelect.show(missionManifest, { pinnedConfigs });
     // WP18 — mission-select is now the visible "start" surface; drop the splash.
     removeSplash();
   }
