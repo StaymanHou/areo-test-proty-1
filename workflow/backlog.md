@@ -2,6 +2,9 @@
 
 Surface-notes from workflow runs. Consumed and resolved by higher-level workflows (arch revisions, new WPs, etc.).
 
+## Session Pause — 2026-06-13 12:35
+Paused after WP26 ship + finalize + DEFAULT_MASTER_VOLUME tweak. Ship `9ce3644`, finalize `4f0550d`, default-tweak `9d8d714` — all pushed to `origin/main` (GitHub Pages auto-deploys within 1-2 min of each push). **Critical path is empty; all live WBS items DONE.** v1 ship is operator-choice. Audio investigation episode (user "I don't hear anything") was resolved as a system-level audio quirk on operator's machine — Playwright on both dev + prod confirmed audio graph intact, gains at expected levels, no JS errors. **Operator-queued next session entry: WP27 chase-camera roll/pitch wraparound flip** — new SURFACE-2026-06-13-CAMERA-BACKFLIP-WRAPAROUND filed below. Drive mode for this session: full-autopilot.
+
 ## Session Pause — 2026-06-13 09:30
 Paused after WP22 ship + finalize. Live at https://staymanhou.github.io/areo-test-proty-1/. Ship commit `f8d804b` + close commit `6bc0c00` (local only — operator's call on push). **WP23 playtest DROPPED at finalize** (operator directive — operator handles outside workflow system); critical path now empty, v1 ship is operator-choice. **Operator-queued next: WP24 aircraft selection UI** via feature workflow at next session. WP24 negotiates v1 multi-aircraft exclusion (`roadmap.md:62`) — operator should confirm scope at /feature-spec entry. WP25 read-only control manual + WP26 audio mix (quieter engine + volume control) also queued, non-critical. 3 MAJOR + 4 MINOR code-quality findings from WP22 review-quality auto-backlogged as `SURFACE-2026-06-13-QUALITY-*`. Drive mode for this session: autopilot.
 
@@ -12,6 +15,16 @@ Paused. See `workflow/.session.md` to resume. 4 commits shipped this session (`7
 Paused. See `workflow/.session.md` to resume. 4 SURFACEs closed this session (-17-02, -24-02, -16-03, -06-01) via 2 task workflows on `main` (`0e4502b` + `f750dc6`). **Operator-queued next session entry point: SURFACE-2026-05-16-02 perf-flake fix** via task workflow — actionable threshold crossed (4 consecutive observations this session, including under a new parallel-verify-auto-load trigger); recommend addressing before the next feature workflow. Pick (b1) Vitest tag-based exclusion OR (b2) separate `*.perf.test.ts` file at plan time. Drive mode: full-autopilot.
 
 ## Open
+
+### SURFACE-2026-06-13-CAMERA-BACKFLIP-WRAPAROUND
+- **Source:** operator playtest (2026-06-13, post-WP26 ship)
+- **Target level:** task workflow OR small feature (operator's call at next session); WBS may want a WP27 entry if scope expands
+- **Type:** bug — camera behavior
+- **Priority:** medium (gameplay-visible during aerobatics; doesn't crash; only manifests in chase-cam during backflips / inverted flight)
+- **Summary:** During a backflip, when the aircraft body passes 180° pitch (inverted), the chase camera suddenly flips. Likely cause: `src/world/camera.ts:59` `this.camera.lookAt(targetPosition)` uses Three.js's default world-up `+Y` reference. When the aircraft's body-frame up crosses the world-down hemisphere, `lookAt`'s gimbal-aligned roll snaps the camera 180° to keep its own up-vector aligned with world `+Y`. The same issue likely fires at any pitch where the projection of body-up onto world-Y crosses zero (so ~90° pitch up or down, not strictly 180°).
+- **Suggested action:** ~15-30min investigation + fix at task-workflow level. Likely the fix is to derive the camera's up-vector from the aircraft's quaternion (rotate world-`+Y` by the aircraft's quaternion to get body-up, pass as `camera.up` before `lookAt`, OR replace `lookAt` with a quaternion slerp toward a target orientation that includes the aircraft's roll). Alternative: blend body-up with world-up via a weight that saturates near gimbal-lock pitch angles. Cockpit camera path (`camera.ts:65-66`) already uses `quaternion.copy(targetQuaternion)` and is not affected — only chase-camera at line 58-59 needs the fix.
+- **Context:** Defect was latent through WP1-WP26; aerobatic flight is a Phase 3 polish observation. Doesn't block any v1 ship gate. Operator surfaced after WP26 close while playtesting on the live URL.
+- **Status:** pending (operator-queued for next session)
 
 ### SURFACE-2026-06-13-PHUGOID-HIGH-REGRESSION
 - **Source:** task:close verify-gap surfaced post-cessna-trainer-feel-tune (commit `ab807e0`)
