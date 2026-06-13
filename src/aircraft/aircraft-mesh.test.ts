@@ -182,6 +182,50 @@ describe('buildAircraftMesh — mig15 mesh orientation (regression: post-WP24 wi
     }
   });
 
+  it('mig15 wings extend rearward (chord trailing edge in world +Z, aircraft flies along -Z)', () => {
+    // The aircraft flies along world -Z (forward). The wing's trailing edge
+    // should sit BEHIND the mesh anchor (mesh.position.z), and sweep + chord
+    // mean the trailing edge extends significantly into +Z while only a
+    // small fraction (~0.5 × rootChord) sits forward of the anchor (the
+    // mesh is anchored at chord midpoint, so half the chord sits in -Z).
+    // Asymmetry test: |max.z − anchor| should be MUCH greater than
+    // |min.z − anchor| (sweep adds ~+2.2m to trailing-edge Z but nothing
+    // to leading-edge Z; ratio should be roughly 2:1 or more).
+    const group = buildAircraftMesh(mig15Config, 'mig15');
+    const extruded = group.children.filter(
+      (c) => c instanceof Mesh && c.geometry instanceof ExtrudeGeometry,
+    ) as Mesh[];
+    const wingCandidates = extruded.filter((m) => m.position.z < 0 && m.position.z > -1.5);
+    expect(wingCandidates.length).toBeGreaterThan(0);
+    for (const wing of wingCandidates) {
+      const bbox = new Box3().setFromObject(wing);
+      const anchor = wing.position.z;
+      const extentBehind = bbox.max.z - anchor; // how far behind anchor
+      const extentForward = anchor - bbox.min.z; // how far in front
+      expect(extentBehind, `wing extent behind anchor (${extentBehind.toFixed(2)}m) should be > 1.5m due to chord + sweep`).toBeGreaterThan(1.5);
+      expect(extentBehind, `wing extent behind anchor should exceed extent forward (behind=${extentBehind.toFixed(2)}, forward=${extentForward.toFixed(2)})`).toBeGreaterThan(extentForward);
+    }
+  });
+
+  it('mig15 h-stab extends rearward (chord trailing edge in world +Z relative to h-stab root)', () => {
+    const group = buildAircraftMesh(mig15Config, 'mig15');
+    const extruded = group.children.filter(
+      (c) => c instanceof Mesh && c.geometry instanceof ExtrudeGeometry,
+    ) as Mesh[];
+    const hStabCandidates = extruded.filter(
+      (m) => m.position.z > 1 && Math.abs(m.position.y) < 0.2,
+    );
+    expect(hStabCandidates.length).toBeGreaterThan(0);
+    for (const tail of hStabCandidates) {
+      const bbox = new Box3().setFromObject(tail);
+      const anchor = tail.position.z;
+      const extentBehind = bbox.max.z - anchor;
+      const extentForward = anchor - bbox.min.z;
+      expect(extentBehind, `h-stab extent behind anchor (${extentBehind.toFixed(2)}m) should be > 0.8m`).toBeGreaterThan(0.8);
+      expect(extentBehind, `h-stab extent behind anchor should exceed extent forward (behind=${extentBehind.toFixed(2)}, forward=${extentForward.toFixed(2)})`).toBeGreaterThan(extentForward);
+    }
+  });
+
   it('mig15 v-stab is correctly vertical (height-along-Y, thin in X)', () => {
     const group = buildAircraftMesh(mig15Config, 'mig15');
     const extruded = group.children.filter(
