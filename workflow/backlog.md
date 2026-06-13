@@ -2,6 +2,9 @@
 
 Surface-notes from workflow runs. Consumed and resolved by higher-level workflows (arch revisions, new WPs, etc.).
 
+## Session Pause — 2026-06-13 11:35
+Paused. See `workflow/.session.md` to resume. Session shipped WP24 (aircraft selection UI) + 2 mesh bug fixes (orientation + chord direction) + cessna trainer-feel tune + free-flight throttle bump. All work items reached terminal state. No active WIP. Critical path empty. Next session entry: pick from WP25 / WP26 / new SURFACE-2026-06-13-PHUGOID-HIGH-REGRESSION / WP22 quality bundle. Drive mode at pause: autopilot.
+
 ## Session Pause — 2026-06-13 09:30
 Paused after WP22 ship + finalize. Live at https://staymanhou.github.io/areo-test-proty-1/. Ship commit `f8d804b` + close commit `6bc0c00` (local only — operator's call on push). **WP23 playtest DROPPED at finalize** (operator directive — operator handles outside workflow system); critical path now empty, v1 ship is operator-choice. **Operator-queued next: WP24 aircraft selection UI** via feature workflow at next session. WP24 negotiates v1 multi-aircraft exclusion (`roadmap.md:62`) — operator should confirm scope at /feature-spec entry. WP25 read-only control manual + WP26 audio mix (quieter engine + volume control) also queued, non-critical. 3 MAJOR + 4 MINOR code-quality findings from WP22 review-quality auto-backlogged as `SURFACE-2026-06-13-QUALITY-*`. Drive mode for this session: autopilot.
 
