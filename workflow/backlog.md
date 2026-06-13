@@ -16,7 +16,7 @@ Paused. See `workflow/.session.md` to resume. 4 SURFACEs closed this session (-1
 
 ## Open
 
-### SURFACE-2026-06-13-CAMERA-BACKFLIP-WRAPAROUND
+### SURFACE-2026-06-13-CAMERA-BACKFLIP-WRAPAROUND [RESOLVED 2026-06-13]
 - **Source:** operator playtest (2026-06-13, post-WP26 ship)
 - **Target level:** task workflow OR small feature (operator's call at next session); WBS may want a WP27 entry if scope expands
 - **Type:** bug — camera behavior
@@ -24,7 +24,7 @@ Paused. See `workflow/.session.md` to resume. 4 SURFACEs closed this session (-1
 - **Summary:** During a backflip, when the aircraft body passes 180° pitch (inverted), the chase camera suddenly flips. Likely cause: `src/world/camera.ts:59` `this.camera.lookAt(targetPosition)` uses Three.js's default world-up `+Y` reference. When the aircraft's body-frame up crosses the world-down hemisphere, `lookAt`'s gimbal-aligned roll snaps the camera 180° to keep its own up-vector aligned with world `+Y`. The same issue likely fires at any pitch where the projection of body-up onto world-Y crosses zero (so ~90° pitch up or down, not strictly 180°).
 - **Suggested action:** ~15-30min investigation + fix at task-workflow level. Likely the fix is to derive the camera's up-vector from the aircraft's quaternion (rotate world-`+Y` by the aircraft's quaternion to get body-up, pass as `camera.up` before `lookAt`, OR replace `lookAt` with a quaternion slerp toward a target orientation that includes the aircraft's roll). Alternative: blend body-up with world-up via a weight that saturates near gimbal-lock pitch angles. Cockpit camera path (`camera.ts:65-66`) already uses `quaternion.copy(targetQuaternion)` and is not affected — only chase-camera at line 58-59 needs the fix.
 - **Context:** Defect was latent through WP1-WP26; aerobatic flight is a Phase 3 polish observation. Doesn't block any v1 ship gate. Operator surfaced after WP26 close while playtesting on the live URL.
-- **Status:** pending (operator-queued for next session)
+- **Status:** resolved 2026-06-13 — task `fix-chase-camera-backflip-snap`. Chose Option 1 (derive `camera.up` from aircraft quaternion before `lookAt`); ~5 LOC change in `src/world/camera.ts` plus 2 new Vitest cases. Camera now rolls with the aircraft (arcade-flight-sim convention). Option 3 (blend body-up with world-up) remains a possible follow-up if playtest reveals horizon-spin is disorienting.
 
 ### SURFACE-2026-06-13-PHUGOID-HIGH-REGRESSION
 - **Source:** task:close verify-gap surfaced post-cessna-trainer-feel-tune (commit `ab807e0`)

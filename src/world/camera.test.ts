@@ -71,4 +71,25 @@ describe('CameraController', () => {
     expect(camera.position.z).toBeLessThan(0); // must be behind, not in front
     expect(camera.position.distanceTo(new Vector3(0, 3, -8))).toBeLessThan(0.1);
   });
+
+  it('chase camera up-vector tracks aircraft when inverted (no lookAt snap at 180° pitch)', () => {
+    // Pitch 180° around X — aircraft is upside-down; body-up now points to world-(0,-1,0)
+    // Regression guard for SURFACE-2026-06-13-CAMERA-BACKFLIP-WRAPAROUND: previously camera.up
+    // stayed at world-+Y, causing lookAt to flip 180° as pitch crossed the gimbal-lock plane.
+    const qInverted = new Quaternion().setFromAxisAngle(new Vector3(1, 0, 0), Math.PI);
+    ctrl.update(ORIGIN, qInverted, DT);
+    // Camera up should now point roughly along world-(0,-1,0)
+    expect(camera.up.x).toBeCloseTo(0);
+    expect(camera.up.y).toBeCloseTo(-1);
+    expect(camera.up.z).toBeCloseTo(0);
+  });
+
+  it('chase camera up-vector rolls with aircraft (90° roll → up points along world-X)', () => {
+    // Roll 90° around Z (forward axis) — body-up rotates from +Y to +X (right-hand rule, +Z forward)
+    const qRoll90 = new Quaternion().setFromAxisAngle(new Vector3(0, 0, 1), Math.PI / 2);
+    ctrl.update(ORIGIN, qRoll90, DT);
+    expect(camera.up.x).toBeCloseTo(-1);
+    expect(camera.up.y).toBeCloseTo(0);
+    expect(camera.up.z).toBeCloseTo(0);
+  });
 });

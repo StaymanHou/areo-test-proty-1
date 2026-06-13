@@ -22,6 +22,7 @@ export class CameraController {
   // Reusable scratch objects — avoids per-frame allocation
   private readonly _desired = new Vector3();
   private readonly _cockpitOffset = new Vector3();
+  private readonly _chaseUp = new Vector3();
 
   constructor(camera: PerspectiveCamera, options: CameraOptions = {}) {
     this.camera = camera;
@@ -56,6 +57,11 @@ export class CameraController {
     // Exponential-decay lerp — frame-rate independent
     const alpha = 1 - Math.exp(-this.chaseDamping * 60 * dt);
     this.camera.position.lerp(this._desired, alpha);
+
+    // Body-up rotated into world space — prevents lookAt's default world-+Y reference
+    // from snapping the camera 180° when the aircraft inverts (gimbal lock).
+    this._chaseUp.set(0, 1, 0).applyQuaternion(targetQuaternion);
+    this.camera.up.copy(this._chaseUp);
     this.camera.lookAt(targetPosition);
   }
 
