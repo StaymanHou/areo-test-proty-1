@@ -1,7 +1,7 @@
 {
   "mass": 1000,
   "inertia": { "x": 1500, "y": 3000, "z": 1500 },
-  "thrust": { "maxN": 6000 },
+  "thrust": { "maxN": 4500 },
   "fuselageDrag": { "cd0": 0.14233708018437027, "area": 0.6932083370629698 },
   "surfaces": [
     {
