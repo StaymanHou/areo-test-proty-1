@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll } from 'vitest';
-import { Group, Mesh, CylinderGeometry, ExtrudeGeometry, ConeGeometry, Vector3 } from 'three';
+import { Box3, Group, Mesh, CylinderGeometry, ExtrudeGeometry, ConeGeometry, Vector3 } from 'three';
 import { buildAircraftMesh, inferAircraftVariant } from './aircraft-mesh';
 import { parseAircraftConfig, type AircraftConfig } from './physics-core/config';
 
@@ -128,5 +128,76 @@ describe('buildAircraftMesh', () => {
     expect(hasHStabAtZ).toBe(true);
     // sanity that we used a Vector3 import (silences TS noise if any)
     expect(new Vector3()).toBeInstanceOf(Vector3);
+  });
+});
+
+describe('buildAircraftMesh — mig15 mesh orientation (regression: post-WP24 wings-on-edge)', () => {
+  // Box3.setFromObject() walks world transforms (rotations, parent groups) and
+  // reports the AABB in world coordinates — exactly the on-screen footprint a
+  // player sees. A flat wing has: span (X) max, thickness (Y) min, chord (Z)
+  // middle. A wing-on-edge has: span (X) max, chord (Y) middle, thickness (Z)
+  // min — the dimensions sit on the wrong axes.
+
+  // Candidate selection uses each mesh's `.position` (the surface-anchor)
+  // instead of bbox center because (a) position is invariant under any
+  // orientation fix we apply, and (b) the h-stab and v-stab share a z-anchor
+  // but differ in y. Using position gives unambiguous filters.
+
+  it('mig15 wings render flat (span > chord > thickness; thickness along world Y)', () => {
+    const group = buildAircraftMesh(mig15Config, 'mig15');
+    const extruded = group.children.filter(
+      (c) => c instanceof Mesh && c.geometry instanceof ExtrudeGeometry,
+    ) as Mesh[];
+    // Wing meshes anchor at z = wing-surface-z − rootChord/2 (fixture wing-surface z=0,
+    // rootChord=1.6 → position.z = -0.8). Filter is wider than h-stab (z>1).
+    const wingCandidates = extruded.filter((m) => m.position.z < 0 && m.position.z > -1.5);
+    expect(wingCandidates.length, 'no wing-candidate ExtrudeGeometries at z≈0').toBeGreaterThan(0);
+    for (const wing of wingCandidates) {
+      const bbox = new Box3().setFromObject(wing);
+      const size = new Vector3();
+      bbox.getSize(size);
+      expect(size.x, `wing span (X=${size.x.toFixed(2)}) should be largest dimension`).toBeGreaterThan(size.z);
+      expect(size.z, `wing chord (Z=${size.z.toFixed(2)}) should be larger than thickness (Y=${size.y.toFixed(2)})`).toBeGreaterThan(size.y);
+      expect(size.y, `wing thickness (Y=${size.y.toFixed(2)}) should be < 0.5m (extrusion depth ~0.08m)`).toBeLessThan(0.5);
+    }
+  });
+
+  it('mig15 h-stab renders flat (thin in Y, chord-along-Z)', () => {
+    const group = buildAircraftMesh(mig15Config, 'mig15');
+    const extruded = group.children.filter(
+      (c) => c instanceof Mesh && c.geometry instanceof ExtrudeGeometry,
+    ) as Mesh[];
+    // h-stab anchor: fixture y=0, z near tail (z≈2-3). Distinguish from v-stab
+    // which anchors at y≈0.5.
+    const hStabCandidates = extruded.filter(
+      (m) => m.position.z > 1 && Math.abs(m.position.y) < 0.2,
+    );
+    expect(hStabCandidates.length, 'no h-stab-candidate ExtrudeGeometries (z>1, |y|<0.2)').toBeGreaterThan(0);
+    for (const tail of hStabCandidates) {
+      const bbox = new Box3().setFromObject(tail);
+      const size = new Vector3();
+      bbox.getSize(size);
+      expect(size.y, `h-stab thickness (Y=${size.y.toFixed(2)}) should be < 0.5m`).toBeLessThan(0.5);
+      expect(size.z, `h-stab chord (Z=${size.z.toFixed(2)}) should be larger than thickness (Y=${size.y.toFixed(2)})`).toBeGreaterThan(size.y);
+    }
+  });
+
+  it('mig15 v-stab is correctly vertical (height-along-Y, thin in X)', () => {
+    const group = buildAircraftMesh(mig15Config, 'mig15');
+    const extruded = group.children.filter(
+      (c) => c instanceof Mesh && c.geometry instanceof ExtrudeGeometry,
+    ) as Mesh[];
+    // v-stab anchor: fixture y=0.5 (mounted on top of fuselage), z near tail.
+    const vStabCandidates = extruded.filter(
+      (m) => m.position.y > 0.3 && m.position.z > 1,
+    );
+    expect(vStabCandidates.length, 'no v-stab-candidate ExtrudeGeometries (y>0.3, z>1)').toBeGreaterThan(0);
+    for (const fin of vStabCandidates) {
+      const bbox = new Box3().setFromObject(fin);
+      const size = new Vector3();
+      bbox.getSize(size);
+      expect(size.y, `v-stab height (Y=${size.y.toFixed(2)}) should be > 0.5m`).toBeGreaterThan(0.5);
+      expect(size.x, `v-stab thickness (X=${size.x.toFixed(2)}) should be < 0.3m`).toBeLessThan(0.3);
+    }
   });
 });

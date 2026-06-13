@@ -197,6 +197,11 @@ function buildMig15Mesh(config: AircraftConfig): Group {
     shape.lineTo(0, 0);
     const geom = new ExtrudeGeometry(shape, { depth: 0.08, bevelEnabled: false });
     const wing = new Mesh(geom, wingMat);
+    // ExtrudeGeometry authors the Shape in its local XY plane (span along
+    // shape-X, chord along shape-Y) and extrudes along shape-Z (thickness).
+    // Rotate -π/2 around X so shape-Y (chord) → world +Z and shape-Z
+    // (thickness) → world +Y. Without this, the wing renders edge-on.
+    wing.rotation.x = -Math.PI / 2;
     // Wing built in +X span; mirror by scaling for the opposite side.
     wing.scale.x = spanSign;
     // Lift to mid-fuselage height; align root chord around root.z.
@@ -227,11 +232,16 @@ function buildMig15Mesh(config: AircraftConfig): Group {
       shape.lineTo(span, sweepZ + tip);
       shape.lineTo(span, sweepZ);
       shape.lineTo(0, 0);
+      // Same rotation reasoning as buildSweptWing: lay the shape flat so
+      // chord (shape-Y) maps to world Z and the 0.06m extrusion (shape-Z)
+      // maps to world Y as thickness.
       const left = new Mesh(new ExtrudeGeometry(shape, { depth: 0.06, bevelEnabled: false }), wingMat);
+      left.rotation.x = -Math.PI / 2;
       left.scale.x = -1;
       left.position.set(0, s.position.y, s.position.z - root / 2);
       left.castShadow = true;
       const right = new Mesh(new ExtrudeGeometry(shape, { depth: 0.06, bevelEnabled: false }), wingMat);
+      right.rotation.x = -Math.PI / 2;
       right.position.set(0, s.position.y, s.position.z - root / 2);
       right.castShadow = true;
       group.add(left, right);
